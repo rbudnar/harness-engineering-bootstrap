@@ -1,4 +1,4 @@
-# Harness Engineering Bootstrap - Codex V4
+# Harness Engineering Bootstrap
 
 Use this template to set up a self-maintaining, token-efficient agent harness for a repository. It is designed for Codex, Claude Code, Gemini CLI, Copilot, Cursor, Windsurf, and similar coding agents.
 
