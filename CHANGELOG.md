@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Clarified implementation guidance for internal data stores, health-report advisory exits, harnessify split-out, skill creation gates, MECE promotion, ADR filename conventions, and decision-file redirect shims.
 - Tightened ADR routing guidance so large decision files require an authoritative compact index, with split ADR files as the default at threshold unless a temporary accepted gap is recorded.
 
 ## V4
