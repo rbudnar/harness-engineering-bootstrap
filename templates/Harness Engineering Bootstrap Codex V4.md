@@ -199,17 +199,25 @@ Example:
 
 Full decision bodies may be verbose, but the index must stay compact. Agents should read the index first, then open only the matching decisions unless the task explicitly asks for a full decision audit.
 
-First add a compact decision index with routing metadata when decision memory starts getting hard to scan. Split `docs/decisions.md` into `docs/adr/INDEX.md` plus one file per decision only when the index-plus-single-file format is no longer usable, such as when any of these are true:
+Decision memory must not become an unrouted archive. When decision memory starts getting hard to scan, add an authoritative compact decision index with routing metadata immediately.
+
+For small or medium repositories, `docs/decisions.md` may remain a single file if it has a compact index at the top and agents can identify relevant active decisions without reading the whole file.
+
+For larger or higher-churn decision memory, splitting is the default implementation. Split `docs/decisions.md` into `docs/adr/INDEX.md` plus one file per decision when any of these are true:
 
 - Active-decision count exceeds about 25.
+- `docs/decisions.md` exceeds about 700-1000 lines.
 - `docs/decisions.md` exceeds about 300-500 lines and decisions are no longer easy to scan.
 - Multiple areas or teams contribute decisions.
 - Agents or reviewers repeatedly miss relevant decisions.
 - Decision bodies need long rationale, alternatives, or incident history.
 
-Do not split decisions unless the index remains authoritative and validated.
+At or above these thresholds, choose one outcome before declaring the bootstrap complete:
 
-If a repository crosses one of these thresholds, the first move is a compact decision index and, when useful, a router. Split ADR bodies only when the index cannot keep routing cheap. Record any accepted scaling gap in metrics or the bootstrap PR so future agents do not rediscover it.
+1. Split ADR bodies into `docs/adr/<id>.md` files and keep `docs/adr/INDEX.md` as the authoritative first-read surface.
+2. Defer splitting as an accepted temporary harness gap, with a reason, owner or follow-up, and a compact index/router still added in the same bootstrap.
+
+Do not leave a long unindexed `docs/decisions.md` as an accepted final state. Do not split decisions unless the index remains authoritative and validated.
 
 Each decision must include:
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Tightened ADR routing guidance so large decision files require an authoritative compact index, with split ADR files as the default at threshold unless a temporary accepted gap is recorded.
+
 ## V4
 
 - Added optional `llms.txt` / `llms-full.txt` context maps for URL-first or remote-agent bootstrapping.
