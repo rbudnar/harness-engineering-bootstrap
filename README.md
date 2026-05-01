@@ -6,7 +6,7 @@ The goal is not to add more documentation. The goal is to help coding agents loa
 
 ## Contents
 
-- [Template](templates/Harness%20Engineering%20Bootstrap%20Codex%20V4.md) - the current bootstrap template.
+- [Template](templates/Harness%20Engineering%20Bootstrap.md) - the current bootstrap template.
 - [Changelog](CHANGELOG.md) - version history and major design changes.
 - [References](REFERENCES.md) - source material and related work used while developing the template.
 
