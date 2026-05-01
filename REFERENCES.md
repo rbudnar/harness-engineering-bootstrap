@@ -1,3 +1,7 @@
+# References
+
+Source material and related work used while developing the harness engineering bootstrap template.
+
 - https://openai.com/index/harness-engineering/
 - [Evaluating AGENTS.md: Are Repository-Level Context Files Helpful for Coding Agents?](https://arxiv.org/abs/2602.11988)
 - [On the Impact of AGENTS.md Files on the Efficiency of AI Coding Agents](https://arxiv.org/abs/2601.20404) 
