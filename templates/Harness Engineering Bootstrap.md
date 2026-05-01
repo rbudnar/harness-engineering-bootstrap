@@ -56,6 +56,7 @@ Triggered modules:
 
 - Data contracts for external data semantics
 - Repo contracts for cross-repo assumptions
+- Internal data-store docs for repo-owned persistence formats, migrations, locks, and schemas
 - References for private, version-sensitive, or repeatedly misunderstood procedures
 - Path-scoped instructions for subtrees with real local policy
 - Feedback log and regression evals for mature or high-iteration repos
@@ -197,7 +198,7 @@ Example:
 | D25 | Active | Caching | `services/data_service.py`, `services/disk_cache.py` | changing cache keys, invalidation, or Databricks fetches | Preserve the L1/L2/L3 cache contract and documented invalidation semantics. | [D25](adr/D25-disk-cache.md) |
 ```
 
-Full decision bodies may be verbose, but the index must stay compact. Agents should read the index first, then open only the matching decisions unless the task explicitly asks for a full decision audit.
+Full decision bodies may be verbose, but the index must stay compact. Agents should read the index first, then open only the matching decisions unless the task explicitly asks for a full decision audit. File names should match the repository's decision ID convention, including any padding width, such as `ADR-026-thin-agent-entry-points.md` for three-digit ADR IDs or `D14-html-safety.md` for short decision IDs.
 
 Decision memory must not become an unrouted archive. When decision memory starts getting hard to scan, add an authoritative compact decision index with routing metadata immediately.
 
@@ -218,6 +219,8 @@ At or above these thresholds, choose one outcome before declaring the bootstrap 
 2. Defer splitting as an accepted temporary harness gap, with a reason, owner or follow-up, and a compact index/router still added in the same bootstrap.
 
 Do not leave a long unindexed `docs/decisions.md` as an accepted final state. Do not split decisions unless the index remains authoritative and validated.
+
+When splitting from `docs/decisions.md` to `docs/adr/`, keep `docs/decisions.md` as a short redirect shim to `docs/adr/INDEX.md` if existing PRs, docs, memories, or external links may still point at it. Delete the old file only after the split PR records a link inventory, such as repo search plus any docs link checker, confirming it is no longer a useful route.
 
 Each decision must include:
 
@@ -409,6 +412,36 @@ Each task contract should include:
 - Retirement rule: delete, archive, or convert durable lessons into docs/ADRs/contracts after the work lands
 
 Do not turn every task into a checked-in plan. For short work, an agent's session-local plan is enough. Checked-in task contracts are for work where durable coordination is worth the maintenance cost.
+
+### `docs/internal-data-stores.md` or `docs/internal-data-stores/`
+
+Create when the repository owns persistent local or internal data formats whose correctness matters, such as JSON stores, SQLite databases, cache directories, lockfiles, generated indexes, migrations, or user-editable files that the application reads back.
+
+Purpose:
+
+Internal data-store docs define repo-owned persistence semantics. They prevent agents from guessing schema versions, migration behavior, lockfile safety, atomic-write contracts, cleanup scope, or compatibility expectations.
+
+Default to one consolidated `docs/internal-data-stores.md` file for small repos or a small number of stores. Split to `docs/internal-data-stores/INDEX.md` plus per-store files only when the consolidated file becomes hard to route. In either shape, keep one authoritative index or route so agents can identify the relevant store without reading every store contract.
+
+Trigger conditions:
+
+- The repo persists user data or durable state outside a normal external database
+- A file format, cache layout, migration, lockfile, or cleanup rule is not obvious from code
+- A PR changes schema versioning, atomic-write behavior, lock paths, retention, migration, or destructive cleanup scope
+- Tests or reviews repeatedly explain internal persistence semantics
+- The store is not external enough for `docs/data-contracts/`, but is load-bearing for correctness
+
+Each internal data-store entry or split-out doc should include:
+
+- Metadata block and freshness review interval
+- Store path or location rules
+- Schema/version fields and migration expectations
+- Atomic write, locking, concurrency, and sync assumptions
+- Cleanup/uninstall safety boundaries
+- How to inspect, validate, or repair the store
+- Tests or validators that protect the contract
+
+Add these docs to freshness metadata checks once they become load-bearing, such as the repo's docs-with-metadata allowlist or other freshness-validator input. Do not create internal data-store docs for simple ephemeral cache directories with no compatibility or safety contract.
 
 ### `docs/data-contracts/`
 
@@ -772,7 +805,7 @@ Resolver checks can start as warnings:
 - Common harness markers with no corresponding durable route.
 - A task route that points to stale, deprecated, or superseded guidance.
 
-Promote MECE warnings to failures only after the check is low-noise and documented in a decision.
+Promote MECE warnings to failures only after at least one audit cycle, roughly 30 days for active repos, with no false positives or accepted noise, and document the promotion in a decision.
 
 ### Memory Types
 
@@ -833,7 +866,7 @@ When a repeated or high-risk failure appears, classify the fix:
 - Missed existing decision: update the decision index, decision router, task router, or path-scoped instructions.
 - Repeated workflow error: update procedural memory or a skill.
 - Mechanically checkable mistake: add a script/CI check.
-- Review should have caught it: add or update a Copilot review rule.
+- Review should have caught it: add or update the canonical review harness or the relevant tool-specific adapter.
 - Failure happened before code was written: add or improve a guide.
 - Failure escaped after code was written: add or improve a sensor.
 - Existing control fired but was ignored or too noisy: improve the control's output, lifecycle, or severity before adding another rule.
@@ -843,6 +876,8 @@ Do not add every one-off mistake to always-on instructions. Promote only repeate
 ### Harnessify Path
 
 Add a `harnessify`, `workflow-to-control`, or similarly named skill/guide when the repo has enough agent iteration that repeated friction needs a standard triage path.
+
+Location rule: a short harnessify note may live in `docs/human-guide.md`, but if it grows beyond a compact checklist or includes marker thresholds, candidate-fix priority lists, or a skill-creation gate, put it in `docs/harnessify.md` and link to it from `docs/human-guide.md`.
 
 This is not a generic skill generator. It answers: what is the smallest durable harness control that prevents this specific repeated failure?
 
@@ -857,6 +892,8 @@ Checklist:
 7. Retirement: what signal says the control can be removed, weakened, or moved out of always-on context.
 
 Prefer harnessifying repeated workflows and misses over adding more root instructions.
+
+Skill-creation gate: before creating a new skill, at least two smaller controls should have been tried and shown insufficient, unless the workflow is clearly repeated, multi-step, and procedural. Smaller controls include semantic docs, ADRs, contracts, validators, PR template prompts, review rules, or examples. "Considered but not tried" is not enough evidence for a new skill unless the risk or cost of trying the smaller control is explicit.
 
 ### Conflict Resolution
 
@@ -1049,6 +1086,8 @@ Add only when the repo has several validators, metrics, contracts, routers, or r
 
 The health report should not replace gates. It should interpret them for an agent or human and produce an action-oriented summary.
 
+Default mode is advisory: generate the report and exit `0` even when `actions[]` is non-empty. Use nonzero exits only for script/runtime failure, or for an explicit `--strict` mode after the repo has completed at least one audit cycle with low-noise health actions and documented the promotion in a decision.
+
 Recommended output shape:
 
 ```json
@@ -1071,7 +1110,7 @@ Recommended output shape:
 Use exit codes if the report is run by CI or cron:
 
 - `0`: report generated. In default advisory mode, recommended actions do not fail CI.
-- `1`: strict mode found required action, or a deterministic required check failed. Use this only in PR CI or scheduled jobs that intentionally enforce health.
+- `1`: explicit `--strict` mode found required action, or a deterministic required check failed. Use this only after the repo has completed at least one low-noise audit cycle and recorded an evidence-backed decision that promotes health actions to enforcement.
 - `2`: could not determine health because a required check crashed or could not run.
 
 The value is prioritization, not more enforcement: agents can read `actions[]` instead of interpreting raw validator and metrics JSON from scratch. Avoid circular dependency: metrics may record whether a health report exists, but `harness-metrics.*` should not call `harness-health.*` if `harness-health.*` already wraps metrics.
@@ -1118,6 +1157,7 @@ The object below is a superset. Minimal implementations may emit only the local 
     "controls_with_retirement_criteria": null,
     "data_contract_count": 0,
     "repo_contract_count": 0,
+    "internal_data_store_doc_count": 0,
     "hard_review_rules_without_decision": 0,
     "check_gate_runtime_seconds": null,
     "harness_validation_passed": null
@@ -1182,7 +1222,7 @@ Track these categories:
    - Whether a control inventory exists and classifies guides/sensors.
    - Guide, sensor, computational-control, and inferential-control counts.
    - Controls with explicit failure modes and retirement criteria.
-   - Data contract and repo contract counts.
+   - Data contract, repo contract, and internal data-store doc counts. Count the consolidated internal-store file as one, or count split per-store files when the repo uses an indexed directory.
    - Review rules without decision or contract backing.
    - Unified quality-gate runtime.
    - Harness validator pass/fail.
@@ -1458,8 +1498,9 @@ Do not treat baseline imperfections as automatic blockers. The goal is to make t
 - [ ] Add a control inventory for mature/high-churn repos, classifying guide/sensor and computational/inferential controls
 - [ ] Record failure mode, lifecycle, owner, and retirement signal for nontrivial controls
 - [ ] Add focused reference files only when triggered
+- [ ] Add internal data-store docs only when repo-owned persistence semantics are load-bearing
 - [ ] Add task contracts only for long-running, multi-agent, or handoff-heavy work
-- [ ] Add a harnessify/workflow-to-control skill or guide only when repeated harness friction justifies it
+- [ ] Add `docs/harnessify.md` or a harnessify/workflow-to-control skill only when repeated harness friction justifies it
 - [ ] Add durable metadata to important harness docs
 - [ ] Add data contracts only if external data triggers are present
 - [ ] Add repo contracts only if cross-repo triggers are present
