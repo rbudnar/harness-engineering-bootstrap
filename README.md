@@ -26,3 +26,8 @@ The goal is not to add more documentation. The goal is to help coding agents loa
 Copy the template into a target repository and adapt it to that repository's actual stack, workflows, risks, and existing documentation. Do not copy every optional module by default. The template is intentionally more detailed than the files it asks you to create.
 
 Start with the required core, then add optional modules only when the repository has a real trigger for them.
+## License
+
+This project is dedicated to the public domain under [CC0 1.0 Universal](LICENSE).
+
+You may copy, modify, distribute, and use the template without permission or attribution. Credit is appreciated but not required.
