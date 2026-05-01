@@ -220,7 +220,7 @@ At or above these thresholds, choose one outcome before declaring the bootstrap 
 
 Do not leave a long unindexed `docs/decisions.md` as an accepted final state. Do not split decisions unless the index remains authoritative and validated.
 
-When splitting from `docs/decisions.md` to `docs/adr/`, keep `docs/decisions.md` as a short redirect shim to `docs/adr/INDEX.md` if existing PRs, docs, memories, or external links may still point at it. Delete the old file only after a link inventory confirms it is no longer a useful route.
+When splitting from `docs/decisions.md` to `docs/adr/`, keep `docs/decisions.md` as a short redirect shim to `docs/adr/INDEX.md` if existing PRs, docs, memories, or external links may still point at it. Delete the old file only after the split PR records a link inventory, such as repo search plus any docs link checker, confirming it is no longer a useful route.
 
 Each decision must include:
 
@@ -413,13 +413,15 @@ Each task contract should include:
 
 Do not turn every task into a checked-in plan. For short work, an agent's session-local plan is enough. Checked-in task contracts are for work where durable coordination is worth the maintenance cost.
 
-### `docs/internal-data-stores.md`
+### `docs/internal-data-stores.md` or `docs/internal-data-stores/`
 
 Create when the repository owns persistent local or internal data formats whose correctness matters, such as JSON stores, SQLite databases, cache directories, lockfiles, generated indexes, migrations, or user-editable files that the application reads back.
 
 Purpose:
 
 Internal data-store docs define repo-owned persistence semantics. They prevent agents from guessing schema versions, migration behavior, lockfile safety, atomic-write contracts, cleanup scope, or compatibility expectations.
+
+Default to one consolidated `docs/internal-data-stores.md` file for small repos or a small number of stores. Split to `docs/internal-data-stores/INDEX.md` plus per-store files only when the consolidated file becomes hard to route. In either shape, keep one authoritative index or route so agents can identify the relevant store without reading every store contract.
 
 Trigger conditions:
 
@@ -429,7 +431,7 @@ Trigger conditions:
 - Tests or reviews repeatedly explain internal persistence semantics
 - The store is not external enough for `docs/data-contracts/`, but is load-bearing for correctness
 
-Each internal data-store doc should include:
+Each internal data-store entry or split-out doc should include:
 
 - Metadata block and freshness review interval
 - Store path or location rules
@@ -439,7 +441,7 @@ Each internal data-store doc should include:
 - How to inspect, validate, or repair the store
 - Tests or validators that protect the contract
 
-Add these docs to freshness metadata checks once they become load-bearing, such as `DOCS_WITH_METADATA` or the repo's equivalent validator input. Do not create this file for simple ephemeral cache directories with no compatibility or safety contract.
+Add these docs to freshness metadata checks once they become load-bearing, such as `DOCS_WITH_METADATA` or the repo's equivalent validator input. Do not create internal data-store docs for simple ephemeral cache directories with no compatibility or safety contract.
 
 ### `docs/data-contracts/`
 
@@ -1108,7 +1110,7 @@ Recommended output shape:
 Use exit codes if the report is run by CI or cron:
 
 - `0`: report generated. In default advisory mode, recommended actions do not fail CI.
-- `1`: explicit `--strict` mode found required action, or a deterministic required check failed. Use this only after an evidence-backed decision promotes health actions to enforcement.
+- `1`: explicit `--strict` mode found required action, or a deterministic required check failed. Use this only after the repo has completed at least one low-noise audit cycle and recorded an evidence-backed decision that promotes health actions to enforcement.
 - `2`: could not determine health because a required check crashed or could not run.
 
 The value is prioritization, not more enforcement: agents can read `actions[]` instead of interpreting raw validator and metrics JSON from scratch. Avoid circular dependency: metrics may record whether a health report exists, but `harness-metrics.*` should not call `harness-health.*` if `harness-health.*` already wraps metrics.
@@ -1220,7 +1222,7 @@ Track these categories:
    - Whether a control inventory exists and classifies guides/sensors.
    - Guide, sensor, computational-control, and inferential-control counts.
    - Controls with explicit failure modes and retirement criteria.
-   - Data contract, repo contract, and internal data-store doc counts.
+   - Data contract, repo contract, and internal data-store doc counts. Count the consolidated internal-store file as one, or count split per-store files when the repo uses an indexed directory.
    - Review rules without decision or contract backing.
    - Unified quality-gate runtime.
    - Harness validator pass/fail.
