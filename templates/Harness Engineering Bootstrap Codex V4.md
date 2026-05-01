@@ -214,7 +214,7 @@ For larger or higher-churn decision memory, splitting is the default implementat
 
 At or above these thresholds, choose one outcome before declaring the bootstrap complete:
 
-1. Split ADR bodies into `docs/adr/<id>.md` files and keep `docs/adr/INDEX.md` as the authoritative first-read surface.
+1. Split ADR bodies into `docs/adr/<id>-<slug>.md` files, or another documented stable naming pattern, and keep `docs/adr/INDEX.md` as the authoritative first-read surface.
 2. Defer splitting as an accepted temporary harness gap, with a reason, owner or follow-up, and a compact index/router still added in the same bootstrap.
 
 Do not leave a long unindexed `docs/decisions.md` as an accepted final state. Do not split decisions unless the index remains authoritative and validated.
