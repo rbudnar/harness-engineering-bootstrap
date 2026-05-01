@@ -198,7 +198,7 @@ Example:
 | D25 | Active | Caching | `services/data_service.py`, `services/disk_cache.py` | changing cache keys, invalidation, or Databricks fetches | Preserve the L1/L2/L3 cache contract and documented invalidation semantics. | [D25](adr/D25-disk-cache.md) |
 ```
 
-Full decision bodies may be verbose, but the index must stay compact. Agents should read the index first, then open only the matching decisions unless the task explicitly asks for a full decision audit. File names should match the repository's decision ID convention, such as `ADR-026-thin-agent-entry-points.md` or `D14-html-safety.md`.
+Full decision bodies may be verbose, but the index must stay compact. Agents should read the index first, then open only the matching decisions unless the task explicitly asks for a full decision audit. File names should match the repository's decision ID convention, including any padding width, such as `ADR-026-thin-agent-entry-points.md` for three-digit ADR IDs or `D14-html-safety.md` for short decision IDs.
 
 Decision memory must not become an unrouted archive. When decision memory starts getting hard to scan, add an authoritative compact decision index with routing metadata immediately.
 
@@ -441,7 +441,7 @@ Each internal data-store entry or split-out doc should include:
 - How to inspect, validate, or repair the store
 - Tests or validators that protect the contract
 
-Add these docs to freshness metadata checks once they become load-bearing, such as `DOCS_WITH_METADATA` or the repo's equivalent validator input. Do not create internal data-store docs for simple ephemeral cache directories with no compatibility or safety contract.
+Add these docs to freshness metadata checks once they become load-bearing, such as the repo's docs-with-metadata allowlist or other freshness-validator input. Do not create internal data-store docs for simple ephemeral cache directories with no compatibility or safety contract.
 
 ### `docs/data-contracts/`
 
