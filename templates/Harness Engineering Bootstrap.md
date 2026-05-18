@@ -364,6 +364,8 @@ Retire or weaken when: The architecture changes and a replacement structural che
 
 Do not create empty optional systems. Install trigger rules so future agents know when optional modules become required.
 
+Default to zero optional modules. For each optional module you add, record the trigger evidence, first-read route, validation signal, and why a smaller existing control such as a doc section, ADR entry, script, or PR-template prompt is not enough. If several modules are triggered at once, prioritize the one or two that reduce the highest-risk repeated failure or largest token waste, and record the rest as follow-up.
+
 ### `docs/references/`
 
 Use for private, version-sensitive, repeatedly misunderstood, or task-oriented references.
