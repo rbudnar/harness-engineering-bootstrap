@@ -1213,6 +1213,8 @@ Add a harness validator that checks:
 - Data contracts referenced by `docs/data-contracts/INDEX.md` exist and have metadata
 - Repo contracts referenced by `docs/repo-contracts/INDEX.md` exist and have metadata
 - `AGENTS.md` includes the provider-memory precedence rule
+- If `docs/agent-runtime.md` or `docs/agent-runtime-safety.md` exists, `AGENTS.md` includes the agent-runtime safety rule and the runtime doc links to its verification checks
+- If behavioral anchors, evidence packs, code-search adapters, or fault-injection profiles exist, their indexes or docs are reachable from the task router or relevant runtime/eval docs
 
 Run this validator in the repo's exact unified quality-gate command and CI.
 
@@ -1257,8 +1259,13 @@ Recommended section:
 - [ ] Decision router / index failed to surface relevant context (`harness:miss-decision-route`)
 - [ ] New data contract needed (`harness:data-contract-needed`)
 - [ ] New repo contract needed (`harness:repo-contract-needed`)
+- [ ] Runtime/tool safety boundary needed (`harness:runtime-safety-needed`)
+- [ ] Agent repeated a known behavioral drift (`harness:behavior-drift`)
+- [ ] Source-heavy work lacked traceable evidence (`harness:evidence-gap`)
 - [ ] Existing context was stale (`harness:context-rot`)
 - [ ] Existing sensor was missing, ignored, or too noisy (`harness:missing-sensor` or `harness:review-noise`)
+- [ ] Bespoke scaffold looks obsolete or too costly (`harness:obsolete-scaffold`)
+- [ ] Harness edit prediction missed (`harness:prediction-miss`)
 - [ ] Provider memory conflicted with repo context (`harness:provider-memory-conflict`)
 - [ ] No harness issue observed (mutually exclusive)
 
