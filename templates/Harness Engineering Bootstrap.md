@@ -64,6 +64,11 @@ Triggered modules:
 - URL-fetchable context maps for remote agents or one-shot URL bootstrap
 - Agent-readable health report for mature harnesses with several validators/metrics
 - Harnessify/workflow-to-control skill or guide for repeated agent friction
+- Agent runtime safety docs for repositories that let agents touch real systems, secrets, user data, or autonomous jobs
+- Behavioral drift sensors for long-running agents with stable behavioral anchors or repeated drift failures
+- Evidence packs for source-heavy research tasks where claims need traceable support
+- Fault-injection/resilience tests for production agent runtimes or brittle tool integrations
+- Token-efficient code-search adapters for very large repositories where `rg` plus selective reads becomes too expensive
 
 ## Core Principles
 
@@ -77,7 +82,25 @@ Triggered modules:
 8. **Classify controls.** Treat every important harness artifact as a guide or sensor, and as computational or inferential. Guides steer before the agent acts; sensors observe after it acts and help it self-correct.
 9. **Left-shift cheap feedback.** Run fast deterministic sensors as early as possible: local hooks, agent self-checks, CI, and scheduled audits. Reserve expensive inferential review for changes where semantic judgment is worth the cost.
 10. **Every control encodes an assumption.** Record what failure mode a nontrivial control prevents, what signal proves it is useful, and when to retire or weaken it.
-11. **Measure the harness.** Track token pressure, drift, CI quality, PR velocity, repeated corrections, control coverage, and contract coverage over time.
+11. **Prefer programmatic state surfaces.** Put large, changing, or inspectable state in deterministic artifacts that agents can query, such as files, generated schemas, logs, structured traces, snapshots, or CLI outputs. Feed the model pointers and summaries before dumping raw state into context.
+12. **Keep scaffolding replaceable.** Treat bespoke orchestration, tool wrappers, memory layers, and multi-agent topologies as capability-era controls. Keep the harness thin, push domain process into routable skills/docs, push repeatable execution into deterministic tools, and make every nontrivial scaffold easy to reassess when models or first-party harnesses improve.
+13. **Measure the harness.** Track token pressure, drift, CI quality, PR velocity, repeated corrections, control coverage, contract coverage, and runtime safety over time.
+
+## Harness Layer Map
+
+Use this ETCLOVG layer map when auditing coverage or explaining where a control belongs. It is a vocabulary adapter, not a required reorganization of the repository:
+
+| Layer | What It Covers | Template Surfaces |
+|---|---|---|
+| Execution | Runtime environment, sandboxing, filesystem/network boundaries, credentials, isolation | quality gates, `docs/agent-runtime.md`, CI/CD docs |
+| Tooling | Tool interfaces, MCP servers, CLI/API contracts, schemas, permissions | agent-runtime docs, repo/data contracts, validators |
+| Context | Progressive disclosure, routers, docs, decisions, references, search indexes | `AGENTS.md`, `docs/README.md`, ADR index, references, evidence packs |
+| Lifecycle | Plans, handoffs, orchestration, task state, retries, self-growth | task contracts, harnessify path, plans, memory model |
+| Observability | Traces, logs, metrics, audit records, decision outcomes | metrics, health report, OTel spans when enabled |
+| Verification | Tests, evals, review harnesses, adversarial validation, fault injection | quality gate, harness evals, review harness, chaos tests |
+| Governance | Ownership, approval tiers, safety policy, lifecycle, retirement | human guide, control inventory, agent-runtime safety, decisions |
+
+Every nontrivial control should map to at least one layer. If the map reveals a missing layer, add the smallest useful guide or sensor; do not create empty layer files.
 
 ## Phase 0: Repository Survey and Bootstrap Plan
 
@@ -92,6 +115,9 @@ Before writing files, inspect:
 - Existing sensors: tests, linters, type checks, structural checks, coverage, security scans, review bots, hooks, observability, browser checks, health reports, and runtime monitors
 - External data dependencies: SQL tables, warehouses, APIs, event streams, files, schemas, models
 - Cross-repository dependencies: shared packages, generated artifacts, copied logic, upstream implementations, deployment assumptions
+- Agent runtime and tool-safety surface: MCP servers, autonomous jobs, write tools, credentials, network egress, approval tiers, audit logs, max runtime, and kill switches
+- Observability surface: logs, traces, metrics, run IDs, trace IDs, span hierarchy, audit records, and dashboard/report destinations
+- Code-search surface: whether `rg` and selective file reads are enough, or whether a generated search index would materially reduce token load
 - Recent commits and PRs, if available, to infer repeated mistakes and non-obvious decisions
 
 Then produce a short setup plan:
@@ -104,7 +130,12 @@ Then produce a short setup plan:
 - Whether remote agents need URL-fetchable context maps
 - Whether skill/task routing has MECE overlap or coverage gaps
 - Whether a health-report wrapper would make existing checks more actionable
+- Whether agent runtime safety docs are triggered by write tools, secrets, production access, or autonomous workflows
+- Whether behavioral drift sensors are justified by long-running sessions or repeated ignored guidance
+- Whether source-heavy research needs evidence packs instead of ad hoc links in chat
+- Whether OTel-style traces, MCP tool contracts, managed sandboxes, fault injection, adversarial validation, or code-search adapters are triggered by the repo's actual runtime and scale
 - Any controls whose maintenance cost or stale assumptions look suspicious
+- Any bespoke scaffolding that should have a model/tool-upgrade reassessment trigger
 - Measurement script scope
 - Any questions for the human where the code cannot answer safely
 
@@ -333,6 +364,8 @@ Retire or weaken when: The architecture changes and a replacement structural che
 
 Do not create empty optional systems. Install trigger rules so future agents know when optional modules become required.
 
+Default to zero optional modules. For each optional module you add, record the trigger evidence, first-read route, validation signal, and why a smaller existing control such as a doc section, ADR entry, script, or PR-template prompt is not enough. If several modules are triggered at once, prioritize the one or two that reduce the highest-risk repeated failure or largest token waste, and record the rest as follow-up.
+
 ### `docs/references/`
 
 Use for private, version-sensitive, repeatedly misunderstood, or task-oriented references.
@@ -412,6 +445,151 @@ Each task contract should include:
 - Retirement rule: delete, archive, or convert durable lessons into docs/ADRs/contracts after the work lands
 
 Do not turn every task into a checked-in plan. For short work, an agent's session-local plan is enough. Checked-in task contracts are for work where durable coordination is worth the maintenance cost.
+
+### `docs/evidence-packs/` or `docs/research/`
+
+Use only for source-heavy research, policy, compliance, legal, competitive, technical-decision, or external-reference tasks where agents repeatedly need to assemble claims from many sources and preserve why a conclusion was reached.
+
+Purpose:
+
+Evidence packs keep research context traceable without dumping every source into always-on docs. They are useful when a later agent must distinguish supported claims, open gaps, contradictions, and source freshness.
+
+Do not create this for ordinary coding work, small documentation updates, or one-off web lookups whose sources are already cited in a PR or ADR.
+
+Each evidence pack should include:
+
+- Research question and decision it supports
+- Claim list, each linked to source-backed evidence
+- Evidence nodes: source URL or repo path, date accessed, short summary, confidence, and relevant quote or line pointer when allowed
+- Contradictions, missing evidence, and unresolved questions
+- Freshness risk: which facts are likely to drift
+- Synthesis: what should change in the repo, if anything
+- Retirement rule: convert durable decisions into ADRs/docs/contracts, then archive or delete the evidence pack
+
+For broad research, prefer a navigator/searcher split as a workflow pattern, not a permanent multi-agent framework: one agent owns the evidence graph and gap list, while independent searches fill specific missing evidence.
+
+### Code Search Adapters
+
+Use only when repository scale, generated code, polyglot structure, or repeated agent token waste makes plain `rg` plus selective file reads insufficient.
+
+Purpose:
+
+A code-search adapter gives agents a low-token way to find relevant files, symbols, and examples before reading source. It is a retrieval surface, not a replacement for deterministic tests, type checks, or direct code inspection before editing.
+
+Trigger conditions:
+
+- Agents repeatedly open large files or many irrelevant files before finding the right implementation.
+- `rg` finds too many lexical matches, or important matches require semantic/symbol search.
+- The repo is a monorepo, has many generated files, or has multiple implementations with similar names.
+- Token-pressure metrics show code discovery is a meaningful cost.
+
+Guidelines:
+
+- Keep `rg` as the default first tool for exact text, filenames, and identifiers.
+- Add an indexed search adapter only when it has a documented build/update command, ignored paths, freshness check, and fallback behavior.
+- Prefer hybrid lexical plus semantic retrieval for natural-language questions; prefer exact search for symbols, IDs, generated artifacts, and migration names.
+- Validate that the adapter reduces tokens or wall time on a small fixed task set before adding it to normal agent instructions.
+- Treat packages such as Semble as optional adapters, not required infrastructure.
+
+### `docs/agent-runtime.md` or `docs/agent-runtime-safety.md`
+
+Create when this repository ships, configures, or operates agents, MCP servers, tool-calling workflows, scheduled automations, or low-code/no-code agent flows that can act outside a local development sandbox.
+
+Purpose:
+
+Agent runtime docs describe the production constraint surface around agents. They make permissions, credentials, approvals, observability, retries, and intervention paths explicit so safety is enforced by configuration and tooling rather than prompt-only reminders.
+
+Do not create this for a repository that only uses coding agents locally with ordinary development tools and no durable external access. Capture ordinary review expectations and local tool usage in `docs/human-guide.md` instead.
+
+Trigger conditions:
+
+- An agent can mutate external state: deploy, merge, send messages, update tickets, write databases, change cloud resources, or call paid APIs.
+- An agent can read sensitive data: user data, secrets, production logs, customer files, private documents, or authenticated browser sessions.
+- MCP servers, browser agents, scheduled scouts, background agents, hooks, plugins, or CI jobs run with shared credentials.
+- The workflow runs for long periods or without continuous human supervision.
+- Prompt injection, tool-output injection, data exfiltration, runaway cost, or duplicate writes would matter.
+- Research, training, evaluation, staging, or production harnesses reuse tools or credentials in ways that could blur safety assumptions.
+
+Each agent-runtime doc should include:
+
+- Metadata block and owner
+- Runtime scope: which agents, jobs, tools, MCP servers, environments, and entry points it covers
+- Tool inventory: tool name, capability, environment, owner, credential source, read/write scope, network scope, and whether it is enabled by default
+- Tool contract model: MCP, OpenAPI, JSON Schema, typed SDK, CLI help, or another explicit schema; include versioning, compatibility, and schema-drift validation
+- Security baseline: OWASP Agentic Application risks or the repository's internal equivalent, mapped to concrete controls
+- Permission model: deny-by-default stance, allowlist, scoped tokens/RBAC, network egress rules, and approval tiers for writes
+- Sandbox model: workspace boundaries, external read/write restrictions, whether hooks/MCP initialization/plugins are sandboxed, and whether stronger isolation such as managed sandboxes, microVMs, containers, VMs, or remote execution environments is required
+- Secret model: no ambient host credentials by default; explicit task-scoped secret injection or a credential broker for short-lived credentials where practical
+- Action safety: idempotency expectations, retry policy, rate and cost budgets, maximum runtime, duplicate-write prevention, rollback path, kill switch, and escalation route
+- Input/output safety: handling for untrusted tool output, prompt injection, tool poisoning, memory poisoning, secret redaction, data retention, and user-visible output review
+- Observability: run IDs, trace IDs, audit logs, command logs, traces, screenshots/videos when useful, intervention records, and how to replay or reproduce a run where practical
+- OTel guidance when enabled: represent a session or task as a root span; use child spans for planning, model calls, tool calls, MCP requests, tests, retries, human approvals, and handoffs; include attributes for model, tool, route, decision/contract IDs, token/cost estimates, status, and failure category
+- Environment split: how production, staging/evaluation, and research/training harnesses differ; what must never be copied from one to another without review
+- Verification: exact checks, dashboards, or manual review steps that prove the boundary still works
+
+Required `AGENTS.md` rule when an agent runtime exists:
+
+```markdown
+## Agent Runtime Safety
+
+Before changing agent tools, MCP servers, autonomous jobs, credentials, network access, approval tiers, retries, or runtime limits:
+
+1. Read `docs/agent-runtime.md` or `docs/agent-runtime-safety.md`.
+2. Keep safety in tool configuration, scoped credentials, checks, or CI where possible; do not rely on prompt text alone.
+3. Do not broaden write access, credential scope, network egress, runtime duration, or autonomous behavior without an active decision or explicit human approval.
+4. If research/eval tools and production tools differ, preserve the documented boundary and update verification if it changes.
+```
+
+### `docs/behavioral-anchors.md`
+
+Use only when long-running agents repeatedly drift from stable behavioral constraints, such as ignoring verification rules, fabricating prior agreement, skipping required escalation, broadening scope, or repeating a known unsafe workflow.
+
+Purpose:
+
+Behavioral anchors make repeated agent-behavior failures observable without making root instructions larger. They can be checked by a lightweight sensor that compares the current task or trace against positive and negative anchors, then emits an advisory warning, context injection, or review marker.
+
+Trigger conditions:
+
+- Long sessions or autonomous runs repeatedly ignore stable project behavior rules.
+- Provider memory retrieves the right fact but the agent still fails to act on it.
+- Humans repeatedly write the same behavioral correction in PRs or task threads.
+- A safety or runtime boundary depends on agents honoring a small set of explicit behavioral constraints.
+
+Each anchor set should include:
+
+- Positive anchors: short, task-shaped examples of desired behavior
+- Negative anchors: short, task-shaped examples of known failure modes
+- Scope: tools, paths, tasks, or agents where the anchors apply
+- Scoring method and threshold, if automated
+- Action when triggered: inject context, request review, block only after a low-noise trial, or open a harness issue
+- False-positive review process, latency/cost budget, and owner
+
+Do not use behavioral anchors as generic personality tuning. Keep them tied to repeated, measurable failures and retire them if they stop adding signal.
+
+### Agent Runtime Fault Injection
+
+Use only for production agent runtimes, high-risk MCP/tool integrations, or repeated incidents where normal tests miss tool failures.
+
+Purpose:
+
+Fault injection tests whether the harness fails safely when tools and external systems behave badly. It should live near runtime/eval checks, not in always-on instructions.
+
+Trigger conditions:
+
+- Tools time out, rate-limit, return malformed payloads, change schemas, or produce partial results.
+- Agent retries have caused duplicate writes, cost spirals, or confusing user-visible output.
+- Tool-output prompt injection, schema drift, or degraded upstream services would create safety or correctness risk.
+- A production agent runtime needs release confidence beyond ordinary unit and integration tests.
+
+Start with a tiny fault profile set:
+
+- `SchemaDrift`: missing, renamed, extra, or type-shifted fields
+- `TimeoutFault`: slow, hanging, cancelled, or rate-limited tool calls
+- `MalformedResponseFault`: invalid JSON, truncated output, wrong encoding, or contradictory fields
+- `CostSpiralFault`: repeated retries, unexpectedly large outputs, or runaway planning loops
+- `ToolPoisoningFault`: hostile instructions or misleading claims embedded in tool output
+
+Run fault injection in a sandbox with fake credentials and explicit cost caps. Promote it to CI only after the tests are deterministic enough to be low-noise. Tools such as `agentfuzz` can be adapters for this module, but do not make a specific package mandatory.
 
 ### `docs/internal-data-stores.md` or `docs/internal-data-stores/`
 
@@ -645,13 +823,14 @@ Required `AGENTS.md` language:
 ```markdown
 ## Context Loading
 
-Before changing code, load the smallest relevant context:
+Use progressive disclosure: load context just in time, from broad route to narrow source. Before changing code:
 
 1. Read `docs/README.md`.
 2. Follow the task router or relevant index.
 3. Open only the specific decision, reference, data contract, repo contract, or generated artifact needed for the task.
+4. Prefer pointers, summaries, generated indexes, and targeted search results before loading long raw files.
 
-Do not load broad documentation sets unless the task requires them.
+Do not load broad documentation sets, full ADR archives, generated schemas, or large source files unless the task requires them.
 
 ## Missing Context
 
@@ -788,6 +967,59 @@ Use this vocabulary consistently:
 
 Avoid arguing about labels when the action is clear. The purpose is to make coverage and cost visible: a repo should know which controls steer, which controls detect, which are cheap enough to run constantly, and which should be reserved for higher-risk moments.
 
+### Control Priority Layers
+
+Use priority layers to resolve conflicts between controls without inventing a new debate each time.
+
+Default order:
+
+1. Platform, legal, safety, and tool-enforced restrictions
+2. Current human request and explicit approval boundaries
+3. Repository source of truth: code, tests, CI, active decisions, active contracts, and agent-runtime safety docs
+4. Task acceptance criteria and correctness evidence
+5. Efficiency, token cost, style, and convenience
+
+If a lower-priority control conflicts with a higher-priority one, follow the higher-priority control and record the stale or conflicting lower-priority control as a harness issue. If two same-priority active controls conflict, stop and ask the human which one to supersede.
+
+### Harness Replaceability
+
+Treat nontrivial harness scaffolding as something to justify and periodically prune, not as permanent product surface.
+
+For bespoke tool wrappers, planner/executor loops, multi-agent graphs, custom memory layers, route optimizers, eval judges, or runtime middleware, record:
+
+- The model or tool limitation this scaffold compensates for
+- Why a first-party harness feature, simple repo artifact, skill, script, or deterministic CLI is not enough
+- Whether the logic belongs in a guide/skill, deterministic tool, product code, or runtime safety boundary
+- The removal cost if the scaffold becomes obsolete
+- The review trigger: new model, new first-party harness capability, recurring false positives, runtime overhead, token bloat, or repeated agent confusion
+
+Prefer plain files, git history, structured task contracts, skills, and small deterministic tools before adding opaque framework layers. When a model or agent tool improves, run a short upgrade review: strip away scaffolding that is no longer load-bearing, then use the regression eval or harness metrics to confirm the removal did not hurt outcomes.
+
+### Multi-Agent and Handoff Patterns
+
+Keep multi-agent structure explicit and small.
+
+Use:
+
+- Skills when the repo needs a reusable procedure or judgment pattern.
+- Routers when the problem is choosing the right context or procedure.
+- Subagents when the work is truly parallel, requires context isolation, or benefits from independent review.
+- Handoffs or task contracts when work spans sessions, branches, PRs, or ownership boundaries.
+- Evaluator agents when subjective or end-to-end behavior needs a second pass that deterministic tests cannot provide.
+- Adversarial validators when high-impact findings, security claims, architecture decisions, or evidence syntheses need an independent attempt at disproof before acceptance.
+
+Before adding a multi-agent graph, document ownership, I/O contracts, shared state, arbitration when agents disagree, termination criteria, budget, and the verification signal that proves the topology helps. Be especially cautious with distributed deliberation loops: they can multiply cost and uncertainty unless an eval shows they improve outcomes for this repo.
+
+Adversarial validation should have a narrow brief:
+
+- Original claim or patch to challenge
+- Evidence the validator may inspect
+- Disproof criteria and severity threshold
+- Whether the validator can propose fixes or only reject/ask questions
+- How disagreements are resolved and recorded
+
+Do not use adversarial validation for routine low-risk edits. Use it when false positives, false confidence, or missed exploitability would cost more than the extra review.
+
 ### Resolver MECE
 
 MECE means mutually exclusive, collectively exhaustive.
@@ -865,6 +1097,7 @@ When a repeated or high-risk failure appears, classify the fix:
 - Missing rationale: add or update a decision.
 - Missed existing decision: update the decision index, decision router, task router, or path-scoped instructions.
 - Repeated workflow error: update procedural memory or a skill.
+- Missing runtime boundary: add or update agent-runtime safety docs, scoped tool configuration, approval tiers, or audit checks.
 - Mechanically checkable mistake: add a script/CI check.
 - Review should have caught it: add or update the canonical review harness or the relevant tool-specific adapter.
 - Failure happened before code was written: add or improve a guide.
@@ -872,6 +1105,16 @@ When a repeated or high-risk failure appears, classify the fix:
 - Existing control fired but was ignored or too noisy: improve the control's output, lifecycle, or severity before adding another rule.
 
 Do not add every one-off mistake to always-on instructions. Promote only repeated, costly, or high-risk lessons.
+
+Self-improving memory loops are experimental unless the repo has a controlled eval setup. If the repo tries failure-to-memory learning, keep it outside always-on instructions at first:
+
+- Store candidate rules, examples, or mixed artifacts in an eval or lab area.
+- Require a fixed task set, before/after metrics, and a rollback path.
+- Promote only artifacts that improve success, cost, human-touch rate, or safety without increasing drift.
+- Keep capacity limits so learned memory cannot grow without bound.
+- Record whether the artifact belongs in a doc, decision, contract, skill, validator, or should be discarded.
+
+Do not broadcast self-generated rules across agents or branches without evidence from the repo's own tasks.
 
 ### Harnessify Path
 
@@ -972,6 +1215,8 @@ Add a harness validator that checks:
 - Data contracts referenced by `docs/data-contracts/INDEX.md` exist and have metadata
 - Repo contracts referenced by `docs/repo-contracts/INDEX.md` exist and have metadata
 - `AGENTS.md` includes the provider-memory precedence rule
+- If `docs/agent-runtime.md` or `docs/agent-runtime-safety.md` exists, `AGENTS.md` includes the agent-runtime safety rule and the runtime doc links to its verification checks
+- If behavioral anchors, evidence packs, code-search adapters, or fault-injection profiles exist, their indexes or docs are reachable from the task router or relevant runtime/eval docs
 
 Run this validator in the repo's exact unified quality-gate command and CI.
 
@@ -1016,8 +1261,13 @@ Recommended section:
 - [ ] Decision router / index failed to surface relevant context (`harness:miss-decision-route`)
 - [ ] New data contract needed (`harness:data-contract-needed`)
 - [ ] New repo contract needed (`harness:repo-contract-needed`)
+- [ ] Runtime/tool safety boundary needed (`harness:runtime-safety-needed`)
+- [ ] Agent repeated a known behavioral drift (`harness:behavior-drift`)
+- [ ] Source-heavy work lacked traceable evidence (`harness:evidence-gap`)
 - [ ] Existing context was stale (`harness:context-rot`)
 - [ ] Existing sensor was missing, ignored, or too noisy (`harness:missing-sensor` or `harness:review-noise`)
+- [ ] Bespoke scaffold looks obsolete or too costly (`harness:obsolete-scaffold`)
+- [ ] Harness edit prediction missed (`harness:prediction-miss`)
 - [ ] Provider memory conflicted with repo context (`harness:provider-memory-conflict`)
 - [ ] No harness issue observed (mutually exclusive)
 
@@ -1117,7 +1367,7 @@ The value is prioritization, not more enforcement: agents can read `actions[]` i
 
 Recommended metrics output shape:
 
-The object below is a superset. Minimal implementations may emit only the local baseline fields plus `warnings`, or use `null` for disabled GitHub/PR, control-coverage, or contract-coverage metrics.
+The object below is a superset. Minimal implementations may emit only the local baseline fields plus `warnings`, or use `null` for disabled GitHub/PR, control-coverage, contract-coverage, runtime-safety, or behavioral-drift metrics.
 
 ```json
 {
@@ -1138,6 +1388,8 @@ The object below is a superset. Minimal implementations may emit only the local 
     "deprecated_decision_citations": 0,
     "orphan_contract_references": 0,
     "stale_contract_count": 0,
+    "stale_behavioral_anchor_count": 0,
+    "orphan_evidence_pack_count": 0,
     "duplicate_instruction_blocks": 0,
     "stale_reference_count": 0,
     "adr_status_conflicts": 0,
@@ -1158,6 +1410,9 @@ The object below is a superset. Minimal implementations may emit only the local 
     "data_contract_count": 0,
     "repo_contract_count": 0,
     "internal_data_store_doc_count": 0,
+    "agent_runtime_doc_count": 0,
+    "behavioral_anchor_set_count": 0,
+    "evidence_pack_count": 0,
     "hard_review_rules_without_decision": 0,
     "check_gate_runtime_seconds": null,
     "harness_validation_passed": null
@@ -1177,7 +1432,25 @@ The object below is a superset. Minimal implementations may emit only the local 
     "inferential_sensors_in_pr_flow": null,
     "controls_without_failure_mode": null,
     "controls_without_owner": null,
-    "controls_without_retirement_signal": null
+    "controls_without_retirement_signal": null,
+    "capability_scaffolds_without_review_signal": null
+  },
+  "runtime_safety": {
+    "agent_runtime_doc_configured": null,
+    "production_agent_tools_detected": null,
+    "write_tools_with_approval_tiers": null,
+    "tools_with_scoped_credentials": null,
+    "runtime_controls_without_audit_logs": null,
+    "train_eval_prod_boundary_reviewed": null,
+    "otel_trace_coverage": null,
+    "mcp_tool_contracts_validated": null,
+    "fault_injection_profile_count": null
+  },
+  "behavioral_drift": {
+    "behavioral_anchor_sensor_configured": null,
+    "drift_alert_count": null,
+    "drift_alert_false_positive_rate": null,
+    "drift_sensor_p95_latency_ms": null
   },
   "workflow_outcomes": {
     "prs_merged": null,
@@ -1187,7 +1460,9 @@ The object below is a superset. Minimal implementations may emit only the local 
     "adr_citation_rate_in_prs": null,
     "contract_citation_rate_in_prs": null,
     "harness_correction_comment_count": null,
-    "provider_memory_conflict_comment_count": null
+    "provider_memory_conflict_comment_count": null,
+    "harness_edit_prediction_count": null,
+    "harness_edit_prediction_hit_rate": null
   },
   "warnings": []
 }
@@ -1209,6 +1484,8 @@ Track these categories:
    - Deprecated decision citations.
    - Orphan data/repo contract references.
    - Stale contracts or references.
+   - Stale behavioral anchors.
+   - Orphan evidence packs whose durable conclusions were not promoted or archived.
    - Duplicate instruction blocks.
    - Conflicting active decisions or contracts.
    - Orphan decision-index entries or ADR files.
@@ -1222,7 +1499,8 @@ Track these categories:
    - Whether a control inventory exists and classifies guides/sensors.
    - Guide, sensor, computational-control, and inferential-control counts.
    - Controls with explicit failure modes and retirement criteria.
-   - Data contract, repo contract, and internal data-store doc counts. Count the consolidated internal-store file as one, or count split per-store files when the repo uses an indexed directory.
+   - Data contract, repo contract, internal data-store doc, and agent-runtime doc counts. Count the consolidated internal-store or runtime file as one, or count split per-topic files when the repo uses an indexed directory.
+   - Behavioral anchor set and evidence pack counts when those optional modules are enabled.
    - Review rules without decision or contract backing.
    - Unified quality-gate runtime.
    - Harness validator pass/fail.
@@ -1233,9 +1511,27 @@ Track these categories:
    - Scheduled drift sensors present for docs, dependencies, contracts, and architecture where relevant.
    - Inferential sensors present in PR flow when semantic review is part of the harness.
    - Controls missing owner, failure mode, or retirement signal.
+   - Bespoke scaffolds missing a model/tool-upgrade reassessment signal.
    - How to measure: parse the control inventory in `docs/human-guide.md` or the repo's chosen harness-control file.
 
-5. **Workflow outcomes**
+5. **Runtime safety**
+   - Agent runtime docs configured when production agent tools exist.
+   - Write-capable tools covered by approval tiers.
+   - Tools using scoped credentials instead of shared broad credentials.
+   - Runtime controls with audit logs, run IDs, and intervention records.
+   - OTel trace coverage for long-running sessions or production agent tasks when observability is enabled.
+   - MCP or other tool-contract validation when tool servers/clients are used.
+   - Fault-injection profiles configured for high-risk tool/runtime failures.
+   - Training/evaluation/production boundaries reviewed when tools or harnesses cross environments.
+   - How to measure: parse agent-runtime docs, MCP/tool configuration, CI secrets usage, policy files, audit-log configuration, and approval workflow definitions.
+
+6. **Behavioral drift**
+   - Behavioral anchor sensor configured when repeated drift triggers exist.
+   - Drift alert count, false-positive rate, latency, and cost.
+   - Whether drift alerts result in context injection, review, rollback, or harness issues.
+   - How to measure: parse behavioral-anchor docs, sensor output, PR markers, and audit logs.
+
+7. **Workflow outcomes**
    - First-pass CI success rate.
    - Time from PR open to first green CI.
    - Time from PR open to merge.
@@ -1243,9 +1539,10 @@ Track these categories:
    - Contract citation rate in PR descriptions and review comments.
    - Human correction comments tagged with harness markers.
    - Provider-memory conflict comments tagged with harness markers.
+   - Harness edit predictions and later hit/miss rate when decision observability is enabled.
    - How to measure: `gh` / GitHub API, CI status data, PR timelines, review comments, and lightweight harness labels or markers.
 
-6. **Contract coverage**
+8. **Contract coverage**
    - External data sources with data contracts.
    - Cross-repo dependencies with repo contracts.
    - SQL/table references not covered by data contracts.
@@ -1261,6 +1558,9 @@ To measure repeated agent failures without heavy tracing, define lightweight mar
 - `harness:miss-decision-route` - agent missed a decision because the index/router did not surface it
 - `harness:data-contract-needed` - agent relied on external data semantics without a contract
 - `harness:repo-contract-needed` - agent relied on cross-repo behavior without a contract
+- `harness:runtime-safety-needed` - agent tool access, credentials, approvals, or autonomous runtime behavior lacked a safety boundary
+- `harness:behavior-drift` - agent repeated a known behavioral failure that should be covered by anchors or another guide/sensor
+- `harness:evidence-gap` - source-heavy work made claims without traceable supporting evidence
 - `harness:wrong-command` - agent used the wrong tool or command
 - `harness:missing-sensor` - an issue escaped because no cheap feedback sensor existed
 - `harness:missing-guide` - an issue repeated because no guide steered the agent before acting
@@ -1268,6 +1568,8 @@ To measure repeated agent failures without heavy tracing, define lightweight mar
 - `harness:provider-memory-conflict` - provider-native memory conflicted with repo source of truth
 - `harness:review-noise` - automated review produced low-signal comments
 - `harness:token-bloat` - too much context was loaded or always-on guidance grew too large
+- `harness:obsolete-scaffold` - a wrapper, workflow, memory layer, or multi-agent scaffold persisted after it stopped paying for itself
+- `harness:prediction-miss` - a harness edit failed to improve the predicted outcome or made the measured outcome worse
 
 The metrics script should count these markers over the selected time window across PR bodies, issue comments, inline review comments, and review submissions when the platform exposes them.
 
@@ -1348,10 +1650,24 @@ Track for each run:
 task_id, harness_version, agent_tool, model, task_type, success,
 first_pass_green, wall_minutes, input_tokens, output_tokens,
 cached_tokens, human_touches, docs_read_count, docs_modified_count,
-ci_failures, retry_loops, control_variant, ablated_controls, notes
+ci_failures, retry_loops, control_variant, ablated_controls,
+harness_edit_prediction, prediction_result, notes
 ```
 
 Rule for harness changes: they should improve task success, reduce agent cost, reduce human intervention, improve contract coverage, or reduce rot indicators without materially hurting the others.
+
+For nontrivial harness edits, add a prediction before merging: what metric, marker count, failure mode, or agent behavior should improve, over what window, and what evidence would show the edit did not help. This is decision observability. Keep predictions short enough to live in the PR body, ADR, changelog entry, or eval note, then check them during the next harness audit.
+
+If the repository ships an agent product or has frequent agent-driven development, document the chosen evaluation adapter in `docs/harness-evals/README.md`. External frameworks such as DeepEval are adapters, not required infrastructure; the source of truth is the repo's task set, traces, goldens, and acceptance criteria.
+
+Evaluation adapter guidance:
+
+- Prefer repo-specific tasks before generic benchmarks.
+- Use external benchmarks such as SWE-bench Verified, WebArena, GAIA, or domain benchmarks only when they represent the repo's actual task distribution.
+- Evaluate full traces when tool choice, planning, or step efficiency matters; evaluate components only when a specific component owns the failure.
+- Calibrate LLM-judge rubrics with goldens, human labels, or inter-rater checks before using them as gates.
+- Treat reliability statistics such as agreement rates, Cronbach's alpha, or McDonald's omega as optional rubric diagnostics, not bootstrap requirements.
+- Keep eval artifacts source-traced and reproducible enough that a later agent can understand why a score changed.
 
 For mature harnesses, occasionally run small ablations: remove or disable one guide or sensor in a controlled branch and compare outcomes against the baseline. Use ablations to retire controls that no longer pay for their context, runtime, or review cost. Keep the task set small enough that it can actually be run.
 
@@ -1388,8 +1704,12 @@ The audit output should answer:
 - Which decisions are active but not routable by task or file path?
 - Which guides or sensors lack an owner, failure mode, lifecycle, or retirement signal?
 - Which controls have not fired or helped in recent history and may be stale?
+- Which bespoke scaffolds look obsolete after model or first-party harness upgrades?
 - Which review rules lack decision backing?
 - Which data or repo dependencies lack contracts?
+- Which agent runtime tools have broad credentials, missing approval tiers, missing audit logs, or unclear kill switches?
+- Which behavioral anchors are stale, noisy, or missing for repeated drift?
+- Which evidence packs have durable conclusions that should be promoted or archived?
 - Which harness misses recurred?
 - Which health-report actions have stayed open across multiple audits?
 - Which checks are slow enough to discourage agent use?
@@ -1419,6 +1739,9 @@ Manual validation:
 - Which fast sensors should run before I ask for review?
 - Which harness controls are intentionally absent because the repo has no trigger yet?
 - What should I do if external data or cross-repo assumptions are involved?
+- What should I do before changing agent tools, runtime permissions, or autonomous workflows?
+- What should I do when source-heavy research needs traceable evidence?
+- What should I do if long-running agents repeatedly drift from known behavior rules?
 - What should I do if provider-native memory conflicts with the repo harness?
 
 Mechanical validation:
@@ -1429,6 +1752,10 @@ Mechanical validation:
 - Decision index routes tasks or changed paths to the relevant active decisions when the repo uses split or verbose decision memory.
 - Control inventory exists for mature/high-churn repos and names direction, execution type, lifecycle, failure mode, and owner.
 - Nontrivial controls have a retirement or reassessment signal.
+- Bespoke harness scaffolds have model/tool-upgrade reassessment triggers.
+- Agent runtime safety docs exist when write tools, shared credentials, production access, or autonomous workflows are present.
+- Behavioral anchor docs and sensors exist only when repeated behavioral drift triggers are present.
+- Evidence packs are promoted or archived after durable decisions are made.
 - URL-fetchable context maps, if present, resolve to current canonical context files.
 - Health report, if present, summarizes validators and metrics into prioritized actions.
 - Agent-specific instruction files point to the shared source of truth.
@@ -1471,6 +1798,8 @@ The baseline should answer:
 - Which rot indicators are already present?
 - Which checks are blocking versus warning-only?
 - Which controls lack enough evidence to justify their cost?
+- Which runtime safety boundaries are active, if any?
+- Which behavioral drift or evidence-pack modules are active, if any?
 - Which optional modules are intentionally absent because their triggers are not present?
 - Should remote-agent context maps or a health-report wrapper exist yet, or are they intentionally absent?
 - What should future agents improve first?
@@ -1501,11 +1830,20 @@ Do not treat baseline imperfections as automatic blockers. The goal is to make t
 - [ ] Add internal data-store docs only when repo-owned persistence semantics are load-bearing
 - [ ] Add task contracts only for long-running, multi-agent, or handoff-heavy work
 - [ ] Add `docs/harnessify.md` or a harnessify/workflow-to-control skill only when repeated harness friction justifies it
+- [ ] Add agent-runtime safety docs only when agents can touch real systems, secrets, user data, shared credentials, or autonomous jobs
+- [ ] Add behavioral anchors only when long-running agents repeatedly drift from stable behavior rules
+- [ ] Add evidence packs only when source-heavy research needs traceable claims and freshness tracking
+- [ ] Add OTel-style trace guidance only when long-running or production agent runs need cross-step observability
+- [ ] Add MCP or other explicit tool-contract validation only when tool servers/clients are load-bearing
+- [ ] Add fault-injection profiles only for production agent runtimes or brittle tool integrations
+- [ ] Add adversarial validation only for high-impact findings, security claims, or decisions where disproof is worth the extra pass
+- [ ] Add a code-search adapter only when it measurably reduces token load or discovery time versus `rg` plus selective reads
 - [ ] Add durable metadata to important harness docs
 - [ ] Add data contracts only if external data triggers are present
 - [ ] Add repo contracts only if cross-repo triggers are present
 - [ ] Add trigger rules so future agents know when to add data/repo contracts later
 - [ ] Add context rot and garbage-collection guidance
+- [ ] Prefer programmatic state surfaces over raw context dumps for large, changing, or inspectable state
 - [ ] Add or update one exact unified quality-gate command and use that exact command in docs and agent instructions
 - [ ] Add basic harness validation
 - [ ] Add contract coverage checks if practical
@@ -1517,6 +1855,9 @@ Do not treat baseline imperfections as automatic blockers. The goal is to make t
 - [ ] Add an agent-readable health report only when validators/metrics need prioritization
 - [ ] Include marker counts from PR bodies, issue comments, inline review comments, and review submissions when a PR/issue workflow is available
 - [ ] Include guide/sensor or control-coverage metrics when a control inventory exists
+- [ ] Include runtime-safety metrics when agent runtime safety docs or production agent tools exist
+- [ ] Include behavioral-drift metrics when behavioral anchors exist
+- [ ] Record a prediction for nontrivial harness edits and verify it during the next audit
 - [ ] Validate resolver reachability and MECE overlap when the repo has skills or many routed docs
 - [ ] Wire PR-time harness checks into CI
 - [ ] Wire scheduled harness metrics or audit reporting into CI only when scheduled reporting is enabled
