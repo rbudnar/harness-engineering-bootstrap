@@ -18,8 +18,13 @@ The goal is not to add more documentation. The goal is to help coding agents loa
 - Deterministic quality gates and harness validation.
 - Minimal local metrics first; PR metrics and scheduled reporting only when triggered.
 - Guide/sensor and computational/inferential control taxonomy.
+- Programmatic state surfaces before raw context dumps.
 - Optional URL-fetchable context maps for remote agents.
 - A harnessify path for turning repeated agent friction into the smallest durable control.
+- Replaceable, thin scaffolding with model/tool-upgrade review triggers.
+- Triggered agent-runtime safety docs for tools, credentials, approvals, audits, and autonomous jobs.
+- Triggered behavioral-drift sensors and evidence packs for long-running or source-heavy agent work.
+- Layer mapping, progressive disclosure, optional OTel/MCP guidance, and decision-observability checks for mature harnesses.
 
 ## How To Use
 

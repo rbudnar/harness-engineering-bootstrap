@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added layer-map, progressive-disclosure, OTel/MCP, fault-injection, adversarial-validation, code-search-adapter, and decision-observability guidance as triggered additions.
+- Added triggered guidance for behavioral drift anchors, source-traced evidence packs, evaluation adapters, programmatic state surfaces, control priority layers, and multi-agent handoff patterns.
+- Added triggered agent-runtime safety guidance and replaceability review triggers for capability-era harness scaffolding.
 - Clarified implementation guidance for internal data stores, health-report advisory exits, harnessify split-out, skill creation gates, MECE promotion, ADR filename conventions, and decision-file redirect shims.
 - Tightened ADR routing guidance so large decision files require an authoritative compact index, with split ADR files as the default at threshold unless a temporary accepted gap is recorded.
 
