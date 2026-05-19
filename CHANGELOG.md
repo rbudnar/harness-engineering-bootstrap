@@ -4,6 +4,7 @@ Dates reflect repository history, not formal package releases.
 
 ## 2026-05-19
 
+- Added semantic-scope guidance for broad migrations: handoff claims must be verified, user-visible payoff must be stated, scope-thrash gets PR markers, and adversarial review is not treated as semantic validation.
 - Tightened optional-module admission criteria and added explicit self-correction rules for missed ADRs, stale context, wrong commands, missing guides/sensors, and repeated agent mistakes.
 
 ## 2026-05-18

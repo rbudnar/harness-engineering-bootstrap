@@ -84,7 +84,8 @@ Triggered modules:
 10. **Every control encodes an assumption.** Record what failure mode a nontrivial control prevents, what signal proves it is useful, and when to retire or weaken it.
 11. **Prefer programmatic state surfaces.** Put large, changing, or inspectable state in deterministic artifacts that agents can query, such as files, generated schemas, logs, structured traces, snapshots, or CLI outputs. Feed the model pointers and summaries before dumping raw state into context.
 12. **Keep scaffolding replaceable.** Treat bespoke orchestration, tool wrappers, memory layers, and multi-agent topologies as capability-era controls. Keep the harness thin, push domain process into routable skills/docs, push repeatable execution into deterministic tools, and make every nontrivial scaffold easy to reassess when models or first-party harnesses improve.
-13. **Measure the harness.** Track token pressure, drift, CI quality, PR velocity, repeated corrections, control coverage, contract coverage, and runtime safety over time.
+13. **Verify semantic payoff before scaling work.** Treat issue bodies, handoff docs, and PRD prose as hypotheses. Before broad migrations or user-visible control changes, verify the central claim against running behavior, rendered output, or source that owns the display.
+14. **Measure the harness.** Track token pressure, drift, CI quality, PR velocity, repeated corrections, control coverage, contract coverage, and runtime safety over time.
 
 ## Harness Layer Map
 
@@ -134,6 +135,7 @@ Then produce a short setup plan:
 - Whether behavioral drift sensors are justified by long-running sessions or repeated ignored guidance
 - Whether source-heavy research needs evidence packs instead of ad hoc links in chat
 - Whether OTel-style traces, MCP tool contracts, managed sandboxes, fault injection, adversarial validation, or code-search adapters are triggered by the repo's actual runtime and scale
+- Whether migration or refactor guidance should require a user-visible semantic scope check before adding, removing, or moving controls across pages, components, or commands
 - Any controls whose maintenance cost or stale assumptions look suspicious
 - Any bespoke scaffolding that should have a model/tool-upgrade reassessment trigger
 - Measurement script scope
@@ -854,6 +856,14 @@ If required context is missing, stale, contradictory, or repeatedly rediscovered
 
 Repeated clarification from a human should usually become durable harness context.
 
+## Handoff and Migration Scope
+
+Treat handoff docs, issue bodies, and PRD-style prose as hypotheses, not specs. Before designing changes that rely on a claim like "page X shows Y depending on Z", verify it by running the app, inspecting rendered output, or reading the rendering code.
+
+Before adding, removing, or moving user-visible controls across multiple pages or components, write a compact scope table in the plan, PR body, or issue comment: page/component, what it currently displays, which new or changed parameters affect those displayed values, and the one-sentence user-visible difference after the change. If a row has no affected displayed values or only an infrastructure-only difference, remove it from scope or ask the human before proceeding.
+
+Do not infer page semantics from table names, file names, route names, or shared infrastructure. If two or more consecutive commits are fixing regressions introduced by the migration itself, pause and revalidate that the scope solves a real user-visible problem.
+
 ## Harness Self-Correction
 
 Before declaring work complete, check whether the task exposed a repeated mistake, durable missed context, missed ADR, stale doc, wrong command, missing sensor, missing guide, or context route gap.
@@ -1037,6 +1047,8 @@ Adversarial validation should have a narrow brief:
 
 Do not use adversarial validation for routine low-risk edits. Use it when false positives, false confidence, or missed exploitability would cost more than the extra review.
 
+Adversarial validation is not a substitute for semantic-scope verification. Before invoking adversarial review on a migration or broad refactor, the owning agent should independently verify that the change solves the right user-visible problem and include the evidence. If the review brief should challenge scope, say so explicitly; otherwise reviewers will naturally focus on local defects such as SQL, cache keys, edge cases, and race conditions.
+
 ### Resolver MECE
 
 MECE means mutually exclusive, collectively exhaustive.
@@ -1117,6 +1129,7 @@ When a repeated or high-risk failure appears, classify the fix:
 - Missing runtime boundary: add or update agent-runtime safety docs, scoped tool configuration, approval tiers, or audit checks.
 - Mechanically checkable mistake: add a script/CI check.
 - Review should have caught it: add or update the canonical review harness or the relevant tool-specific adapter.
+- Wrong migration scope or unverified handoff claim: add a semantic-scope guide, PR prompt, review rule, data contract, repo contract, or route.
 - Failure happened before code was written: add or improve a guide.
 - Failure escaped after code was written: add or improve a sensor.
 - Existing control fired but was ignored or too noisy: improve the control's output, lifecycle, or severity before adding another rule.
@@ -1270,6 +1283,14 @@ Recommended section:
 - [ ] This PR changes behavior other agents are likely to reuse
 - [ ] None
 
+## Semantic Scope
+
+- [ ] User-visible payoff is stated for every migrated page/component/command
+- [ ] Scope table or verification evidence is included or linked when this is a broad migration
+- [ ] Handoff, issue, or PRD claims were verified against running behavior, rendered output, or source that owns the display
+- [ ] Scope excludes pages/components/commands whose displayed behavior is not affected
+- [ ] Not applicable
+
 ## Agent/Harness Observations
 
 - [ ] Agent needed repeated clarification (`harness:missing-guide` or `harness:context-rot`)
@@ -1286,6 +1307,9 @@ Recommended section:
 - [ ] Bespoke scaffold looks obsolete or too costly (`harness:obsolete-scaffold`)
 - [ ] Harness edit prediction missed (`harness:prediction-miss`)
 - [ ] Provider memory conflicted with repo context (`harness:provider-memory-conflict`)
+- [ ] Handoff or issue claim was wrong or unverified (`harness:handoff-claim`)
+- [ ] Migration scope lacked a user-visible semantic payoff (`harness:semantic-scope`)
+- [ ] Repeated self-introduced fixes suggest wrong scope (`harness:scope-ratchet`)
 - [ ] No harness issue observed (mutually exclusive)
 
 ## If no harness update was made
@@ -1295,7 +1319,7 @@ Explain why existing context remains accurate:
 
 Change rule:
 
-If modifying schema usage, data semantics, cross-repo behavior, public/internal interfaces, non-obvious domain logic, or agent workflow assumptions, update the relevant harness file or explicitly state why no harness update is needed.
+If modifying schema usage, data semantics, cross-repo behavior, public/internal interfaces, non-obvious domain logic, user-visible controls, migration scope, or agent workflow assumptions, update the relevant harness file or explicitly state why no harness update is needed.
 
 This rule is intentionally lightweight. The goal is to make drift visible, not create process overhead.
 
@@ -1587,6 +1611,9 @@ To measure repeated agent failures without heavy tracing, define lightweight mar
 - `harness:token-bloat` - too much context was loaded or always-on guidance grew too large
 - `harness:obsolete-scaffold` - a wrapper, workflow, memory layer, or multi-agent scaffold persisted after it stopped paying for itself
 - `harness:prediction-miss` - a harness edit failed to improve the predicted outcome or made the measured outcome worse
+- `harness:handoff-claim` - agent trusted an issue, handoff, or PRD claim without verifying the displayed behavior it described
+- `harness:semantic-scope` - migration or refactor scope included a page, component, command, or control with no user-visible payoff
+- `harness:scope-ratchet` - repeated fixes addressed regressions introduced by the current change instead of rechecking whether the scope was correct
 
 The metrics script should count these markers over the selected time window across PR bodies, issue comments, inline review comments, and review submissions when the platform exposes them.
 
@@ -1866,6 +1893,7 @@ Do not treat baseline imperfections as automatic blockers. The goal is to make t
 - [ ] Add contract coverage checks if practical
 - [ ] Add or update the canonical review harness; add `.github/copilot-instructions.md` as an adapter only when Copilot is used
 - [ ] Add or update PR template harness-impact questions
+- [ ] Add semantic-scope prompts for broad migrations or user-visible control changes
 - [ ] Add PR observation checkboxes and marker capture when GitHub PRs are used
 - [ ] Add a minimal deterministic local metrics script
 - [ ] Add GitHub/PR workflow metrics and scheduled trend reporting only when the repo has an active PR workflow or high agent iteration
@@ -1899,6 +1927,7 @@ This harness is designed to:
 - Keep always-on context thin while letting routers, skills, docs, reports, and contracts carry richer pulled context
 - Retire or weaken controls whose assumptions no longer justify their cost
 - Catch drift mechanically when practical
+- Verify user-visible semantic scope before broad migrations
 - Reduce context rot through metadata and garbage collection
 - Improve through feedback, checks, contracts, and metrics
 

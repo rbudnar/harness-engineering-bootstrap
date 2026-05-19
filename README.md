@@ -25,6 +25,7 @@ The goal is not to add more documentation. The goal is to help coding agents loa
 - Triggered agent-runtime safety docs for tools, credentials, approvals, audits, and autonomous jobs.
 - Triggered behavioral-drift sensors and evidence packs for long-running or source-heavy agent work.
 - Explicit self-correction rules so repeated agent mistakes become repo-owned harness updates or visible markers.
+- Semantic-scope checks so broad migrations and user-visible control changes verify their payoff before scaling.
 - Layer mapping, progressive disclosure, optional OTel/MCP guidance, and decision-observability checks for mature harnesses.
 
 ## How To Use
