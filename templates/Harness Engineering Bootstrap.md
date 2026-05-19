@@ -364,7 +364,16 @@ Retire or weaken when: The architecture changes and a replacement structural che
 
 Do not create empty optional systems. Install trigger rules so future agents know when optional modules become required.
 
-Default to zero optional modules. For each optional module you add, record the trigger evidence, first-read route, validation signal, and why a smaller existing control such as a doc section, ADR entry, script, or PR-template prompt is not enough. If several modules are triggered at once, prioritize the one or two that reduce the highest-risk repeated failure or largest token waste, and record the rest as follow-up.
+Default to zero optional modules. Optional modules are admitted only when they pass this test:
+
+- Trigger evidence: a current repo fact, repeated miss, safety risk, token-cost problem, or runtime/tool complexity already exists.
+- Failure mode: the module prevents a specific mistake, drift pattern, safety issue, or repeated human correction.
+- Smaller-control check: a smaller doc section, ADR entry, script check, PR-template prompt, or route update is not enough.
+- Progressive-disclosure route: agents can find the module only when needed; it does not become broad always-on context.
+- Validation signal: a sensor, metric, marker, review checklist, or explicit audit step can show whether it helps; do not create a new sensor just to satisfy this item.
+- Retirement or revisit rule: the module has an owner and source of truth plus a condition for weakening, deleting, or revisiting it.
+
+If any item is missing, do not add the module yet. Record the trigger rule or follow-up marker instead. If several modules are triggered at once, prioritize the one or two that reduce the highest-risk repeated failure or largest token waste, and record the rest as follow-up.
 
 ### `docs/references/`
 
@@ -845,6 +854,14 @@ If required context is missing, stale, contradictory, or repeatedly rediscovered
 
 Repeated clarification from a human should usually become durable harness context.
 
+## Harness Self-Correction
+
+Before declaring work complete, check whether the task exposed a repeated mistake, durable missed context, missed ADR, stale doc, wrong command, missing sensor, missing guide, or context route gap.
+
+If yes, update the smallest durable harness surface in the same PR: `docs/README.md`, decision memory, a contract, a script, a review rule, a skill, or a focused doc. If the right fix is unclear, record a marker in the PR body, review thread, issue, or configured feedback log, such as `harness:miss-adr`, `harness:missing-guide`, `harness:missing-sensor`, `harness:wrong-command`, or `harness:context-rot`.
+
+Do not solve repeated mistakes only in provider memory, scratchpads, plans, or PR comments.
+
 ## Provider Memory
 
 Provider memory is advisory. Repository files are authoritative for project facts, architecture, commands, contracts, and decisions.
@@ -860,7 +877,7 @@ Do not store durable project facts only in provider memory. Promote durable fact
 - For large or handoff-heavy work, use a checked-in execution plan; use scratchpads only for temporary local reasoning.
 - If code changes user-visible behavior, commands, architecture, external semantics, review expectations, or reusable non-obvious patterns, update the relevant docs in the same PR.
 - If a decision changes review behavior, update the ADR and the canonical review harness in the same PR; update tool-specific adapters if they exist.
-- If a repeated mistake is fixed, improve the harness: docs, ADR, contract, script, review rule, or skill.
+- Apply the Harness Self-Correction rule above before calling the task done.
 - Run the repo's exact unified quality-gate command before declaring work complete, for example `node scripts/check.mjs`.
 - Do not add project facts to this file; put them in `docs/`.
 ```

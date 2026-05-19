@@ -24,13 +24,15 @@ The goal is not to add more documentation. The goal is to help coding agents loa
 - Replaceable, thin scaffolding with model/tool-upgrade review triggers.
 - Triggered agent-runtime safety docs for tools, credentials, approvals, audits, and autonomous jobs.
 - Triggered behavioral-drift sensors and evidence packs for long-running or source-heavy agent work.
+- Explicit self-correction rules so repeated agent mistakes become repo-owned harness updates or visible markers.
 - Layer mapping, progressive disclosure, optional OTel/MCP guidance, and decision-observability checks for mature harnesses.
 
 ## How To Use
 
 Copy the template into a target repository and adapt it to that repository's actual stack, workflows, risks, and existing documentation. Do not copy every optional module by default. The template is intentionally more detailed than the files it asks you to create.
 
-Start with the required core, then add optional modules only when the repository has a real trigger for them.
+Start with the required core, then add optional modules only when the repository has a real trigger for them and a smaller existing control would not be enough.
+
 ## License
 
 This project is dedicated to the public domain under [CC0 1.0 Universal](LICENSE).
