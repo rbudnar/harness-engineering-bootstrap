@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Tightened optional-module admission criteria and added explicit self-correction rules for missed ADRs, stale context, wrong commands, missing guides/sensors, and repeated agent mistakes.
 - Added layer-map, progressive-disclosure, OTel/MCP, fault-injection, adversarial-validation, code-search-adapter, and decision-observability guidance as triggered additions.
 - Added triggered guidance for behavioral drift anchors, source-traced evidence packs, evaluation adapters, programmatic state surfaces, control priority layers, and multi-agent handoff patterns.
 - Added triggered agent-runtime safety guidance and replaceability review triggers for capability-era harness scaffolding.
