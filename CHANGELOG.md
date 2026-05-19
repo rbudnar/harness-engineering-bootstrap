@@ -1,15 +1,25 @@
 # Changelog
 
-## Unreleased
+Dates reflect repository history, not formal package releases.
+
+## 2026-05-19
 
 - Tightened optional-module admission criteria and added explicit self-correction rules for missed ADRs, stale context, wrong commands, missing guides/sensors, and repeated agent mistakes.
+
+## 2026-05-18
+
 - Added layer-map, progressive-disclosure, OTel/MCP, fault-injection, adversarial-validation, code-search-adapter, and decision-observability guidance as triggered additions.
 - Added triggered guidance for behavioral drift anchors, source-traced evidence packs, evaluation adapters, programmatic state surfaces, control priority layers, and multi-agent handoff patterns.
 - Added triggered agent-runtime safety guidance and replaceability review triggers for capability-era harness scaffolding.
+
+## 2026-05-01
+
+### Implementation refinements
+
 - Clarified implementation guidance for internal data stores, health-report advisory exits, harnessify split-out, skill creation gates, MECE promotion, ADR filename conventions, and decision-file redirect shims.
 - Tightened ADR routing guidance so large decision files require an authoritative compact index, with split ADR files as the default at threshold unless a temporary accepted gap is recorded.
 
-## V4
+### Context maps and review harness
 
 - Added optional `llms.txt` / `llms-full.txt` context maps for URL-first or remote-agent bootstrapping.
 - Added resolver MECE guidance so skill, task, and decision routes avoid accidental overlap and obvious gaps.
@@ -21,7 +31,7 @@
 - Strengthened URL-map privacy and freshness guidance.
 - Narrowed docs-update rules to avoid low-value documentation churn.
 
-## V3
+### Control taxonomy and metrics
 
 - Added guide/sensor and computational/inferential control taxonomy.
 - Added compact harness-control inventory guidance for mature or high-churn repositories.
@@ -30,7 +40,7 @@
 - Expanded PR observation capture and harness metrics around missed guides, missed sensors, and missed decision routes.
 - Added retirement and ablation guidance so harness controls do not become permanent stale ceremony.
 
-## V2
+### Initial bootstrap structure
 
 - Established the core bootstrap structure: thin agent entry points, task-routed docs, decision memory, deterministic gates, provider-memory precedence, harness validation, metrics, and human review guidance.
 - Added triggered modules for data contracts, repo contracts, references, path-scoped instructions, feedback logs, and harness regression evals.
