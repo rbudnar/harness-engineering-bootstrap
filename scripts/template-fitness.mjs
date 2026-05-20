@@ -40,6 +40,11 @@ const anchors = [
     text: 'Rejection is a useful outcome',
     reason: 'daily automation must be allowed to say no',
   },
+  {
+    path: 'docs/dogfooding.md',
+    text: 'Template rule changes must keep this dogfooding harness current in the same PR',
+    reason: 'template changes must update the dogfooding contract when they change repo best practices',
+  },
 ];
 
 const suggestionClassifications = [

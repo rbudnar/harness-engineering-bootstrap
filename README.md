@@ -33,7 +33,7 @@ The goal is not to add more documentation. The goal is to help coding agents loa
 
 ## Dogfooding This Template
 
-This repo uses a deliberately small harness to test the template against its own principles. `AGENTS.md` stays thin, Claude/Gemini/Copilot adapters point back to it, `docs/dogfooding.md` defines the admission test for daily automation suggestions, and the fitness check rejects avoidable bloat in always-on guidance and template growth.
+This repo uses a deliberately small harness to test the template against its own principles. `AGENTS.md` stays thin, Claude/Gemini/Copilot adapters point back to it, `docs/dogfooding.md` defines the admission test and automated PR loop for daily suggestions, and the fitness check rejects avoidable bloat in always-on guidance and template growth.
 
 Run the local gate after template or harness edits:
 

@@ -14,6 +14,7 @@ This repo maintains the Harness Engineering Bootstrap template. Dogfood it as an
 - Keep `CLAUDE.md`, `GEMINI.md`, and `.github/copilot-instructions.md` as thin adapters that point back here.
 - Do not copy template phases, checklists, or reference material into always-on files.
 - New optional template guidance must include trigger evidence, a smaller-control check, a validation signal, and a retirement or revisit rule.
+- Template rule changes must update `docs/dogfooding.md` or `scripts/template-fitness.mjs` in the same PR when the new rule changes how this repo should dogfood the template.
 - Reject additions that merely make the template more comprehensive without improving routing, enforcement, or context economy.
 - Update `CHANGELOG.md` for user-facing template changes.
 

@@ -36,7 +36,21 @@ Scout digests with multiple recommendations are evidence, not proposal files. Sp
 
 Evidence must distinguish local repo evidence from external source claims. Verify date-sensitive or product-specific claims against the primary source before accepting a suggestion, and record corrections in `## Evidence`.
 
-The daily automation should not edit repository files or open issues by default. It should write proposal files outside the repo, run `node scripts/template-fitness.mjs --suggestion <proposal-file>` for each one, and return a digest that separates accepted candidates, rejected-as-bloat candidates, source corrections, and skipped duplicates.
+The daily automation should evaluate first, write proposal files outside the repo, run `node scripts/template-fitness.mjs --suggestion <proposal-file>` for each one, and return a digest that separates accepted candidates, rejected-as-bloat candidates, source corrections, and skipped duplicates.
+
+## Automated PR Loop
+
+The automation may open a repository PR only after a suggestion passes the proposal gate and has a small, evidence-backed implementation path. The PR must remain human-reviewed before merge.
+
+When automation opens a PR, it must:
+
+- Start from current `main` and use a short-lived `codex/<slug>` branch.
+- Apply only accepted candidates that share one coherent template outcome; split unrelated accepted candidates into later runs or separate PRs.
+- Update the template and the dogfooding harness together when a new template rule changes this repo's own best-practice contract. Template rule changes must keep this dogfooding harness current in the same PR.
+- Prefer the smallest route, wording, or validator change that satisfies the proposal. Do not install a new optional module by default.
+- Run `node scripts/template-fitness.mjs` and the suggestion gate for every accepted proposal file.
+- Run the PR readiness checklist: `node scripts/template-fitness.mjs`, plain `codex review --base origin/main` when Codex CLI is available, GitHub `template-fitness` checks, replies/resolutions for review threads, and a concise PR summary comment.
+- Notify with the PR URL, proposal paths, validation results, review status, and any rejected or skipped candidates.
 
 Use these headings when automation writes a suggestion file:
 

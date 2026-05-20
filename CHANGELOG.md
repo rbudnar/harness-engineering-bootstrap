@@ -4,6 +4,8 @@ Dates reflect repository history, not formal package releases.
 
 ## 2026-05-20
 
+- Clarified the dogfooding automation loop: accepted candidates may produce a `codex/` PR after proposal-gate validation, run the shipping process, and notify when ready for human review.
+- Required template rule changes to update this repo's dogfooding contract or validator in the same PR when the new rule changes the template's own best practices.
 - Added a dogfooding harness for this template repo: thin `AGENTS.md`, `docs/dogfooding.md`, and a `node scripts/template-fitness.mjs` anti-bloat gate.
 - Added thin Claude, Gemini, and Copilot adapters that route back to `AGENTS.md` instead of duplicating repository instructions.
 - Clarified scout-digest intake: split multi-recommendation reports into one sourced proposal per recommendation before running the gate.
