@@ -7,12 +7,15 @@ The goal is not to add more documentation. The goal is to help coding agents loa
 ## Contents
 
 - [Template](templates/Harness%20Engineering%20Bootstrap.md) - the current bootstrap template.
+- [Dogfooding guide](docs/dogfooding.md) - how this repo keeps the template from becoming a fat harness.
+- [Template fitness check](scripts/template-fitness.mjs) - local and CI bloat guard for template changes.
 - [Changelog](CHANGELOG.md) - version history and major design changes.
 - [References](REFERENCES.md) - source material and related work used while developing the template.
 
 ## What This Template Emphasizes
 
 - Thin cross-agent entry points such as `AGENTS.md`.
+- Thin Claude, Gemini, and Copilot adapters that route back to the same source of truth.
 - Task-routed docs instead of broad context loading.
 - Decision memory, data contracts, and repo contracts.
 - Deterministic quality gates and harness validation.
@@ -27,6 +30,22 @@ The goal is not to add more documentation. The goal is to help coding agents loa
 - Explicit self-correction rules so repeated agent mistakes become repo-owned harness updates or visible markers.
 - Semantic-scope checks so broad migrations and user-visible control changes verify their payoff before scaling.
 - Layer mapping, progressive disclosure, optional OTel/MCP guidance, and decision-observability checks for mature harnesses.
+
+## Dogfooding This Template
+
+This repo uses a deliberately small harness to test the template against its own principles. `AGENTS.md` stays thin, Claude/Gemini/Copilot adapters point back to it, `docs/dogfooding.md` defines the admission test for daily automation suggestions, and the fitness check rejects avoidable bloat in always-on guidance and template growth.
+
+Run the local gate after template or harness edits:
+
+```bash
+node scripts/template-fitness.mjs
+```
+
+To check an automation proposal file before accepting it:
+
+```bash
+node scripts/template-fitness.mjs --suggestion path/to/suggestion.md
+```
 
 ## How To Use
 
