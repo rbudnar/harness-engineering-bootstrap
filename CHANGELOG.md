@@ -2,6 +2,14 @@
 
 Dates reflect repository history, not formal package releases.
 
+## 2026-05-20
+
+- Added a dogfooding harness for this template repo: thin `AGENTS.md`, `docs/dogfooding.md`, and a `node scripts/template-fitness.mjs` anti-bloat gate.
+- Added thin Claude, Gemini, and Copilot adapters that route back to `AGENTS.md` instead of duplicating repository instructions.
+- Clarified scout-digest intake: split multi-recommendation reports into one sourced proposal per recommendation before running the gate.
+- Documented the daily automation contract: generate sourced proposal files outside the repo, run the fitness gate, and report accepted, rejected, corrected, and skipped items separately.
+- Added GitHub Actions coverage for the template fitness check so automation PRs get a deterministic context-bloat signal.
+
 ## 2026-05-19
 
 - Added semantic-scope guidance for broad migrations: handoff claims must be verified, user-visible payoff must be stated, scope-thrash gets PR markers, and adversarial review is not treated as semantic validation.
