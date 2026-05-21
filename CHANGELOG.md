@@ -4,7 +4,7 @@ Dates reflect repository history, not formal package releases.
 
 ## 2026-05-21
 
-- Clarified agent-runtime safety guidance for MCP: when STDIO servers are launched from local config, treat config and install changes as execution-surface changes and require allowlists/sandboxing where practical.
+- Clarified agent-runtime safety guidance for MCP: when STDIO servers are launched from local config, treat config and server registration/install changes as execution-surface changes and require allowlists/sandboxing where practical.
 
 ## 2026-05-20
 
