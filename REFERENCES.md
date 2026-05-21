@@ -22,6 +22,8 @@ Source material and related work used while developing the harness engineering b
 - [AI Harness Engineering: A Runtime Substrate for Foundation-Model Software Agents](https://arxiv.org/abs/2605.13357)
 - [OWASP Top 10 for Agentic Applications for 2026](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/)
 - [When prompts become shells: RCE vulnerabilities in AI agent frameworks](https://www.microsoft.com/en-us/security/blog/2026/05/07/prompts-become-shells-rce-vulnerabilities-ai-agent-frameworks/)
+- [The Mother of All AI Supply Chains: Critical, Systemic Vulnerability at the Core of Anthropic's MCP (OX Security)](https://www.ox.security/blog/the-mother-of-all-ai-supply-chains-critical-systemic-vulnerability-at-the-core-of-the-mcp/)
+- [NVD - CVE-2026-30615](https://nvd.nist.gov/vuln/detail/CVE-2026-30615)
 - [Security Risks in Tool-Enabled AI Agents](https://arxiv.org/abs/2605.09721)
 - [Practical Security Guidance for Sandboxing Agentic Workflows and Managing Execution Risk](https://developer.nvidia.com/blog/practical-security-guidance-for-sandboxing-agentic-workflows-and-managing-execution-risk/)
 - [OpenTelemetry Traces](https://opentelemetry.io/docs/concepts/signals/traces/)

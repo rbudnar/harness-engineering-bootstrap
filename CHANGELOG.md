@@ -2,6 +2,10 @@
 
 Dates reflect repository history, not formal package releases.
 
+## 2026-05-21
+
+- Clarified agent-runtime safety guidance for MCP: when STDIO servers are launched from local config, treat config and server registration/install changes as execution-surface changes and require allowlists/sandboxing where practical.
+
 ## 2026-05-20
 
 - Clarified the dogfooding automation loop: accepted candidates may produce a `codex/` PR after proposal-gate validation, run the shipping process, and notify when ready for human review.

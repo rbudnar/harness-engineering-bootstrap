@@ -527,6 +527,7 @@ Each agent-runtime doc should include:
 - Runtime scope: which agents, jobs, tools, MCP servers, environments, and entry points it covers
 - Tool inventory: tool name, capability, environment, owner, credential source, read/write scope, network scope, and whether it is enabled by default
 - Tool contract model: MCP, OpenAPI, JSON Schema, typed SDK, CLI help, or another explicit schema; include versioning, compatibility, and schema-drift validation
+- MCP transport boundary (when MCP is used): if the client launches STDIO servers from local config, treat config and server registration/install changes (including STDIO command entries) as execution-surface changes; require explicit command/args allowlists (no shell), and run servers with least privilege in a sandbox where practical
 - Security baseline: OWASP Agentic Application risks or the repository's internal equivalent, mapped to concrete controls
 - Permission model: deny-by-default stance, allowlist, scoped tokens/RBAC, network egress rules, and approval tiers for writes
 - Sandbox model: workspace boundaries, external read/write restrictions, whether hooks/MCP initialization/plugins are sandboxed, and whether stronger isolation such as managed sandboxes, microVMs, containers, VMs, or remote execution environments is required
