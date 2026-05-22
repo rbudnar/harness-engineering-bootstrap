@@ -23,6 +23,7 @@ Source material and related work used while developing the harness engineering b
 - [OWASP Top 10 for Agentic Applications for 2026](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/)
 - [When prompts become shells: RCE vulnerabilities in AI agent frameworks](https://www.microsoft.com/en-us/security/blog/2026/05/07/prompts-become-shells-rce-vulnerabilities-ai-agent-frameworks/)
 - [The Mother of All AI Supply Chains: Critical, Systemic Vulnerability at the Core of Anthropic's MCP (OX Security)](https://www.ox.security/blog/the-mother-of-all-ai-supply-chains-critical-systemic-vulnerability-at-the-core-of-the-mcp/)
+- [Model Context Protocol (MCP): Security Design Considerations for AI-Driven Automation (NSA AISC CSI, May 2026)](https://www.nsa.gov/Portals/75/documents/Cybersecurity/CSI_MCP_SECURITY.pdf)
 - [NVD - CVE-2026-30615](https://nvd.nist.gov/vuln/detail/CVE-2026-30615)
 - [Security Risks in Tool-Enabled AI Agents](https://arxiv.org/abs/2605.09721)
 - [Practical Security Guidance for Sandboxing Agentic Workflows and Managing Execution Risk](https://developer.nvidia.com/blog/practical-security-guidance-for-sandboxing-agentic-workflows-and-managing-execution-risk/)
