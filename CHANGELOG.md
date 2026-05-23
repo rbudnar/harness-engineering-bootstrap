@@ -2,7 +2,6 @@
 
 Dates reflect repository history, not formal package releases.
 
-
 ## 2026-05-22
 
 - Clarified MCP safety guidance: treat MCP server capability/scope broadening as an execution-surface change requiring re-approval, not only launch/config changes.
