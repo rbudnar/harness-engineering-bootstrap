@@ -4,7 +4,7 @@ Dates reflect repository history, not formal package releases.
 
 ## 2026-05-23
 
-- Improved OTel routing in agent-runtime guidance: prefer GenAI semantic conventions (`gen_ai.*`) and document stability opt-in decisions.
+- Improved OTel routing in agent-runtime guidance: prefer GenAI semantic conventions (`gen_ai.*`) and document emitted semconv version and stability opt-in decisions.
 
 ## 2026-05-22
 
