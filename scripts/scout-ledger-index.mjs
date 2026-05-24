@@ -78,6 +78,7 @@ function parseArgs(argv) {
 }
 
 function guessLedgerPaths() {
+  const codexHome = process.env.CODEX_HOME || null;
   const home =
     process.env.USERPROFILE ||
     process.env.HOME ||
@@ -88,16 +89,19 @@ function guessLedgerPaths() {
 
   if (process.env.HEBS_SCOUT_LEDGER) candidates.push(process.env.HEBS_SCOUT_LEDGER);
 
+  if (codexHome) {
+    candidates.push(join(codexHome, 'automation-state', 'harness-engineering-selective-adoption-scout.jsonl'));
+    candidates.push(
+      join(codexHome, 'automation-state', 'harness-engineering-selective-adoption-scout', 'ledger.jsonl'),
+    );
+  }
+
   if (home) {
     candidates.push(join(home, '.codex', 'automation-state', 'harness-engineering-selective-adoption-scout.jsonl'));
     candidates.push(
       join(home, '.codex', 'automation-state', 'harness-engineering-selective-adoption-scout', 'ledger.jsonl'),
     );
   }
-
-  candidates.push(
-    'C:\\Users\\Rbudn\\.codex\\automation-state\\harness-engineering-selective-adoption-scout.jsonl',
-  );
 
   return candidates;
 }
