@@ -1,11 +1,19 @@
 #!/usr/bin/env node
-import { createReadStream, existsSync, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 
 function fail(message) {
   console.error(message);
   process.exitCode = 1;
+}
+
+function argValue(argv, index, flag) {
+  const value = argv[index + 1];
+  if (!value || value.startsWith('--')) {
+    throw new Error(`${flag} requires a path.`);
+  }
+  return value;
 }
 
 function usage() {
@@ -35,23 +43,19 @@ function parseArgs(argv) {
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    const next = argv[index + 1];
-
     if (arg === '--help' || arg === '-h') {
       console.log(usage());
       process.exit(0);
     }
 
     if (arg === '--ledger') {
-      if (!next) fail('--ledger requires a path.');
-      else args.ledger = next;
+      args.ledger = argValue(argv, index, arg);
       index += 1;
       continue;
     }
 
     if (arg === '--out') {
-      if (!next) fail('--out requires a path.');
-      else args.out = next;
+      args.out = argValue(argv, index, arg);
       index += 1;
       continue;
     }
@@ -71,7 +75,7 @@ function parseArgs(argv) {
       continue;
     }
 
-    fail(`Unknown arg: ${arg}`);
+    throw new Error(`Unknown arg: ${arg}`);
   }
 
   return args;
@@ -224,20 +228,27 @@ async function buildIndex({ ledgerPath, allowParseErrors }) {
   };
 }
 
-function shouldWriteIndex(outPath, index, { force }) {
-  if (force) return true;
-  if (!existsSync(outPath)) return true;
+function isIndexCurrent(outPath, ledgerStat, { force }) {
+  if (force) return false;
+  if (!existsSync(outPath)) return false;
 
   try {
     const existing = statSync(outPath);
-    return existing.mtimeMs < index.ledger_mtime_ms;
+    return existing.mtimeMs >= ledgerStat.mtimeMs;
   } catch {
-    return true;
+    return false;
   }
 }
 
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
+  let args;
+  try {
+    args = parseArgs(process.argv.slice(2));
+  } catch (error) {
+    fail(String(error?.message ?? error));
+    console.error(usage());
+    return;
+  }
 
   const ledger =
     args.ledger ??
@@ -257,6 +268,20 @@ async function main() {
 
   const out = resolve(args.out ?? defaultOutPath(ledger));
 
+  let ledgerStat;
+  try {
+    ledgerStat = statSync(resolve(ledger));
+  } catch (error) {
+    fail(String(error?.message ?? error));
+    return;
+  }
+
+  if (isIndexCurrent(out, ledgerStat, { force: args.force })) {
+    if (args.print) console.log(readFileSync(out, 'utf8').trimEnd());
+    console.log(`Index up to date: ${out}`);
+    return;
+  }
+
   let index;
   try {
     index = await buildIndex({ ledgerPath: ledger, allowParseErrors: args.allowParseErrors });
@@ -265,20 +290,16 @@ async function main() {
     return;
   }
 
-  if (!shouldWriteIndex(out, index, { force: args.force })) {
-    if (args.print) console.log(JSON.stringify(index, null, 2));
-    console.log(`Index up to date: ${out}`);
+  const output = `${JSON.stringify(index, null, 2)}\n`;
+  try {
+    writeFileSync(out, output, 'utf8');
+  } catch (error) {
+    fail(String(error?.message ?? error));
     return;
   }
 
-  writeFileSync(out, `${JSON.stringify(index, null, 2)}\n`, 'utf8');
-
-  if (args.print) console.log(JSON.stringify(index, null, 2));
+  if (args.print) console.log(output.trimEnd());
   console.log(`Wrote index: ${out}`);
-
-  if (index.counts.parse_errors && !args.allowParseErrors) {
-    fail(`Ledger parse errors encountered: ${index.counts.parse_errors}`);
-  }
 }
 
 await main();

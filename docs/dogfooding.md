@@ -49,7 +49,7 @@ As the scout ledger grows, avoid “attention dilution” by making dedupe mecha
 node scripts/scout-ledger-index.mjs --ledger <path/to/ledger.jsonl>
 ```
 
-This writes `<ledger>.index.json` next to the ledger and is designed to support O(1) “have we reviewed this key/URL?” checks without scanning the full JSONL file.
+This replaces a `.jsonl` suffix with `.index.json` (for example, `ledger.index.json`) next to the ledger and is designed to support O(1) “have we reviewed this key/URL?” checks without scanning the full JSONL file.
 
 ## Automated PR Loop
 
