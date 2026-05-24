@@ -2,6 +2,10 @@
 
 Dates reflect repository history, not formal package releases.
 
+## 2026-05-24
+
+- Added `scripts/scout-ledger-index.mjs` to build a compact dedupe index for the scout JSONL ledger, reducing re-review and attention dilution as the ledger grows.
+
 ## 2026-05-23
 
 - Improved OTel routing in agent-runtime guidance: prefer GenAI semantic conventions (`gen_ai.*`) and document emitted semconv version and stability opt-in decisions.
