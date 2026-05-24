@@ -43,7 +43,7 @@ The daily automation should evaluate first, write proposal files outside the rep
 As the scout ledger grows, avoid “attention dilution” by making dedupe mechanical instead of re-reading the middle of the already-reviewed list.
 
 - Maintain the ledger outside the repo as JSONL (append-only).
-- Build a compact index outside the repo from that ledger before doing expensive reading or proposal work:
+- Optional helper: build a compact index outside the repo from that ledger before doing expensive reading or proposal work:
 
 ```bash
 node scripts/scout-ledger-index.mjs --ledger <path/to/ledger.jsonl>
