@@ -228,15 +228,27 @@ async function buildIndex({ ledgerPath, allowParseErrors }) {
   };
 }
 
-function isIndexCurrent(outPath, ledgerStat, { force }) {
-  if (force) return false;
-  if (!existsSync(outPath)) return false;
+function currentIndexText(outPath, ledgerPath, ledgerStat, { force }) {
+  if (force || !existsSync(outPath)) return null;
 
   try {
     const existing = statSync(outPath);
-    return existing.mtimeMs >= ledgerStat.mtimeMs;
+    if (existing.mtimeMs < ledgerStat.mtimeMs) return null;
+
+    const text = readFileSync(outPath, 'utf8');
+    const index = JSON.parse(text);
+    if (
+      index.schema_version !== 1 ||
+      index.ledger_path !== resolve(ledgerPath) ||
+      index.ledger_size_bytes !== ledgerStat.size ||
+      index.ledger_mtime_ms !== ledgerStat.mtimeMs
+    ) {
+      return null;
+    }
+
+    return text;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -276,8 +288,9 @@ async function main() {
     return;
   }
 
-  if (isIndexCurrent(out, ledgerStat, { force: args.force })) {
-    if (args.print) console.log(readFileSync(out, 'utf8').trimEnd());
+  const currentIndex = currentIndexText(out, ledger, ledgerStat, { force: args.force });
+  if (currentIndex !== null) {
+    if (args.print) console.log(currentIndex.trimEnd());
     console.log(`Index up to date: ${out}`);
     return;
   }
