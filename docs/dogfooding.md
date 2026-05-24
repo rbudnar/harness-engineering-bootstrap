@@ -38,6 +38,19 @@ Evidence must distinguish local repo evidence from external source claims. Verif
 
 The daily automation should evaluate first, write proposal files outside the repo, run `node scripts/template-fitness.mjs --suggestion <proposal-file>` for each one, and return a digest that separates accepted candidates, rejected-as-bloat candidates, source corrections, and skipped duplicates.
 
+## Dedupe Index (Attention Dilution Guard)
+
+As the scout ledger grows, avoid “attention dilution” by making dedupe mechanical instead of re-reading the middle of the already-reviewed list.
+
+- Maintain the ledger outside the repo as JSONL (append-only).
+- Optional helper: build a compact index outside the repo from that ledger before doing expensive reading or proposal work:
+
+```bash
+node scripts/scout-ledger-index.mjs --ledger <path/to/ledger.jsonl>
+```
+
+This replaces a `.jsonl` suffix with `.index.json` (for example, `ledger.index.json`) next to the ledger and is designed to support O(1) “have we reviewed this key/URL?” checks without scanning the full JSONL file.
+
 ## Automated PR Loop
 
 The automation may open a repository PR only after a suggestion passes the proposal gate and has a small, evidence-backed implementation path. The PR must remain human-reviewed before merge.
