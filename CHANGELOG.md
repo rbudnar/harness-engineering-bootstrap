@@ -2,6 +2,10 @@
 
 Dates reflect repository history, not formal package releases.
 
+## 2026-05-25
+
+- Clarified agent-runtime safety guidance: high-impact tool actions should use deterministic pre-action authorization or explicit confirmation outside model judgment, fail closed when policy context is missing, and audit allow/deny decisions.
+
 ## 2026-05-24
 
 - Added `scripts/scout-ledger-index.mjs` to build a compact dedupe index for the scout JSONL ledger, reducing re-review and attention dilution as the ledger grows.
