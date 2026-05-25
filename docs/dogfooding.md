@@ -61,6 +61,7 @@ When automation opens a PR, it must:
 - Apply only accepted candidates that share one coherent template outcome; split unrelated accepted candidates into later runs or separate PRs.
 - Update the template and the dogfooding harness together when a new template rule changes this repo's own best-practice contract. Template rule changes must keep this dogfooding harness current in the same PR.
 - Prefer the smallest route, wording, or validator change that satisfies the proposal. Do not install a new optional module by default.
+- Keep automation authority limited to branch, PR, issue, comment, and label operations unless a proposal documents deterministic pre-action authorization or explicit human confirmation for broader writes.
 - Run `node scripts/template-fitness.mjs` and the suggestion gate for every accepted proposal file.
 - Run the PR readiness checklist: `node scripts/template-fitness.mjs`, plain `codex review --base origin/main` when Codex CLI is available, GitHub `template-fitness` checks, replies/resolutions for review threads, and a concise PR summary comment.
 - Notify with the PR URL, proposal paths, validation results, review status, and any rejected or skipped candidates.

@@ -26,6 +26,7 @@ Source material and related work used while developing the harness engineering b
 - [Model Context Protocol (MCP): Security Design Considerations for AI-Driven Automation (NSA AISC CSI, May 2026)](https://www.nsa.gov/Portals/75/documents/Cybersecurity/CSI_MCP_SECURITY.pdf)
 - [NVD - CVE-2026-30615](https://nvd.nist.gov/vuln/detail/CVE-2026-30615)
 - [Security Risks in Tool-Enabled AI Agents](https://arxiv.org/abs/2605.09721)
+- [Before the Tool Call: Deterministic Pre-Action Authorization for Autonomous AI Agents](https://arxiv.org/abs/2603.20953)
 - [Practical Security Guidance for Sandboxing Agentic Workflows and Managing Execution Risk](https://developer.nvidia.com/blog/practical-security-guidance-for-sandboxing-agentic-workflows-and-managing-execution-risk/)
 - [OpenTelemetry Traces](https://opentelemetry.io/docs/concepts/signals/traces/)
 - [OpenTelemetry Semantic Conventions for Generative AI Systems](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
