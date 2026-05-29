@@ -241,13 +241,31 @@ test('screens scoped install lifecycle hooks before emitting install commands', 
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens trailing workspace commands before emitting CI validation commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'trailing-workspace-ci'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'npm ci --workspace api'
+    && !run.safe
+    && run.packageScriptReason.includes('preinstall')
+  )));
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'npm run build --workspace api'
+    && !run.safe
+    && run.packageScriptReason.includes('build')
+  )));
+  assert(!survey.commands.some((run) => run.command.includes('--workspace api')));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('keeps piped validation commands inspect-only', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'piped-validation-ci'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
 
   assert(survey.ci.runCommands.some((run) => run.command === 'npm test | bash scripts/release.sh' && !run.safe));
   assert(!survey.commands.some((run) => run.command === 'npm test | bash scripts/release.sh'));
-  assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
 test('parses non-GitHub CI scripts for runtime-safety triggers', () => {
@@ -342,6 +360,24 @@ test('keeps unsafe Makefile recipes out of validation commands', () => {
     hint.path === 'Makefile'
     && hint.reason === 'make target "build" may mutate external state'
   )));
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('screens package scripts that call runtime-surface files', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'package-runtime-surface'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'scripts/deploy.js'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('detects committed env files as runtime-safety surfaces', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'env-file'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === '.env.local'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 

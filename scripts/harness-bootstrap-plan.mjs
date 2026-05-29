@@ -67,6 +67,7 @@ const dangerousCommandPatterns = [
   /\bbun\s+publish\b/,
   /\bgit\s+push\b/,
   /\bgh\s+release\b/,
+  /\b(node|tsx?|python3?|bash|sh|pwsh|powershell)\s+\S*(deploy|release|publish|provision)[\w./\\-]*/i,
   /\b(npm|pnpm|yarn|bun)\s+(run\s+)?[\w:-]*(deploy|publish|release)[\w:-]*\b/,
   /\bnpm\s+--prefix\s+\S+\s+(run\s+)?[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
   /\bpnpm\s+--dir\s+\S+\s+(run\s+)?[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
@@ -208,8 +209,8 @@ export function surveyRepository(inputPath, options = {}) {
   const detectedInstructionFiles = instructionFiles.filter((path) => fileSet.has(path));
   const docs = collectDocs(allFiles);
   const packageManager = inferPackageManager(fileSet, packageJson);
-  const packageScripts = collectPackageScripts(packageManifests, packageManager, fileSet);
   const unsafeMakeTargets = collectUnsafeMakeTargets(root, fileSet);
+  const packageScripts = collectPackageScripts(packageManifests, packageManager, fileSet, unsafeMakeTargets);
   const makeTargets = collectMakeTargets(root, fileSet);
   const makeRuntimeSafetyHints = collectMakeRuntimeSafetyHints(root, fileSet);
   const ci = collectCi(root, allFiles, packageManifests, unsafeMakeTargets);
@@ -948,13 +949,18 @@ function collectPackageFiles(files) {
     .sort();
 }
 
-function collectPackageScripts(packageManifests, packageManager, fileSet = new Set()) {
+function collectPackageScripts(packageManifests, packageManager, fileSet = new Set(), unsafeMakeTargets = new Set()) {
   return packageManifests.flatMap((manifest) => (
-    collectPackageScriptsFromManifest(manifest, packageManagerForManifest(fileSet, manifest, packageManager), packageManifests)
+    collectPackageScriptsFromManifest(
+      manifest,
+      packageManagerForManifest(fileSet, manifest, packageManager),
+      packageManifests,
+      unsafeMakeTargets,
+    )
   ));
 }
 
-function collectPackageScriptsFromManifest(manifest, packageManager, packageManifests = []) {
+function collectPackageScriptsFromManifest(manifest, packageManager, packageManifests = [], unsafeMakeTargets = new Set()) {
   const packageJson = manifest.json;
   if (!packageJson || typeof packageJson.scripts !== 'object') return [];
 
@@ -965,7 +971,7 @@ function collectPackageScriptsFromManifest(manifest, packageManager, packageMani
       return {
         source: manifest.path,
         command,
-        unsafeReason: unsafePackageScriptReason(command, manifest, packageManifests),
+        unsafeReason: unsafePackageScriptReason(command, manifest, packageManifests, { unsafeMakeTargets }),
       };
     })
     .filter((script) => !script.unsafeReason)
@@ -1123,26 +1129,9 @@ function collectRepoDependencyHints(files, packageJson) {
 }
 
 function collectRuntimeSafetyHints(files, ci = { runCommands: [] }, packageManifests = []) {
-  const fileHints = files.filter((path) => {
-    const lower = path.toLowerCase();
-    const name = basename(lower);
-    return name === 'dockerfile'
-      || name.startsWith('dockerfile.')
-      || lower.includes('docker-compose')
-      || lower.endsWith('.tf')
-      || hasPathSegment(lower, 'terraform')
-      || hasPathSegment(lower, 'k8s')
-      || hasPathSegment(lower, 'helm')
-      || hasPathSegment(lower, 'deploy')
-      || isDeploymentScriptPath(lower)
-      || hasPathSegment(lower, 'infra')
-      || lower.endsWith('.env.example')
-      || lower.endsWith('.env.sample')
-      || hasPathSegment(lower, 'mcp')
-      || lower === '.mcp.json'
-      || lower === 'mcp.json'
-      || hasPathSegment(lower, 'secrets');
-  }).map((path) => ({ path, reason: 'deploy, credential, production, or tool-runtime surface' }));
+  const fileHints = files
+    .filter(isRuntimeSurfacePath)
+    .map((path) => ({ path, reason: 'deploy, credential, production, or tool-runtime surface' }));
 
   const commandHints = ci.runCommands
     .filter((command) => !command.safe && isRuntimeSafetyCommand(command))
@@ -1809,7 +1798,7 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
     : null;
   const makeTargetReason = unsafeMakeTargetReason(command, unsafeMakeTargets);
   const packageManifest = packageManifestForCommand(command, packageManifests, workingDirectory);
-  const packageScriptReason = unsafePackageScriptReason(command, packageManifest, packageManifests);
+  const packageScriptReason = unsafePackageScriptReason(command, packageManifest, packageManifests, { unsafeMakeTargets });
   const safe = !workingDirectoryReason && !makeTargetReason && !packageScriptReason && isSafeValidationCommand(command);
   return {
     source,
@@ -1849,7 +1838,7 @@ function hasDangerousCommand(command) {
     .some((part) => dangerousCommandPatterns.some((pattern) => pattern.test(part.toLowerCase())));
 }
 
-function unsafePackageScriptReason(command, packageManifest, packageManifests = []) {
+function unsafePackageScriptReason(command, packageManifest, packageManifests = [], options = {}) {
   const packageJson = packageManifest?.json;
   if (!packageJson || typeof packageJson.scripts !== 'object') return null;
 
@@ -1858,6 +1847,7 @@ function unsafePackageScriptReason(command, packageManifest, packageManifests = 
       const unsafeLifecycleScript = findUnsafePackageScript(lifecycleScript, packageJson.scripts, [], {
         manifest: packageManifest,
         packageManifests,
+        unsafeMakeTargets: options.unsafeMakeTargets,
       });
       if (unsafeLifecycleScript) {
         return `it may run install lifecycle "${lifecycleScript}" whose dependency chain "${unsafeLifecycleScript.chain.join(' -> ')}" may mutate external state`;
@@ -1871,6 +1861,7 @@ function unsafePackageScriptReason(command, packageManifest, packageManifests = 
     const unsafeScript = findUnsafePackageScript(scriptName, targetPackageJson.scripts, [], {
       manifest: targetManifest,
       packageManifests,
+      unsafeMakeTargets: options.unsafeMakeTargets,
     });
     if (unsafeScript) {
       return `it calls package script "${scriptName}" whose dependency chain "${unsafeScript.chain.join(' -> ')}" may mutate external state`;
@@ -1957,6 +1948,9 @@ function packageWorkspaceFromCommand(command) {
   const npmWorkspace = trimmed.match(/^npm\s+(?:--workspace|-w)\s+("[^"]+"|'[^']+'|\S+)/i);
   if (npmWorkspace) return stripYamlQuotes(npmWorkspace[1].trim());
 
+  const trailingNpmWorkspace = trimmed.match(/^npm\s+(?:run\s+[\w:-]+|test|ci|install)\b.*(?:--workspace|-w)(?:=|\s+)("[^"]+"|'[^']+'|\S+)/i);
+  if (trailingNpmWorkspace) return stripYamlQuotes(trailingNpmWorkspace[1].trim());
+
   const pnpmFilter = trimmed.match(/^pnpm\s+(?:--filter|-F)\s+("[^"]+"|'[^']+'|\S+)/i);
   if (pnpmFilter) return stripYamlQuotes(pnpmFilter[1].trim());
 
@@ -2003,6 +1997,7 @@ function findUnsafePackageScript(scriptName, scripts, chain = [], context = {}) 
 
   const body = String(scripts[scriptName] ?? '');
   if (hasDangerousCommand(body)) return { scriptName, chain: nextChain };
+  if (unsafeMakeTargetReason(body, context.unsafeMakeTargets ?? new Set())) return { scriptName, chain: nextChain };
 
   for (const part of splitShellCommandParts(body)) {
     const childScript = packageScriptNameFromCommand(part);
@@ -2031,6 +2026,12 @@ function isAuthorityPackageScript(name) {
 
 function packageScriptNameFromCommand(command) {
   const trimmed = command.trim();
+
+  const trailingNpmWorkspaceRun = trimmed.match(/^npm\s+run\s+([\w:-]+)\b.*(?:--workspace|-w)(?:=|\s+)\S+/i);
+  if (trailingNpmWorkspaceRun) return trailingNpmWorkspaceRun[1];
+
+  const trailingNpmWorkspaceTest = trimmed.match(/^npm\s+test\b.*(?:--workspace|-w)(?:=|\s+)\S+/i);
+  if (trailingNpmWorkspaceTest) return 'test';
 
   const npmWorkspaceRun = trimmed.match(/^npm\s+(?:--workspace|-w)\s+\S+\s+run\s+([\w:-]+)/i);
   if (npmWorkspaceRun) return npmWorkspaceRun[1];
@@ -2099,6 +2100,28 @@ function splitShellCommandParts(command) {
 
 function hasShellPipeline(command) {
   return /(^|[^|])\|(?!\|)/.test(String(command ?? ''));
+}
+
+function isRuntimeSurfacePath(path) {
+  const lower = path.toLowerCase();
+  const name = basename(lower);
+  return name === 'dockerfile'
+    || name.startsWith('dockerfile.')
+    || lower.includes('docker-compose')
+    || lower.endsWith('.tf')
+    || hasPathSegment(lower, 'terraform')
+    || hasPathSegment(lower, 'k8s')
+    || hasPathSegment(lower, 'helm')
+    || hasPathSegment(lower, 'deploy')
+    || isDeploymentScriptPath(lower)
+    || hasPathSegment(lower, 'infra')
+    || name === '.env'
+    || name.startsWith('.env.')
+    || lower.endsWith('.env')
+    || hasPathSegment(lower, 'mcp')
+    || lower === '.mcp.json'
+    || lower === 'mcp.json'
+    || hasPathSegment(lower, 'secrets');
 }
 
 function isSafeValidationCommandPart(part) {

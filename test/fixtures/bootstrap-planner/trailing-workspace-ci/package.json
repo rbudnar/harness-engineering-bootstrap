@@ -1,0 +1,7 @@
+{
+  "name": "trailing-workspace-ci-fixture",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ]
+}
