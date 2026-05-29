@@ -59,7 +59,7 @@ const packageFiles = [
 const dangerousCommandPatterns = [
   /\bterraform\s+apply\b/,
   /\bterraform\s+destroy\b/,
-  /\bkubectl\s+(apply|delete|replace|rollout|scale|patch)\b/,
+  /\bkubectl\s+(apply|create|delete|replace|rollout|scale|patch|set|annotate|label|drain|taint|expose|autoscale)\b/,
   /\bhelm\s+(upgrade|install|uninstall|delete|rollback)\b/,
   /\bnpm\s+publish\b/,
   /\bpnpm\s+publish\b/,
@@ -79,6 +79,7 @@ const dangerousCommandPatterns = [
   /\baws\s+.+\b(put|delete|create|deploy|publish|update)\b/,
   /\bgcloud\s+.+\b(deploy|delete|create|update)\b/,
   /\brm\s+-rf\b/,
+  /\b(prettier|gofmt|dprint|terraform\s+fmt)\b.*\s-w(?:\s|$)/,
   /\s--(fix|write)\b/,
 ];
 
@@ -1648,18 +1649,23 @@ function walkFiles(root, options) {
 
     entries.sort((a, b) => a.name.localeCompare(b.name));
 
-    for (const entry of entries) {
+    for (const entry of entries.filter((item) => item.isFile())) {
       if (paths.length >= maxFiles) {
         truncated = true;
         return;
       }
 
       const fullPath = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (!ignoredDirectories.has(entry.name)) walk(fullPath);
-      } else if (entry.isFile()) {
-        paths.push(normalizePath(relative(root, fullPath)));
+      paths.push(normalizePath(relative(root, fullPath)));
+    }
+
+    for (const entry of entries.filter((item) => item.isDirectory())) {
+      if (paths.length >= maxFiles) {
+        truncated = true;
+        return;
       }
+
+      if (!ignoredDirectories.has(entry.name)) walk(join(dir, entry.name));
     }
   }
 

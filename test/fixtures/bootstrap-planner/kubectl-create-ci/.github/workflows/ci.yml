@@ -1,0 +1,10 @@
+name: CI
+
+on:
+  pull_request:
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - run: kubectl create namespace preview

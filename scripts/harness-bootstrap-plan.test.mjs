@@ -570,6 +570,27 @@ test('treats Docker registry pushes as inspect-only commands', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('keeps formatter short write flags inspect-only', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'formatter-write-flag'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('uses mutating kubectl commands as runtime-safety evidence', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'kubectl-create-ci'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => run.command === 'kubectl create namespace preview' && !run.safe));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === '.github/workflows/ci.yml'
+    && hint.reason.includes('kubectl create namespace preview')
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('keeps workflow default working-directory scoped to its job', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'workflow-default-scope'));
   const rootCommand = survey.ci.runCommands.find((run) => run.command === 'npm test' && !run.workingDirectory);
@@ -676,6 +697,15 @@ test('the current template repository is a supported survey target', () => {
   assert(validationStepsText(plan).includes('node scripts/template-fitness.mjs'));
   assert.equal(plan.requiredCore.find((item) => item.id === 'quality-gate').status, 'present');
   assert(plan.requiredCore.some((item) => item.id === 'harness-validation' && item.status === 'present'));
+});
+
+test('scans root metadata before truncating large repository walks', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'truncated-root-files'), { maxFiles: 2 });
+
+  assert.equal(survey.files.truncated, true);
+  assert.deepEqual(survey.instructionFiles, ['AGENTS.md']);
+  assert(survey.packageFiles.includes('package.json'));
+  assert(survey.commands.some((run) => run.command === 'npm test'));
 });
 
 function validationStepsText(plan) {

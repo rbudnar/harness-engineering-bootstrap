@@ -1,0 +1,7 @@
+{
+  "name": "formatter-write-flag-fixture",
+  "private": true,
+  "scripts": {
+    "check": "prettier -w ."
+  }
+}
