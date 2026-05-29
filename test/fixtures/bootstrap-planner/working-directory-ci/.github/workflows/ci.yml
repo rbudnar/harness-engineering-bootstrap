@@ -6,6 +6,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/default
     steps:
       - name: Test API
         working-directory: services/api
@@ -13,3 +16,5 @@ jobs:
       - name: Test Web
         run: npm test
         working-directory: services/web
+      - name: Test Default
+        run: npm test

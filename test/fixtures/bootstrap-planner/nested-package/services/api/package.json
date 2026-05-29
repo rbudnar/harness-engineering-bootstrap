@@ -1,0 +1,8 @@
+{
+  "name": "nested-package-api-fixture",
+  "private": true,
+  "scripts": {
+    "build": "node src/index.js",
+    "test": "node --test"
+  }
+}

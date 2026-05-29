@@ -162,7 +162,7 @@ test('keeps workflow working-directory steps inspect-only', () => {
     .sort();
   const validationText = validationStepsText(plan);
 
-  assert.deepEqual(workingDirectories, ['services/api', 'services/web']);
+  assert.deepEqual(workingDirectories, ['services/api', 'services/default', 'services/web']);
   assert(survey.ci.runCommands.every((run) => run.command !== 'npm test' || !run.safe));
   assert(!survey.commands.some((run) => run.command === 'npm test'));
   assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
@@ -212,6 +212,50 @@ test('screens npm lifecycle hooks before emitting validation commands', () => {
     && hint.reason === 'package script "deploy" may mutate external state'
   )));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('screens install lifecycle hooks before emitting install commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'install-lifecycle-ci'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => run.command === 'npm ci' && !run.safe));
+  assert(!survey.commands.some((run) => run.command === 'npm ci'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('keeps piped validation commands inspect-only', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'piped-validation-ci'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => run.command === 'npm test | bash scripts/release.sh' && !run.safe));
+  assert(!survey.commands.some((run) => run.command === 'npm test | bash scripts/release.sh'));
+  assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('parses non-GitHub CI scripts for runtime-safety triggers', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'gitlab-runtime-ci'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => run.source === '.gitlab-ci.yml' && run.command === 'terraform apply -auto-approve' && !run.safe));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === '.gitlab-ci.yml'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('detects root MCP configs as runtime surfaces', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'root-mcp-config'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === '.mcp.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('surveys nested package manifests for validation commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'nested-package'));
+  const commands = survey.commands.map((run) => run.command);
+
+  assert(survey.packageFiles.includes('services/api/package.json'));
+  assert(commands.includes('npm --prefix services/api test'));
+  assert(commands.includes('npm --prefix services/api run build'));
 });
 
 test('detects existing bootstraps and emits versioned update guidance', () => {

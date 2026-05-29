@@ -198,11 +198,13 @@ export function surveyRepository(inputPath, options = {}) {
   const allFiles = files.paths;
   const fileSet = new Set(allFiles);
 
-  const packageJson = readJson(root, 'package.json');
+  const packageManifests = collectPackageManifests(root, allFiles);
+  const rootPackageManifest = packageManifests.find((manifest) => manifest.path === 'package.json');
+  const packageJson = rootPackageManifest?.json ?? null;
   const detectedInstructionFiles = instructionFiles.filter((path) => fileSet.has(path));
   const docs = collectDocs(allFiles);
   const packageManager = inferPackageManager(fileSet, packageJson);
-  const packageScripts = collectPackageScripts(packageJson, packageManager);
+  const packageScripts = collectPackageScripts(packageManifests, packageManager);
   const makeTargets = collectMakeTargets(root, fileSet);
   const ci = collectCi(root, allFiles, packageJson);
   const scriptFiles = allFiles.filter((path) => path.startsWith('scripts/')).sort();
@@ -226,7 +228,7 @@ export function surveyRepository(inputPath, options = {}) {
       truncated: files.truncated,
     },
     instructionFiles: detectedInstructionFiles,
-    packageFiles: packageFiles.filter((path) => fileSet.has(path)),
+    packageFiles: packageManifests.map((manifest) => manifest.path),
     docs,
     ci,
     commands: collectCommands({ packageScripts, makeTargets, ci }),
@@ -238,7 +240,7 @@ export function surveyRepository(inputPath, options = {}) {
     dataHints: collectDataHints(allFiles),
     internalDataStoreHints: collectInternalDataStoreHints(allFiles),
     repoDependencyHints: collectRepoDependencyHints(allFiles, packageJson),
-    runtimeSafetyHints: collectRuntimeSafetyHints(allFiles, ci, packageJson),
+    runtimeSafetyHints: collectRuntimeSafetyHints(allFiles, ci, packageManifests),
     planHints: collectPlanHints(allFiles),
     urlMapHints: collectUrlMapHints(allFiles),
     evidenceHints: collectEvidenceHints(allFiles),
@@ -896,7 +898,11 @@ function collectCi(root, files, packageJson = null) {
   const runCommands = [];
   for (const path of ciFiles) {
     const text = readText(root, path);
-    runCommands.push(...collectWorkflowRunCommands(text, path, packageJson));
+    if (path.toLowerCase().startsWith('.github/workflows/')) {
+      runCommands.push(...collectWorkflowRunCommands(text, path, packageJson));
+    } else {
+      runCommands.push(...collectGenericCiRunCommands(text, path, packageJson));
+    }
   }
 
   return {
@@ -915,15 +921,34 @@ function collectCommands({ packageScripts, makeTargets, ci }) {
   return dedupeObjects(commands, (item) => item.command).sort((a, b) => a.command.localeCompare(b.command));
 }
 
-function collectPackageScripts(packageJson, packageManager) {
+function collectPackageManifests(root, files) {
+  return files
+    .filter((path) => path === 'package.json' || path.endsWith('/package.json'))
+    .sort()
+    .map((path) => ({
+      path,
+      directory: dirname(path) === '.' ? '' : dirname(path),
+      json: readJson(root, path),
+    }))
+    .filter((manifest) => manifest.json && typeof manifest.json === 'object');
+}
+
+function collectPackageScripts(packageManifests, packageManager) {
+  return packageManifests.flatMap((manifest) => (
+    collectPackageScriptsFromManifest(manifest, packageManager)
+  ));
+}
+
+function collectPackageScriptsFromManifest(manifest, packageManager) {
+  const packageJson = manifest.json;
   if (!packageJson || typeof packageJson.scripts !== 'object') return [];
 
   return Object.entries(packageJson.scripts)
     .filter(([name]) => /(^|:)(test|build|lint|typecheck|check|quality|validate|coverage)(:|$)/i.test(name))
     .map(([name]) => {
-      const command = packageScriptCommand(packageManager, name);
+      const command = packageScriptCommand(packageManager, name, manifest.directory);
       return {
-        source: 'package.json',
+        source: manifest.path,
         command,
         unsafeReason: unsafePackageScriptReason(command, packageJson),
       };
@@ -933,11 +958,20 @@ function collectPackageScripts(packageJson, packageManager) {
     .map(({ source, command }) => ({ source, command }));
 }
 
-function packageScriptCommand(packageManager, name) {
+function packageScriptCommand(packageManager, name, directory = '') {
+  if (directory) return scopedPackageScriptCommand(packageManager, name, directory);
   if (packageManager === 'yarn') return `yarn ${name}`;
   if (packageManager === 'pnpm') return name === 'test' ? 'pnpm test' : `pnpm run ${name}`;
   if (packageManager === 'bun') return `bun run ${name}`;
   return name === 'test' ? 'npm test' : `npm run ${name}`;
+}
+
+function scopedPackageScriptCommand(packageManager, name, directory) {
+  const path = quotePath(directory);
+  if (packageManager === 'yarn') return `yarn --cwd ${path} ${name}`;
+  if (packageManager === 'pnpm') return name === 'test' ? `pnpm --dir ${path} test` : `pnpm --dir ${path} run ${name}`;
+  if (packageManager === 'bun') return `bun --cwd ${path} run ${name}`;
+  return name === 'test' ? `npm --prefix ${path} test` : `npm --prefix ${path} run ${name}`;
 }
 
 function collectMakeTargets(root, fileSet) {
@@ -1004,7 +1038,7 @@ function collectRepoDependencyHints(files, packageJson) {
   return dedupeObjects(hints, (item) => item.path);
 }
 
-function collectRuntimeSafetyHints(files, ci = { runCommands: [] }, packageJson = null) {
+function collectRuntimeSafetyHints(files, ci = { runCommands: [] }, packageManifests = []) {
   const fileHints = files.filter((path) => {
     const lower = path.toLowerCase();
     const name = basename(lower);
@@ -1020,6 +1054,8 @@ function collectRuntimeSafetyHints(files, ci = { runCommands: [] }, packageJson 
       || lower.endsWith('.env.example')
       || lower.endsWith('.env.sample')
       || lower.includes('/mcp')
+      || lower === '.mcp.json'
+      || lower === 'mcp.json'
       || hasPathSegment(lower, 'secrets');
   }).map((path) => ({ path, reason: 'deploy, credential, production, or tool-runtime surface' }));
 
@@ -1030,20 +1066,23 @@ function collectRuntimeSafetyHints(files, ci = { runCommands: [] }, packageJson 
       reason: `CI command may mutate external state: ${formatInlineValue(command.command)}`,
     }));
 
-  const packageHints = collectPackageRuntimeSafetyHints(packageJson);
+  const packageHints = collectPackageRuntimeSafetyHints(packageManifests);
 
   return dedupeObjects([...fileHints, ...commandHints, ...packageHints], (hint) => `${hint.path}\0${hint.reason}`);
 }
 
-function collectPackageRuntimeSafetyHints(packageJson) {
-  if (!packageJson || typeof packageJson.scripts !== 'object') return [];
+function collectPackageRuntimeSafetyHints(packageManifests) {
+  return packageManifests.flatMap((manifest) => {
+    const packageJson = manifest.json;
+    if (!packageJson || typeof packageJson.scripts !== 'object') return [];
 
-  return Object.entries(packageJson.scripts)
-    .filter(([name, body]) => isAuthorityPackageScript(name) || hasDangerousCommand(body))
-    .map(([name]) => ({
-      path: 'package.json',
-      reason: `package script "${name}" may mutate external state`,
-    }));
+    return Object.entries(packageJson.scripts)
+      .filter(([name, body]) => isAuthorityPackageScript(name) || hasDangerousCommand(body))
+      .map(([name]) => ({
+        path: manifest.path,
+        reason: `package script "${name}" may mutate external state`,
+      }));
+  });
 }
 
 function isRuntimeSafetyCommand(command) {
@@ -1078,6 +1117,7 @@ function collectWorkflowRunCommands(text, source, packageJson = null) {
     const line = lines[index];
     const match = line.match(/^(\s*)-?\s*run:\s*(.*)\s*$/);
     if (!match) continue;
+    if (isWorkflowDefaultsRunKey(lines, index)) continue;
 
     const command = match[2].trim();
     const workingDirectory = findWorkflowWorkingDirectory(lines, index);
@@ -1112,6 +1152,58 @@ function collectWorkflowRunCommands(text, source, packageJson = null) {
   return commands;
 }
 
+function collectGenericCiRunCommands(text, source, packageJson = null) {
+  const lines = text.split(/\r?\n/);
+  const commands = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const shellMatch = line.match(/^\s*sh\s+['"](.+)['"]\s*$/);
+    if (shellMatch) {
+      commands.push(classifyCiRunCommand(source, shellMatch[1].trim(), false, packageJson));
+      continue;
+    }
+
+    const keyMatch = line.match(/^\s*(?:-\s*)?(?:script|command):\s*(.*)\s*$/);
+    if (!keyMatch) continue;
+
+    const value = keyMatch[1].trim();
+    if (/^[|>]/.test(value) || value === '') {
+      const blockLines = [];
+      const baseIndent = indentation(line);
+      let blockIndent = null;
+
+      for (let nextIndex = index + 1; nextIndex < lines.length; nextIndex += 1) {
+        const nextLine = lines[nextIndex];
+        if (!nextLine.trim()) {
+          if (blockLines.length) blockLines.push('');
+          continue;
+        }
+
+        const nextIndent = indentation(nextLine);
+        if (nextIndent <= baseIndent) break;
+        if (blockIndent === null) blockIndent = nextIndent;
+        if (nextIndent < blockIndent) break;
+
+        const listCommand = nextLine.match(/^\s*-\s+(.+?)\s*$/)?.[1];
+        if (listCommand) {
+          commands.push(classifyCiRunCommand(source, stripYamlQuotes(listCommand.trim()), false, packageJson));
+        } else {
+          blockLines.push(nextLine);
+        }
+        index = nextIndex;
+      }
+
+      const blockCommand = normalizeRunBlock(blockLines);
+      if (blockCommand) commands.push(classifyCiRunCommand(source, blockCommand, true, packageJson));
+    } else {
+      commands.push(classifyCiRunCommand(source, stripYamlQuotes(value), false, packageJson));
+    }
+  }
+
+  return commands;
+}
+
 function findWorkflowWorkingDirectory(lines, runIndex) {
   const bounds = findWorkflowStepBounds(lines, runIndex);
 
@@ -1125,7 +1217,23 @@ function findWorkflowWorkingDirectory(lines, runIndex) {
     if (value) return value;
   }
 
-  return null;
+  return findWorkflowDefaultWorkingDirectory(lines, runIndex);
+}
+
+function isWorkflowDefaultsRunKey(lines, runIndex) {
+  if (!/^\s*run:\s*$/.test(lines[runIndex])) return false;
+  const runIndent = indentation(lines[runIndex]);
+
+  for (let index = runIndex - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    if (!line.trim()) continue;
+
+    const currentIndent = indentation(line);
+    if (currentIndent < runIndent && /^\s*defaults:\s*$/.test(line)) return true;
+    if (currentIndent < runIndent) return false;
+  }
+
+  return false;
 }
 
 function findWorkflowStepBounds(lines, runIndex) {
@@ -1173,6 +1281,41 @@ function parseWorkflowWorkingDirectory(line) {
   const match = line.match(/^\s*(?:-\s*)?working-directory:\s*(.+?)\s*$/);
   if (!match) return null;
   return stripYamlQuotes(match[1].trim());
+}
+
+function findWorkflowDefaultWorkingDirectory(lines, runIndex) {
+  for (let index = runIndex - 1; index >= 0; index -= 1) {
+    const value = parseWorkflowWorkingDirectory(lines[index]);
+    if (!value || !isDefaultsRunWorkingDirectory(lines, index)) continue;
+    return value;
+  }
+
+  return null;
+}
+
+function isDefaultsRunWorkingDirectory(lines, workingDirectoryIndex) {
+  const workingDirectoryIndent = indentation(lines[workingDirectoryIndex]);
+  let runIndent = null;
+
+  for (let index = workingDirectoryIndex - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    if (!line.trim()) continue;
+
+    const currentIndent = indentation(line);
+    if (runIndent === null) {
+      if (currentIndent < workingDirectoryIndent && /^\s*run:\s*$/.test(line)) {
+        runIndent = currentIndent;
+      } else if (currentIndent < workingDirectoryIndent) {
+        return false;
+      }
+      continue;
+    }
+
+    if (currentIndent < runIndent && /^\s*defaults:\s*$/.test(line)) return true;
+    if (currentIndent < runIndent) return false;
+  }
+
+  return false;
 }
 
 function collectHarnessControls(files) {
@@ -1386,6 +1529,8 @@ function classifyCiRunCommand(source, command, multiline, packageJson = null, op
 }
 
 function isSafeValidationCommand(command) {
+  if (hasShellPipeline(command)) return false;
+
   const parts = splitShellCommandParts(command);
   if (!parts.length) return false;
 
@@ -1401,6 +1546,13 @@ function unsafePackageScriptReason(command, packageJson) {
   if (!packageJson || typeof packageJson.scripts !== 'object') return null;
 
   for (const part of splitShellCommandParts(command)) {
+    for (const lifecycleScript of installLifecycleScriptNames(part, packageJson.scripts)) {
+      const unsafeLifecycleScript = findUnsafePackageScript(lifecycleScript, packageJson.scripts);
+      if (unsafeLifecycleScript) {
+        return `it may run install lifecycle "${lifecycleScript}" whose dependency chain "${unsafeLifecycleScript.chain.join(' -> ')}" may mutate external state`;
+      }
+    }
+
     const scriptName = packageScriptNameFromCommand(part);
     if (!scriptName || !Object.hasOwn(packageJson.scripts, scriptName)) continue;
     const unsafeScript = findUnsafePackageScript(scriptName, packageJson.scripts);
@@ -1410,6 +1562,23 @@ function unsafePackageScriptReason(command, packageJson) {
   }
 
   return null;
+}
+
+function installLifecycleScriptNames(command, scripts) {
+  if (!isInstallCommand(command)) return [];
+  return [
+    'preinstall',
+    'install',
+    'postinstall',
+    'preprepare',
+    'prepare',
+    'postprepare',
+  ].filter((name) => Object.hasOwn(scripts, name));
+}
+
+function isInstallCommand(command) {
+  const trimmed = command.trim().toLowerCase();
+  return /^(npm\s+ci|npm\s+install|pnpm\s+install|yarn\s+install|bun\s+install)\b/.test(trimmed);
 }
 
 function findUnsafePackageScript(scriptName, scripts, chain = []) {
@@ -1447,6 +1616,24 @@ function isAuthorityPackageScript(name) {
 function packageScriptNameFromCommand(command) {
   const trimmed = command.trim();
 
+  const npmPrefixRun = trimmed.match(/^npm\s+--prefix\s+\S+\s+run\s+([\w:-]+)/i);
+  if (npmPrefixRun) return npmPrefixRun[1];
+
+  const npmPrefixTest = trimmed.match(/^npm\s+--prefix\s+\S+\s+test\b/i);
+  if (npmPrefixTest) return 'test';
+
+  const pnpmDirRun = trimmed.match(/^pnpm\s+--dir\s+\S+\s+run\s+([\w:-]+)/i);
+  if (pnpmDirRun) return pnpmDirRun[1];
+
+  const pnpmDirTest = trimmed.match(/^pnpm\s+--dir\s+\S+\s+test\b/i);
+  if (pnpmDirTest) return 'test';
+
+  const yarnCwd = trimmed.match(/^yarn\s+--cwd\s+\S+\s+(?:run\s+)?([\w:-]+)/i);
+  if (yarnCwd && !['add', 'install', 'remove'].includes(yarnCwd[1].toLowerCase())) return yarnCwd[1];
+
+  const bunCwdRun = trimmed.match(/^bun\s+--cwd\s+\S+\s+run\s+([\w:-]+)/i);
+  if (bunCwdRun) return bunCwdRun[1];
+
   const run = trimmed.match(/^(?:npm|pnpm|bun)\s+run\s+([\w:-]+)/i);
   if (run) return run[1];
 
@@ -1469,12 +1656,20 @@ function splitShellCommandParts(command) {
     .filter(Boolean);
 }
 
+function hasShellPipeline(command) {
+  return /(^|[^|])\|(?!\|)/.test(String(command ?? ''));
+}
+
 function isSafeValidationCommandPart(part) {
   const lower = part.toLowerCase();
   if (dangerousCommandPatterns.some((pattern) => pattern.test(lower))) return false;
 
   const validationPatterns = [
     /\b(node\s+--test|npm\s+test|pnpm\s+test|yarn\s+test|bun\s+test)\b/,
+    /\bnpm\s+--prefix\s+\S+\s+(test|run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*)\b/,
+    /\bpnpm\s+--dir\s+\S+\s+(test|run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*)\b/,
+    /\byarn\s+--cwd\s+\S+\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*\b/,
+    /\bbun\s+--cwd\s+\S+\s+run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*\b/,
     /\b(npm|pnpm|yarn|bun)\s+run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*\b/,
     /\b(npm|pnpm|yarn|bun)\s+(build|lint|typecheck|check|validate)\b/,
     /\b(pytest|python\s+-m\s+pytest|go\s+test|cargo\s+test|mvn\s+test|gradle\s+test)\b/,
