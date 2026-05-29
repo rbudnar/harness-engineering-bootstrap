@@ -95,6 +95,14 @@ test('triggers PR metrics only from review-marker evidence', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'pr-workflow-metrics'));
 });
 
+test('does not trigger PR metrics from ordinary review prose', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'plain-pr-template'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert.equal(survey.prWorkflowMetricHints.length, 0);
+  assert(!plan.triggeredModules.some((module) => module.id === 'pr-workflow-metrics'));
+});
+
 test('uses conservative data heuristics for root schemas, migrations, and source models', () => {
   const rootSchema = surveyRepository(resolve(fixturesRoot, 'root-schema'));
   const rootPlan = buildBootstrapPlan(rootSchema, { date: '2026-05-28' });
@@ -687,6 +695,7 @@ test('screens mutating git and docker commands after global options', () => {
 
   assert(!survey.commands.some((run) => run.command === 'npm test'));
   assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(!survey.commands.some((run) => run.command === 'npm run build'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
@@ -761,6 +770,15 @@ test('screens package wrappers that change to parent directories before child sc
 
   assert(!survey.commands.some((run) => run.command === 'npm --prefix packages/api test'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('screens package wrappers that change to child directories before child scripts', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'package-wrapper-child-cd'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm --prefix packages/app test'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'packages/app/tools/package.json'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 

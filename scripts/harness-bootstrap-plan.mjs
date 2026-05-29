@@ -1353,7 +1353,7 @@ function prWorkflowMetricHintsForFile(root, path) {
   const lower = text.toLowerCase();
   const hints = [];
 
-  if (/\b(gh\s+pr|reviewthreads|pulls\/|pull_request_review|review comments?|review submissions?)\b/i.test(text)) {
+  if (/\b(gh\s+pr|reviewthreads|pulls\/|pull_request_review)\b/i.test(text)) {
     hints.push({ path, reason: 'PR review/comment metrics are parsed or queried' });
   }
   if (/\b(no harness issue observed|harness issue observed|pr observation|review marker|observation boxes?)\b/i.test(text)) {
@@ -2578,7 +2578,9 @@ function hasDangerousDockerCommand(part) {
   if (words[0] !== 'docker') return false;
   const args = stripCliGlobalOptions(words.slice(1), 'docker');
   if (['push', 'login'].includes(args[0])) return true;
-  return args[0] === 'buildx' && args[1] === 'build' && args.includes('--push');
+  return args[0] === 'buildx'
+    && args[1] === 'build'
+    && words.some((word) => word === '--push' || word.startsWith('--push='));
 }
 
 function hasDangerousGitCommand(part) {
@@ -2742,7 +2744,8 @@ function packageManifestForWorkspace(workspace, packageManifests) {
 
 function resolvePackageDirectory(directory, baseDirectory = null) {
   const normalizedDirectory = normalizePackageDirectory(directory);
-  if (!baseDirectory || !/^\.{1,2}(\/|$)/.test(normalizedDirectory)) return normalizedDirectory;
+  if (!baseDirectory) return normalizedDirectory === '.' ? '' : normalizedDirectory;
+  if (/^(?:[A-Za-z]:|\/|\\\\|~)/.test(normalizedDirectory)) return normalizedDirectory;
 
   const parts = [
     ...normalizePackageDirectory(baseDirectory).split('/').filter(Boolean),
