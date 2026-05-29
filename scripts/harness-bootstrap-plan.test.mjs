@@ -28,6 +28,10 @@ test('surveys a small JavaScript repo and renders the review-ready plan contract
   assert.match(markdown, /## Review And Handoff Contract/);
   assert.match(markdown, /Planner/);
   assert.match(markdown, /Explicitly Rejected Modules/);
+  assert(plan.rejectedModules.some((module) => (
+    module.id === 'health-report'
+    && module.rationale === 'Fewer than three health-report control signals were detected.'
+  )));
   assert.match(markdown, /status: draft/);
   assert.match(markdown, /supersedes: none/);
   assert.match(markdown, /superseded_by: none/);
@@ -90,9 +94,12 @@ test('screens unsafe package bodies and top-level generated/runtime surfaces', (
 
   assert(!unsafePackage.commands.some((command) => command.command === 'npm run build'));
   assert(!unsafePackage.commands.some((command) => command.command === 'npm run format'));
+  assert(!unsafePackage.commands.some((command) => command.command === 'npm run check'));
   assert(unsafePackage.commands.some((command) => command.command === 'npm run format:check'));
   assert(unsafePackage.ci.runCommands.some((command) => command.command === 'npm run build' && !command.safe));
+  assert(unsafePackage.ci.runCommands.some((command) => command.command === 'npm run check' && !command.safe));
   assert(!validationStepsText(unsafePlan).includes('npm run build'));
+  assert(!validationStepsText(unsafePlan).includes('npm run check'));
 
   const nestedSurfaces = surveyRepository(resolve(fixturesRoot, 'nested-surfaces'));
   const nestedPlan = buildBootstrapPlan(nestedSurfaces, { date: '2026-05-28' });
@@ -143,6 +150,68 @@ test('renders reusable commands for Windows paths and quoted CI arguments', () =
   );
 
   assert.match(plan.planArtifact.validationCommand, /--repo "C:\\Users\\Example Repo\\project"/);
+  assert.match(plan.planArtifact.validationCommand, /node ".*scripts\\harness-bootstrap-plan\.mjs"/);
+});
+
+test('keeps workflow working-directory steps inspect-only', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'working-directory-ci'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+  const workingDirectories = survey.ci.runCommands
+    .filter((run) => run.command === 'npm test')
+    .map((run) => run.workingDirectory)
+    .sort();
+  const validationText = validationStepsText(plan);
+
+  assert.deepEqual(workingDirectories, ['services/api', 'services/web']);
+  assert(survey.ci.runCommands.every((run) => run.command !== 'npm test' || !run.safe));
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
+  assert(validationText.includes('working-directory services/api'));
+  assert(validationText.includes('Inspect CI step from .github/workflows/ci.yml'));
+});
+
+test('does not fold workflow sibling keys into block run commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workflow-block-sibling'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+  const blockCommand = survey.ci.runCommands.find((run) => run.multiline);
+
+  assert.equal(blockCommand.command, 'npm ci\nnpm test');
+  assert.equal(blockCommand.safe, true);
+  assert(survey.commands.some((run) => run.command === 'npm ci\nnpm test'));
+  assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('keeps unknown setup steps out of runtime-safety triggers', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'unknown-setup-ci'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => run.command === 'pip install -r requirements.txt' && !run.safe));
+  assert(survey.commands.some((run) => run.command === 'python -m pytest'));
+  assert.equal(survey.runtimeSafetyHints.length, 0);
+  assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('uses package-only deploy authority as runtime-safety evidence', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'package-deploy-only'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'package.json'
+    && hint.reason === 'package script "deploy" may mutate external state'
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('screens npm lifecycle hooks before emitting validation commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'package-lifecycle-hook'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'package.json'
+    && hint.reason === 'package script "deploy" may mutate external state'
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
 test('detects existing bootstraps and emits versioned update guidance', () => {

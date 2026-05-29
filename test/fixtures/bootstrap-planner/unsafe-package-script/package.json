@@ -1,7 +1,10 @@
 {
   "scripts": {
     "build": "terraform apply -auto-approve",
+    "check": "npm run ci",
+    "ci": "npm run provision",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "provision": "terraform apply -auto-approve"
   }
 }
