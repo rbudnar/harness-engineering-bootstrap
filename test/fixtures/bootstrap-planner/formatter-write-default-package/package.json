@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "check": "go fmt ./...",
+    "quality": "cargo fmt",
+    "validate": "black .",
+    "coverage": "ruff format ."
+  }
+}

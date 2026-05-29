@@ -648,6 +648,27 @@ test('screens credential login package scripts', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens write-by-default formatter package scripts', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'formatter-write-default-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(!survey.commands.some((run) => run.command === 'npm run quality'));
+  assert(!survey.commands.some((run) => run.command === 'npm run validate'));
+  assert(!survey.commands.some((run) => run.command === 'npm run coverage'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('screens quoted npm prefix package wrappers', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'quoted-prefix-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'services/api v2/package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens package wrappers that change directories before child scripts', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'package-wrapper-cwd'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -1005,6 +1026,19 @@ test('uses inherited workflow secrets as runtime-safety evidence', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('uses post-steps inherited workflow secrets as runtime-safety evidence', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workflow-post-steps-secrets'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'npm test'
+    && !run.safe
+    && run.runtimeSafetyReason === 'GitHub workflow step inherits secrets'
+  )));
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('preserves unsafe workflow metadata when duplicate run commands exist', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'workflow-duplicate-unsafe'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -1124,6 +1158,15 @@ test('parses Azure inlineScript tasks for runtime-safety evidence', () => {
     hint.path === 'azure-pipelines.yml'
     && hint.reason.includes('az deployment group create')
   )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('parses Azure .yaml pipelines for runtime-safety evidence', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'azure-yaml-pipeline'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.files.includes('azure-pipelines.yaml'));
+  assert(survey.ci.runCommands.some((run) => run.command === 'terraform apply -auto-approve' && !run.safe));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 

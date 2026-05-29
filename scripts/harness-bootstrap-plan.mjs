@@ -96,6 +96,10 @@ const dangerousCommandPatterns = [
   /\baws\s+.+\b(put|delete|create|deploy|publish|update)\b/,
   /\bgcloud\s+.+\b(deploy|delete|create|update)\b/,
   /\brm\s+-rf\b/,
+  /\bgo\s+fmt\b/,
+  /\bcargo\s+fmt\b(?![^&|;]*\s--check\b)/,
+  /\bblack\b(?![^&|;]*\s--check\b)/,
+  /\bruff\s+format\b(?![^&|;]*\s--check\b)/,
   /\b(prettier|gofmt|dprint|terraform\s+fmt)\b.*\s-w(?:\s|$)/,
   /\s--(fix|write)\b/,
 ];
@@ -961,6 +965,7 @@ function collectCi(root, files, packageManifests = [], unsafeMakeTargets = new S
       || lower === 'jenkinsfile'
       || lower === '.gitlab-ci.yml'
       || lower === 'azure-pipelines.yml'
+      || lower === 'azure-pipelines.yaml'
       || lower === 'bitbucket-pipelines.yml'
       || lower.startsWith('.circleci/');
   }).sort();
@@ -1443,30 +1448,47 @@ function workflowStepMetadataRuntimeSafetyReason(lines, stepIndex, action = '') 
 }
 
 function workflowInheritedSecretText(lines, stepIndex) {
-  return workflowInheritedScopeLines(lines, stepIndex).join('\n').match(/\$\{\{\s*secrets\./i)?.[0] ?? null;
+  return workflowInheritedScopeSecretText(lines, stepIndex);
 }
 
-function workflowInheritedScopeLines(lines, stepIndex) {
-  const inherited = [];
-  const jobsIndex = lines.findIndex((line) => /^jobs:\s*$/.test(line));
-  if (jobsIndex > 0) inherited.push(...lines.slice(0, jobsIndex));
+function workflowInheritedScopeSecretText(lines, stepIndex) {
+  const topLevelEnv = scopeBlockSecretText(lines, 0, lines.length, 0);
+  if (topLevelEnv) return topLevelEnv;
 
   const jobStart = findWorkflowJobStart(lines, stepIndex);
-  const jobIndent = indentation(lines[jobStart] ?? '');
-  let stepsIndex = stepIndex;
-  for (let index = jobStart + 1; index < stepIndex; index += 1) {
+  const jobBounds = findWorkflowJobBounds(lines, stepIndex);
+  const jobChildIndent = directChildIndent(lines, jobStart, jobBounds.end);
+  return jobChildIndent === null ? null : scopeBlockSecretText(lines, jobStart + 1, jobBounds.end, jobChildIndent);
+}
+
+function scopeBlockSecretText(lines, start, end, blockIndent) {
+  for (let index = start; index < end; index += 1) {
+    const line = lines[index];
+    if (!line.trim()) continue;
+    if (indentation(line) !== blockIndent || !/^\s*env:\s*$/.test(line)) continue;
+    const blockLines = [];
+    for (let blockIndex = index + 1; blockIndex < end; blockIndex += 1) {
+      const blockLine = lines[blockIndex];
+      if (!blockLine.trim()) continue;
+      if (indentation(blockLine) <= blockIndent) break;
+      blockLines.push(blockLine);
+    }
+    const match = blockLines.join('\n').match(/\$\{\{\s*secrets\./i);
+    if (match) return match[0];
+  }
+  return null;
+}
+
+function directChildIndent(lines, parentIndex, end) {
+  const parentIndent = indentation(lines[parentIndex] ?? '');
+  for (let index = parentIndex + 1; index < end; index += 1) {
     const line = lines[index];
     if (!line.trim()) continue;
     const currentIndent = indentation(line);
-    if (currentIndent <= jobIndent) break;
-    if (/^\s*steps:\s*$/.test(line)) {
-      stepsIndex = index;
-      break;
-    }
+    if (currentIndent <= parentIndent) return null;
+    return currentIndent;
   }
-
-  if (stepsIndex > jobStart) inherited.push(...lines.slice(jobStart, stepsIndex));
-  return inherited;
+  return null;
 }
 
 function workflowStepBounds(lines, index) {
@@ -2800,6 +2822,11 @@ function packageScriptNameFromCommand(command) {
     if (scriptName) return scriptName;
   }
 
+  if (manager === 'npm') {
+    const prefixScriptName = npmPrefixScriptNameFromWords(words);
+    if (prefixScriptName) return prefixScriptName;
+  }
+
   const npmAllWorkspaceRun = trimmed.match(/^npm\s+--workspaces(?:=(?:true|1))?\s+(?:run\s+)?([\w:-]+)/i);
   if (npmAllWorkspaceRun && !['ci', 'install'].includes(npmAllWorkspaceRun[1].toLowerCase())) {
     return npmAllWorkspaceRun[1] === 'test' ? 'test' : npmAllWorkspaceRun[1];
@@ -2874,6 +2901,22 @@ function packageScriptNameFromCommand(command) {
   const direct = trimmed.match(/^(?:pnpm|bun)\s+([\w:-]+)/i);
   if (direct && !['add', 'install', 'remove'].includes(direct[1].toLowerCase())) return direct[1];
 
+  return null;
+}
+
+function npmPrefixScriptNameFromWords(words) {
+  const prefixIndex = words.findIndex((word) => {
+    const lower = word.toLowerCase();
+    return lower === '--prefix' || lower.startsWith('--prefix=');
+  });
+  if (prefixIndex < 0) return null;
+  const commandIndex = words[prefixIndex].includes('=') ? prefixIndex + 1 : prefixIndex + 2;
+  const command = words[commandIndex]?.toLowerCase();
+  if (command === 'test') return 'test';
+  if (command === 'run') {
+    const scriptName = words[commandIndex + 1];
+    return validPackageScriptName(scriptName) ? canonicalPackageScriptName(scriptName) : null;
+  }
   return null;
 }
 

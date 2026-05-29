@@ -1,0 +1,5 @@
+{
+  "scripts": {
+    "test": "npm --prefix 'services/api v2' test"
+  }
+}
