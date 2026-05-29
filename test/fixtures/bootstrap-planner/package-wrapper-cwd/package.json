@@ -1,0 +1,7 @@
+{
+  "name": "package-wrapper-cwd-fixture",
+  "private": true,
+  "scripts": {
+    "test": "cd services/api && npm test"
+  }
+}

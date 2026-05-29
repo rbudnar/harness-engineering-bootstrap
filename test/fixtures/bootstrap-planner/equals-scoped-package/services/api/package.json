@@ -1,0 +1,7 @@
+{
+  "name": "equals-scoped-package-api-fixture",
+  "private": true,
+  "scripts": {
+    "build": "terraform apply -auto-approve"
+  }
+}

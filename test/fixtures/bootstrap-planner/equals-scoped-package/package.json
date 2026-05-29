@@ -1,0 +1,8 @@
+{
+  "name": "equals-scoped-package-fixture",
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix=services/api run build",
+    "check": "pnpm --dir=services/api run build"
+  }
+}

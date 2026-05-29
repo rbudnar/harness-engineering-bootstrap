@@ -878,12 +878,17 @@ function collectBootstrapState({ instructionFiles, docs, harnessControls, versio
     evidence.push('harness validation');
   }
 
-  const status = evidence.length >= 3 ? 'bootstrapped' : 'fresh';
+  const hasHebSpecificEvidence = Boolean(
+    versionState.installedVersion
+      || versionState.source
+      || harnessControls.some((path) => /template-fitness|validate-harness|harness-audit/i.test(path)),
+  );
+  const status = hasHebSpecificEvidence && evidence.length >= 3 ? 'bootstrapped' : 'fresh';
   const confidence = versionState.installedVersion
     ? 'high'
-    : evidence.length >= 4
+    : status === 'bootstrapped' && evidence.length >= 4
       ? 'high'
-      : evidence.length >= 3
+      : status === 'bootstrapped'
         ? 'medium'
         : 'low';
 
@@ -1833,13 +1838,23 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
 
 function unsafeMakeTargetReason(command, unsafeMakeTargets) {
   for (const part of splitShellCommandParts(command)) {
-    const target = part.match(/^make\s+([A-Za-z0-9_.-]+)/)?.[1];
-    if (target && unsafeMakeTargets.has(target)) {
+    const targets = makeTargetsFromCommandPart(part);
+    const target = targets.find((candidate) => unsafeMakeTargets.has(candidate));
+    if (target) {
       return `it calls make target "${target}" whose recipe may mutate external state`;
     }
   }
 
   return null;
+}
+
+function makeTargetsFromCommandPart(part) {
+  const match = part.match(/^make(?:\s+(.+))?$/);
+  if (!match?.[1]) return [];
+  return match[1]
+    .split(/\s+/)
+    .map((value) => value.trim())
+    .filter((value) => value && !value.startsWith('-') && !value.includes('='));
 }
 
 function isSafeValidationCommand(command) {
@@ -1956,7 +1971,7 @@ function resolvePackageDirectory(directory, baseDirectory = null) {
 
 function packageDirectoryFromCommand(command) {
   const trimmed = command.trim();
-  const beforeCommand = trimmed.match(/^(?:npm\s+--prefix|pnpm\s+--dir|yarn\s+--cwd|bun\s+--cwd)\s+("[^"]+"|'[^']+'|\S+)/i);
+  const beforeCommand = trimmed.match(/^(?:npm\s+--prefix|pnpm\s+--dir|yarn\s+--cwd|bun\s+--cwd)(?:=|\s+)("[^"]+"|'[^']+'|\S+)/i);
   if (beforeCommand) return stripYamlQuotes(beforeCommand[1].trim());
 
   const npmInstallPrefix = trimmed.match(/^npm\s+(?:ci|install)\b.*(?:\s|^)--prefix(?:=|\s+)("[^"]+"|'[^']+'|\S+)/i);
@@ -2036,10 +2051,31 @@ function findUnsafePackageScript(scriptName, scripts, chain = [], context = {}) 
   if (hasDangerousCommand(body)) return { scriptName, chain: nextChain };
   if (unsafeMakeTargetReason(body, context.unsafeMakeTargets ?? new Set())) return { scriptName, chain: nextChain };
 
+  let currentDirectory = context.manifest?.directory ?? null;
   for (const part of splitShellCommandParts(body)) {
+    const changedDirectory = workingDirectoryFromCdCommand(part);
+    if (changedDirectory) {
+      currentDirectory = resolvePackageDirectory(changedDirectory, currentDirectory);
+      continue;
+    }
+
+    const partManifest = packageManifestForCommand(part, context.packageManifests ?? [], currentDirectory) ?? context.manifest;
+    for (const lifecycleManifest of installLifecycleManifestsForCommand(part, partManifest, context.packageManifests ?? [])) {
+      const lifecyclePackageJson = lifecycleManifest.json;
+      if (!lifecyclePackageJson || typeof lifecyclePackageJson.scripts !== 'object') continue;
+      for (const lifecycleScript of installLifecycleScriptNames(part, lifecyclePackageJson.scripts)) {
+        const unsafeLifecycleScript = findUnsafePackageScript(lifecycleScript, lifecyclePackageJson.scripts, nextChain, {
+          ...context,
+          manifest: lifecycleManifest,
+          visited: nextVisited,
+        });
+        if (unsafeLifecycleScript) return unsafeLifecycleScript;
+      }
+    }
+
     const childScript = packageScriptNameFromCommand(part);
     if (!childScript) continue;
-    const childManifest = packageManifestForCommand(part, context.packageManifests ?? [], context.manifest?.directory) ?? context.manifest;
+    const childManifest = partManifest ?? context.manifest;
     const childScripts = childManifest?.json?.scripts ?? scripts;
     const unsafeScript = findUnsafePackageScript(childScript, childScripts, nextChain, {
       ...context,
@@ -2089,22 +2125,22 @@ function packageScriptNameFromCommand(command) {
     return yarnWorkspaceRun[1];
   }
 
-  const npmPrefixRun = trimmed.match(/^npm\s+--prefix\s+\S+\s+run\s+([\w:-]+)/i);
+  const npmPrefixRun = trimmed.match(/^npm\s+--prefix(?:=|\s+)\S+\s+run\s+([\w:-]+)/i);
   if (npmPrefixRun) return npmPrefixRun[1];
 
-  const npmPrefixTest = trimmed.match(/^npm\s+--prefix\s+\S+\s+test\b/i);
+  const npmPrefixTest = trimmed.match(/^npm\s+--prefix(?:=|\s+)\S+\s+test\b/i);
   if (npmPrefixTest) return 'test';
 
-  const pnpmDirRun = trimmed.match(/^pnpm\s+--dir\s+\S+\s+run\s+([\w:-]+)/i);
+  const pnpmDirRun = trimmed.match(/^pnpm\s+--dir(?:=|\s+)\S+\s+run\s+([\w:-]+)/i);
   if (pnpmDirRun) return pnpmDirRun[1];
 
-  const pnpmDirTest = trimmed.match(/^pnpm\s+--dir\s+\S+\s+test\b/i);
+  const pnpmDirTest = trimmed.match(/^pnpm\s+--dir(?:=|\s+)\S+\s+test\b/i);
   if (pnpmDirTest) return 'test';
 
-  const yarnCwd = trimmed.match(/^yarn\s+--cwd\s+\S+\s+(?:run\s+)?([\w:-]+)/i);
+  const yarnCwd = trimmed.match(/^yarn\s+--cwd(?:=|\s+)\S+\s+(?:run\s+)?([\w:-]+)/i);
   if (yarnCwd && !['add', 'install', 'remove'].includes(yarnCwd[1].toLowerCase())) return yarnCwd[1];
 
-  const bunCwdRun = trimmed.match(/^bun\s+--cwd\s+\S+\s+run\s+([\w:-]+)/i);
+  const bunCwdRun = trimmed.match(/^bun\s+--cwd(?:=|\s+)\S+\s+run\s+([\w:-]+)/i);
   if (bunCwdRun) return bunCwdRun[1];
 
   const run = trimmed.match(/^(?:npm|pnpm|bun)\s+run\s+([\w:-]+)/i);

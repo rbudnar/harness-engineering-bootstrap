@@ -370,6 +370,11 @@ test('keeps unsafe Makefile recipes out of validation commands', () => {
     && !run.safe
     && run.inspectOnlyReason.includes('make target "test"')
   )));
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'make test deploy'
+    && !run.safe
+    && run.inspectOnlyReason.includes('make target "test"')
+  )));
   assert(!survey.commands.some((run) => run.command === 'make test'));
   assert(survey.runtimeSafetyHints.some((hint) => (
     hint.path === 'Makefile'
@@ -385,6 +390,22 @@ test('screens package scripts that call runtime-surface files', () => {
 
   assert(!survey.commands.some((run) => run.command === 'npm test'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'scripts/deploy.js'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('screens package wrappers that change directories before child scripts', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'package-wrapper-cwd'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('screens package wrappers that run install lifecycle hooks', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'package-wrapper-install'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
@@ -506,6 +527,14 @@ test('resolves explicit package prefixes relative to the caller package', () => 
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'services/api/package.json'));
 });
 
+test('screens equals-form scoped package commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'equals-scoped-package'));
+
+  assert(!survey.commands.some((run) => run.command === 'npm run build'));
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'services/api/package.json'));
+});
+
 test('keeps workflow default working-directory scoped to its job', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'workflow-default-scope'));
   const rootCommand = survey.ci.runCommands.find((run) => run.command === 'npm test' && !run.workingDirectory);
@@ -591,6 +620,15 @@ test('does not mistake an application VERSION file for HEB metadata', () => {
   assert.equal(survey.versionState.source, null);
   assert.equal(plan.operation, 'update');
   assert.equal(plan.updatePlan.status, 'needs-version-baseline');
+});
+
+test('does not treat generic docs as an existing HEB bootstrap', () => {
+  const fixture = resolve(fixturesRoot, 'generic-docs-harness');
+  const survey = surveyRepository(fixture);
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28', targetVersion: '0.2.0' });
+
+  assert.equal(survey.bootstrapState.status, 'fresh');
+  assert.equal(plan.operation, 'bootstrap');
 });
 
 test('the current template repository is a supported survey target', () => {
