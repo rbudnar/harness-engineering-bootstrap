@@ -1,0 +1,7 @@
+{
+  "name": "nested-unsafe-make-api-fixture",
+  "private": true,
+  "scripts": {
+    "build": "make build"
+  }
+}

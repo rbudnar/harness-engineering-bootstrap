@@ -1,0 +1,5 @@
+steps:
+  - task: Bash@3
+    inputs:
+      workingDirectory: services/api
+      script: npm test

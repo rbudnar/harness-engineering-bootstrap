@@ -305,6 +305,16 @@ test('parses non-GitHub CI scripts for runtime-safety triggers', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('parses GitLab before and after scripts for runtime-safety triggers', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'gitlab-before-after-ci'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => run.source === '.gitlab-ci.yml' && run.command === 'terraform apply -auto-approve' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.source === '.gitlab-ci.yml' && run.command === 'kubectl delete namespace preview' && !run.safe));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === '.gitlab-ci.yml'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('detects root MCP configs as runtime surfaces', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'root-mcp-config'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -394,6 +404,18 @@ test('keeps unsafe Makefile recipes out of validation commands', () => {
     && hint.reason === 'make target "build" may mutate external state'
   )));
   assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('screens nested Makefiles before emitting package validation commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'nested-unsafe-make'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm --prefix services/api run build'));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'services/api/Makefile'
+    && hint.reason === 'make target "build" may mutate external state'
+  )));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
@@ -656,6 +678,18 @@ test('parses Azure inlineScript tasks for runtime-safety evidence', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('honors generic CI workingDirectory declared before scripts', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'azure-preceding-working-directory'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+  const command = survey.ci.runCommands.find((run) => run.command === 'npm test');
+
+  assert.equal(command.workingDirectory, 'services/api');
+  assert.equal(command.safe, false);
+  assert.match(command.packageScriptReason, /pretest/);
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('honors Azure same-step workingDirectory for scripts', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'azure-working-directory'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -765,6 +799,15 @@ test('preserves Yarn colon-named validation scripts', () => {
 
   assert(survey.commands.some((run) => run.command === 'yarn run test:unit'));
   assert(survey.commands.some((run) => run.command === 'yarn run typecheck:ci'));
+});
+
+test('keeps safe Terraform package wrappers as validation commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'terraform-validation-package'));
+  const commands = survey.commands.map((run) => run.command);
+
+  assert(commands.includes('npm run validate'));
+  assert(commands.includes('npm run check:fmt'));
+  assert(!survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
 });
 
 test('detects existing bootstraps and emits versioned update guidance', () => {
