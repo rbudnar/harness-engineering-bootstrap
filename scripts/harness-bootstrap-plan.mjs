@@ -1059,7 +1059,7 @@ function isValidationScriptName(name) {
 
 function packageScriptCommand(packageManager, name, directory = '') {
   if (directory) return scopedPackageScriptCommand(packageManager, name, directory);
-  if (packageManager === 'yarn') return name === 'test' || /^[\w-]+$/.test(name) ? `yarn ${name}` : `yarn run ${name}`;
+  if (packageManager === 'yarn') return name === 'test' ? 'yarn test' : `yarn run ${name}`;
   if (packageManager === 'pnpm') return name === 'test' ? 'pnpm test' : `pnpm run ${name}`;
   if (packageManager === 'bun') return `bun run ${name}`;
   return name === 'test' ? 'npm test' : `npm run ${name}`;
@@ -1074,12 +1074,15 @@ function scopedPackageScriptCommand(packageManager, name, directory) {
 }
 
 function collectMakeTargets(root, fileSet) {
-  const targets = collectMakeTargetRecipes(root, fileSet).filter((target) => target.directory === '');
+  const targets = collectMakeTargetRecipes(root, fileSet);
   const unsafeTargets = collectUnsafeMakeTargets(root, fileSet);
   return targets
     .filter((target) => /^(test|build|lint|check|quality|validate|coverage)$/i.test(target.name))
     .filter((target) => !unsafeTargets.has(makeTargetKey(target.directory, target.name)))
-    .map((target) => ({ source: target.path, command: `make ${target.name}` }));
+    .map((target) => ({
+      source: target.path,
+      command: target.directory ? `make -C ${quotePath(target.directory)} ${target.name}` : `make ${target.name}`,
+    }));
 }
 
 function collectMakeRuntimeSafetyHints(root, fileSet) {

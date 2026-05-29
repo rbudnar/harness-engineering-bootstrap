@@ -541,6 +541,14 @@ test('screens nested Makefiles before emitting package validation commands', () 
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('includes safe nested Makefile validation targets', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'nested-safe-make'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.commands.some((run) => run.command === 'make -C services/api test'));
+  assert(!plan.openQuestions.some((question) => question.includes('exact command')));
+});
+
 test('parses slash Make targets and ignores commented recipes', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'slash-make-target'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -1171,6 +1179,8 @@ test('preserves Yarn colon-named validation scripts', () => {
 
   assert(survey.commands.some((run) => run.command === 'yarn run test:unit'));
   assert(survey.commands.some((run) => run.command === 'yarn run typecheck:ci'));
+  assert(survey.commands.some((run) => run.command === 'yarn run test-ci'));
+  assert(survey.commands.some((run) => run.command === 'yarn run quality'));
 });
 
 test('keeps safe Terraform package wrappers as validation commands', () => {
