@@ -97,6 +97,8 @@ const dangerousCommandPatterns = [
   /\byarn\s+npm\s+login\b/,
   /\bnpm\s+publish\b/,
   /\bpnpm\s+publish\b/,
+  /\bnpm\s+(?:(?:--workspace|-w)(?:=|\s+)\S+\s+|--workspaces?\s+|-ws\s+)*publish\b/,
+  /\bpnpm\s+(?:(?:--filter|-F)(?:=|\s+)\S+\s+|-r\s+|--recursive\s+)*publish\b/,
   /\byarn\s+npm\s+publish\b/,
   /\bbun\s+publish\b/,
   /\bdocker\s+push\b/,
@@ -2700,8 +2702,8 @@ function hasDangerousGhCommand(part) {
   if (args[0] === 'release') return true;
 
   const mutatingVerbs = {
-    issue: new Set(['create', 'edit', 'close', 'reopen', 'delete', 'transfer', 'pin', 'unpin', 'lock', 'unlock']),
-    pr: new Set(['merge', 'comment', 'review', 'ready', 'close', 'reopen', 'edit', 'lock', 'unlock']),
+    issue: new Set(['create', 'comment', 'edit', 'close', 'reopen', 'delete', 'transfer', 'pin', 'unpin', 'lock', 'unlock']),
+    pr: new Set(['create', 'merge', 'comment', 'review', 'ready', 'close', 'reopen', 'edit', 'lock', 'unlock']),
     workflow: new Set(['run', 'enable', 'disable']),
     run: new Set(['cancel', 'delete', 'rerun']),
     repo: new Set(['create', 'delete', 'edit', 'rename', 'archive', 'unarchive', 'fork', 'sync']),
@@ -2781,6 +2783,7 @@ function cliOptionConsumesNext(option, command = '') {
     && ['--kube-context', '--registry-config', '--repository-cache', '--repository-config'].includes(lower)) {
     return true;
   }
+  if (command === 'docker' && ['-h', '--host'].includes(lower)) return true;
   if (command === 'terraform' && lower === '-chdir') return true;
   if (command === 'gh'
     && ['-R', '--repo', '--hostname'].some((candidate) => lower === candidate.toLowerCase())) {

@@ -8,3 +8,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: docker push ghcr.io/example/app
+      - run: docker -H tcp://daemon:2375 push ghcr.io/example/app

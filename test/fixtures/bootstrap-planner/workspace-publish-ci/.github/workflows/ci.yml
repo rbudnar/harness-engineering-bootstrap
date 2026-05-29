@@ -1,0 +1,7 @@
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm --workspace api publish
+      - run: npm --workspaces publish
+      - run: pnpm -r publish

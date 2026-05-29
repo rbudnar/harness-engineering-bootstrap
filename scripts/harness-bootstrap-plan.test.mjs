@@ -793,6 +793,8 @@ test('screens mutating gh commands after global options', () => {
   assert(!survey.commands.some((run) => run.command === 'npm run validate'));
   assert(!survey.commands.some((run) => run.command === 'npm run quality'));
   assert(!survey.commands.some((run) => run.command === 'npm run lint'));
+  assert(!survey.commands.some((run) => run.command === 'npm run build:pr'));
+  assert(!survey.commands.some((run) => run.command === 'npm run check:comment'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
@@ -1177,8 +1179,21 @@ test('treats Docker registry pushes as inspect-only commands', () => {
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
 
   assert(survey.ci.runCommands.some((run) => run.command === 'docker push ghcr.io/example/app' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'docker -H tcp://daemon:2375 push ghcr.io/example/app' && !run.safe));
   assert(!survey.commands.some((run) => run.command === 'npm run check'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('detects workspace-scoped publish commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workspace-publish-ci'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  for (const command of ['npm --workspace api publish', 'npm --workspaces publish', 'pnpm -r publish']) {
+    assert(survey.ci.runCommands.some((run) => run.command === command && !run.safe));
+    assert(!survey.commands.some((run) => run.command === command));
+  }
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === '.github/workflows/ci.yml'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
