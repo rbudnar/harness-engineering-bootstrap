@@ -1,0 +1,6 @@
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: CI=true npm test
+      - run: PYTHONWARNINGS=error pytest

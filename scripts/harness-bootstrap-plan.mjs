@@ -107,7 +107,7 @@ const dangerousCommandPatterns = [
   /\bgit\s+push\b/,
   /\bgh\s+release\b/,
   /\b(npx|npm\s+exec|pnpm\s+(?:exec|dlx)|yarn\s+(?:exec|dlx)|bunx)\s+(semantic-release|release-it)\b/,
-  /\b(npx|npm\s+exec|pnpm\s+(?:exec|dlx)|yarn\s+(?:exec|dlx)|bunx)\s+changeset\s+publish\b/,
+  /\b(npx|npm\s+exec|pnpm\s+(?:exec|dlx)|yarn\s+(?:exec|dlx)|bunx)\b.*\bchangeset\s+publish\b/,
   /(^|\s)(semantic-release|release-it)(\s|$)/,
   /\b(node|tsx?|python3?|bash|sh|pwsh|powershell)\s+\S*(deploy|release|publish|provision)[\w./\\-]*/i,
   /\b(npm|pnpm|yarn|bun)\s+(run\s+)?[\w:-]*(deploy|publish|release)[\w:-]*\b/,
@@ -125,6 +125,7 @@ const dangerousCommandPatterns = [
   /\bblack\b(?![^&|;]*\s--check\b)/,
   /\bruff\s+format\b(?![^&|;]*\s--check\b)/,
   /\b(prettier|gofmt|dprint|terraform\s+fmt)\b.*\s-w(?:\s|$)/,
+  /\bterraform\s+fmt\b(?![^&|;]*\s-check\b)/,
   /\s--(fix|write)\b/,
 ];
 
@@ -3533,12 +3534,13 @@ function isRuntimeSurfacePath(path) {
 }
 
 function isSafeValidationCommandPart(part) {
-  const lower = part.toLowerCase();
+  const normalizedPart = stripPackageCommandPrefix(part);
+  const lower = normalizedPart.toLowerCase();
   if (dangerousCommandPatterns.some((pattern) => pattern.test(lower))) return false;
-  if (hasDangerousForwardedTarget(part)) return false;
-  if (commandPartReferencesRuntimeSurface(part)) return false;
+  if (hasDangerousForwardedTarget(normalizedPart)) return false;
+  if (commandPartReferencesRuntimeSurface(normalizedPart)) return false;
   if (/(^|[^&])&(?!&)/.test(lower)) return false;
-  if (unsafeScopedPackageDirectoryReason(part)) return false;
+  if (unsafeScopedPackageDirectoryReason(normalizedPart)) return false;
 
   const validationPatterns = [
     /^node\s+--test(?:\s+.*)?$/,

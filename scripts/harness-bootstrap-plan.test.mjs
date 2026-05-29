@@ -259,6 +259,15 @@ test('keeps unknown setup steps out of runtime-safety triggers', () => {
   assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('keeps env-prefixed validation commands runnable', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'env-validation-ci'));
+
+  assert(survey.ci.runCommands.some((run) => run.command === 'CI=true npm test' && run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'PYTHONWARNINGS=error pytest' && run.safe));
+  assert(survey.commands.some((run) => run.command === 'CI=true npm test'));
+  assert(survey.commands.some((run) => run.command === 'PYTHONWARNINGS=error pytest'));
+});
+
 test('uses package-only deploy authority as runtime-safety evidence', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'package-deploy-only'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -1215,6 +1224,15 @@ test('keeps formatter short write flags inspect-only', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('keeps Terraform fmt writes inspect-only', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'terraform-fmt-write-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('uses mutating kubectl commands as runtime-safety evidence', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'kubectl-create-ci'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -1460,6 +1478,8 @@ test('uses direct release CLIs as runtime-safety evidence', () => {
   assert(survey.ci.runCommands.some((run) => run.command === 'npx semantic-release' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'npm exec release-it' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'pnpm exec semantic-release' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'npm exec -- changeset publish' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'npx --yes changeset publish' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'semantic-release' && !run.safe));
   assert(survey.runtimeSafetyHints.some((hint) => (
     hint.path === '.github/workflows/ci.yml'
