@@ -2,6 +2,7 @@
   "name": "package-runtime-surface-fixture",
   "private": true,
   "scripts": {
-    "test": "node scripts/deploy.js"
+    "test": "node scripts/deploy.js",
+    "check": "node --test scripts/deploy.js"
   }
 }

@@ -723,6 +723,7 @@ test('screens package scripts that call runtime-surface files', () => {
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
 
   assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'scripts/deploy.js'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });

@@ -2772,6 +2772,7 @@ function commandPartReferencesRuntimeSurface(part) {
     .split(/\s+/)
     .map((token) => stripYamlQuotes(token.trim()).replace(/^\.?[\\/]+/, ''))
     .filter(Boolean)
+    .filter((token) => token.includes('/') || token.includes('\\') || token.startsWith('.') || /\.[A-Za-z0-9]+$/.test(token))
     .some((token) => isRuntimeSurfacePath(normalizePath(token)));
 }
 
@@ -3510,6 +3511,7 @@ function isSafeValidationCommandPart(part) {
   const lower = part.toLowerCase();
   if (dangerousCommandPatterns.some((pattern) => pattern.test(lower))) return false;
   if (hasDangerousForwardedTarget(part)) return false;
+  if (commandPartReferencesRuntimeSurface(part)) return false;
   if (/(^|[^&])&(?!&)/.test(lower)) return false;
   if (unsafeScopedPackageDirectoryReason(part)) return false;
 
