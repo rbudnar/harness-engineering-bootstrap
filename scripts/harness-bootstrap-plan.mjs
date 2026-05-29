@@ -1480,6 +1480,7 @@ function workflowStepMetadataRuntimeSafetyReason(lines, stepIndex, action = '') 
 
   const text = metadata.join('\n');
   if (/\$\{\{\s*secrets\./i.test(text)) return 'GitHub workflow step references secrets';
+  if (/(^|\n)secrets:\s*inherit(?:\s*(?:#.*)?)?$/im.test(text)) return 'GitHub workflow step inherits secrets';
   if (workflowInheritedSecretText(lines, stepIndex)) return 'GitHub workflow step inherits secrets';
   if (/docker\/build-push-action/i.test(action)) {
     const pushMatch = text.match(/(^|\n)push:\s*("[^"]+"|'[^']+'|[^\s#]+)/i);
@@ -2459,18 +2460,19 @@ function isSafeValidationCommand(command) {
 
 function hasDangerousCommand(command) {
   return splitShellCommandParts(String(command ?? ''))
-    .some((part) => (
-      !isSafeValidationCommandPart(part)
-      && (
-        hasDangerousCliVerb(part)
-        || hasDangerousAwsCommand(part)
-        || hasDangerousDockerCommand(part)
-        || hasDangerousGitCommand(part)
-        || hasDangerousTaskTarget(part)
-        || dangerousCommandPatterns.some((pattern) => pattern.test(part.toLowerCase()))
-        || commandPartReferencesRuntimeSurface(part)
-      )
-    ));
+    .some((part) => {
+      const inspectedPart = stripPackageCommandPrefix(part);
+      return !isSafeValidationCommandPart(part)
+        && (
+          hasDangerousCliVerb(inspectedPart)
+          || hasDangerousAwsCommand(inspectedPart)
+          || hasDangerousDockerCommand(inspectedPart)
+          || hasDangerousGitCommand(inspectedPart)
+          || hasDangerousTaskTarget(inspectedPart)
+          || dangerousCommandPatterns.some((pattern) => pattern.test(inspectedPart.toLowerCase()))
+          || commandPartReferencesRuntimeSurface(inspectedPart)
+        );
+    });
 }
 
 function hasDangerousCliVerb(part) {

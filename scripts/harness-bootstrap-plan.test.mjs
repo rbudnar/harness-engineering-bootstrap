@@ -877,6 +877,17 @@ test('screens env-prefixed delegated package scripts', () => {
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
 });
 
+test('screens env-prefixed mutating package scripts', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'env-prefixed-mutating-cli-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm run build'));
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(!survey.commands.some((run) => run.command === 'npm run quality'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens workspace delegated package scripts', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'workspace-delegated-package'));
 
@@ -1117,6 +1128,22 @@ test('uses inherited workflow secrets as runtime-safety evidence', () => {
     && run.runtimeSafetyReason === 'GitHub workflow step inherits secrets'
   )));
   assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('uses reusable workflow inherited secrets as runtime-safety evidence', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workflow-reusable-inherited-secrets'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'uses: org/repo/.github/workflows/bootstrap.yml@v1'
+    && !run.safe
+    && run.runtimeSafetyReason === 'GitHub workflow step inherits secrets'
+  )));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === '.github/workflows/ci.yml'
+    && hint.reason.includes('secrets')
+  )));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
