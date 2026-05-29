@@ -2413,6 +2413,8 @@ function hasDangerousCommand(command) {
       && (
         hasDangerousCliVerb(part)
         || hasDangerousAwsCommand(part)
+        || hasDangerousDockerCommand(part)
+        || hasDangerousGitCommand(part)
         || hasDangerousTaskTarget(part)
         || dangerousCommandPatterns.some((pattern) => pattern.test(part.toLowerCase()))
         || commandPartReferencesRuntimeSurface(part)
@@ -2480,6 +2482,21 @@ function hasDangerousAwsCommand(part) {
   return args.some((word) => ['put', 'delete', 'create', 'deploy', 'publish', 'update'].includes(word));
 }
 
+function hasDangerousDockerCommand(part) {
+  const words = shellWords(part).map((word) => word.toLowerCase());
+  if (words[0] !== 'docker') return false;
+  const args = stripCliGlobalOptions(words.slice(1), 'docker');
+  if (['push', 'login'].includes(args[0])) return true;
+  return args[0] === 'buildx' && args[1] === 'build' && args.includes('--push');
+}
+
+function hasDangerousGitCommand(part) {
+  const words = shellWords(part).map((word) => word.toLowerCase());
+  if (words[0] !== 'git') return false;
+  const args = stripCliGlobalOptions(words.slice(1), 'git');
+  return args[0] === 'push';
+}
+
 function firstCliVerb(args, command = '') {
   return stripCliGlobalOptions(args, command)[0] ?? null;
 }
@@ -2508,6 +2525,7 @@ function stripCliGlobalOptions(args, command = '') {
 function cliOptionConsumesNext(option, command = '') {
   const lower = option.toLowerCase();
   if (command === 'pulumi' && ['-s', '--stack'].includes(lower)) return true;
+  if (command === 'git' && lower === '-c') return true;
   return cliOptionsWithValues.has(lower);
 }
 
@@ -2725,6 +2743,7 @@ function findUnsafePackageScript(scriptName, scripts, chain = [], context = {}) 
   }
 
   const body = String(scripts[scriptName] ?? '');
+  if (isAuthorityPackageScript(scriptName)) return { scriptName, chain: nextChain };
   if (hasDangerousCommand(body)) return { scriptName, chain: nextChain };
   if (unsafeMakeTargetReasonFromDirectory(body, context.unsafeMakeTargets ?? new Set(), context.manifest?.directory)) return { scriptName, chain: nextChain };
 
@@ -3076,10 +3095,10 @@ function isSafeValidationCommandPart(part) {
   const validationPatterns = [
     /^node\s+--test(?:\s+.*)?$/,
     /^(npm|pnpm|yarn|bun)\s+test(?:\s+.*)?$/,
-    /^npm\s+--prefix(?:=|\s+)\S+\s+(test|run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*)(?:\s+.*)?$/,
-    /^pnpm\s+--dir(?:=|\s+)\S+\s+(test|run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*)(?:\s+.*)?$/,
-    /^yarn\s+--cwd(?:=|\s+)\S+\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*(?:\s+.*)?$/,
-    /^bun\s+--cwd(?:=|\s+)\S+\s+run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*(?:\s+.*)?$/,
+    /^npm\s+--prefix(?:=|\s+)("[^"]+"|'[^']+'|\S+)\s+(test|run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*)(?:\s+.*)?$/,
+    /^pnpm\s+--dir(?:=|\s+)("[^"]+"|'[^']+'|\S+)\s+(test|run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*)(?:\s+.*)?$/,
+    /^yarn\s+--cwd(?:=|\s+)("[^"]+"|'[^']+'|\S+)\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*(?:\s+.*)?$/,
+    /^bun\s+--cwd(?:=|\s+)("[^"]+"|'[^']+'|\S+)\s+run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*(?:\s+.*)?$/,
     /^(npm|pnpm|yarn|bun)\s+run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*(?:\s+.*)?$/,
     /^(npm|pnpm|yarn|bun)\s+(build|lint|typecheck|check|validate)(?:\s+.*)?$/,
     /^(pytest|python\s+-m\s+pytest|go\s+test|cargo\s+test|mvn\s+test|gradle\s+test)(?:\s+.*)?$/,

@@ -648,6 +648,16 @@ test('screens credential login package scripts', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens mutating git and docker commands after global options', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'cli-global-option-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens write-by-default formatter package scripts', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'formatter-write-default-package'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -667,6 +677,12 @@ test('screens quoted npm prefix package wrappers', () => {
   assert(!survey.commands.some((run) => run.command === 'npm test'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'services/api v2/package.json'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('keeps safe quoted scoped package paths as validation commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'quoted-safe-package'));
+
+  assert(survey.commands.some((run) => run.command === 'npm --prefix "services/api v2" test'));
 });
 
 test('screens package wrappers that change directories before child scripts', () => {
@@ -849,6 +865,18 @@ test('prefers exact workspace package names over directory basenames', () => {
   )));
   assert(!survey.commands.some((run) => run.command === 'npm run build --workspace api'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'services/backend/package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('screens delegated authority package scripts by name', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'delegated-authority-workspace'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'pnpm test'));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'packages/api/package.json'
+    && hint.reason === 'package script "deploy:staging" may mutate external state'
+  )));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
