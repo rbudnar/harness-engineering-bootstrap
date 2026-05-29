@@ -420,6 +420,18 @@ test('keeps unsafe Makefile recipes out of validation commands', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('propagates unsafe nested Make targets through recipes', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'make-nested-delegation'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'make test'));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'Makefile'
+    && hint.reason === 'make target "test" may mutate external state'
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens nested Makefiles before emitting package validation commands', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'nested-unsafe-make'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -600,6 +612,14 @@ test('screens workspace-wide and equals selector delegated scripts', () => {
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'packages/api/package.json'));
 });
 
+test('keeps singular npm workspace commands scoped to one manifest', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'singular-workspace-package'));
+  const command = survey.ci.runCommands.find((run) => run.command === 'npm run build --workspace web');
+
+  assert.equal(command.safe, true);
+  assert(survey.commands.some((run) => run.command === 'npm run build --workspace web'));
+});
+
 test('resolves explicit package prefixes relative to the caller package', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'relative-prefix-package'));
 
@@ -642,6 +662,18 @@ test('uses mutating kubectl commands as runtime-safety evidence', () => {
   assert(survey.runtimeSafetyHints.some((hint) => (
     hint.path === '.github/workflows/ci.yml'
     && hint.reason.includes('kubectl create namespace preview')
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('uses mutating kubectl commands with global flags as runtime-safety evidence', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'kubectl-global-flag-ci'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => run.command === 'kubectl -n prod delete namespace preview' && !run.safe));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === '.github/workflows/ci.yml'
+    && hint.reason.includes('kubectl -n prod delete namespace preview')
   )));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });

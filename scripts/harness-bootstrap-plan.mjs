@@ -1066,34 +1066,21 @@ function parseMakeTargetRecipes(text, path) {
 }
 
 function unsafeMakeTargetKeys(targets) {
-  const keys = new Set();
-  const directories = new Map();
-  for (const target of targets) {
-    const directory = target.directory || '';
-    if (!directories.has(directory)) directories.set(directory, []);
-    directories.get(directory).push(target);
-  }
-
-  for (const [directory, directoryTargets] of directories) {
-    for (const name of unsafeMakeTargetNames(directoryTargets)) {
-      keys.add(makeTargetKey(directory, name));
-    }
-  }
-
-  return keys;
-}
-
-function unsafeMakeTargetNames(targets) {
-  const byName = new Map(targets.map((target) => [target.name, target]));
+  const byKey = new Map(targets.map((target) => [makeTargetKey(target.directory, target.name), target]));
   const unsafe = new Set();
   let changed = true;
 
   while (changed) {
     changed = false;
     for (const target of targets) {
-      if (unsafe.has(target.name)) continue;
-      if (hasDangerousCommand(target.recipe) || target.prerequisites.some((name) => unsafe.has(name) || isUnsafeMakePrerequisite(name, byName))) {
-        unsafe.add(target.name);
+      const key = makeTargetKey(target.directory, target.name);
+      if (unsafe.has(key)) continue;
+      if (
+        hasDangerousCommand(target.recipe)
+        || unsafeMakeTargetReasonFromDirectory(target.recipe, unsafe, target.directory)
+        || target.prerequisites.some((name) => unsafe.has(makeTargetKey(target.directory, name)) || isUnsafeMakePrerequisite(name, target.directory, byKey))
+      ) {
+        unsafe.add(key);
         changed = true;
       }
     }
@@ -1102,12 +1089,13 @@ function unsafeMakeTargetNames(targets) {
   return unsafe;
 }
 
-function isUnsafeMakePrerequisite(name, byName, seen = new Set()) {
-  const target = byName.get(name);
-  if (!target || seen.has(name)) return false;
-  seen.add(name);
+function isUnsafeMakePrerequisite(name, directory, byKey, seen = new Set()) {
+  const key = makeTargetKey(directory, name);
+  const target = byKey.get(key);
+  if (!target || seen.has(key)) return false;
+  seen.add(key);
   return hasDangerousCommand(target.recipe)
-    || target.prerequisites.some((prerequisite) => isUnsafeMakePrerequisite(prerequisite, byName, seen));
+    || target.prerequisites.some((prerequisite) => isUnsafeMakePrerequisite(prerequisite, target.directory, byKey, seen));
 }
 
 function makeTargetKey(directory, target) {
@@ -2045,10 +2033,55 @@ function hasDangerousCommand(command) {
     .some((part) => (
       !isSafeValidationCommandPart(part)
       && (
-        dangerousCommandPatterns.some((pattern) => pattern.test(part.toLowerCase()))
+        hasDangerousCliVerb(part)
+        || hasDangerousAwsCommand(part)
+        || dangerousCommandPatterns.some((pattern) => pattern.test(part.toLowerCase()))
         || commandPartReferencesRuntimeSurface(part)
       )
     ));
+}
+
+function hasDangerousCliVerb(part) {
+  const words = shellWords(part).map((word) => word.toLowerCase());
+  const [command, ...args] = words;
+  const mutatingVerbs = {
+    kubectl: new Set(['apply', 'create', 'delete', 'replace', 'rollout', 'scale', 'patch', 'set', 'annotate', 'label', 'drain', 'taint', 'expose', 'autoscale']),
+    helm: new Set(['upgrade', 'install', 'uninstall', 'delete', 'rollback']),
+  };
+  if (!mutatingVerbs[command]) return false;
+  const verb = firstCliVerb(args);
+  return Boolean(verb && mutatingVerbs[command].has(verb));
+}
+
+function hasDangerousAwsCommand(part) {
+  const words = shellWords(part).map((word) => word.toLowerCase());
+  if (words[0] !== 'aws') return false;
+  const args = stripCliGlobalOptions(words.slice(1));
+  const [service, operation] = args;
+  if ((service === 's3' || service === 's3api') && ['sync', 'cp', 'mv', 'rm', 'rb', 'mb', 'put', 'delete', 'create', 'update'].includes(operation)) {
+    return true;
+  }
+  return args.some((word) => ['put', 'delete', 'create', 'deploy', 'publish', 'update'].includes(word));
+}
+
+function firstCliVerb(args) {
+  return stripCliGlobalOptions(args)[0] ?? null;
+}
+
+function stripCliGlobalOptions(args) {
+  const result = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const word = args[index];
+    if (!word.startsWith('-')) {
+      result.push(word);
+      continue;
+    }
+
+    if (!word.includes('=') && args[index + 1] && !args[index + 1].startsWith('-')) {
+      index += 1;
+    }
+  }
+  return result;
 }
 
 function commandPartReferencesRuntimeSurface(part) {
@@ -2296,7 +2329,7 @@ function packageScriptManifestsForCommand(command, fallbackManifest, packageMani
 function isAllWorkspacePackageScriptCommand(command, packageManifest, packageManifests) {
   if (!packageManifest || packageManifests.length <= 1) return false;
   const lower = command.trim().toLowerCase();
-  return /--workspaces?\b/.test(lower)
+  return /(?:^|\s)--workspaces(?:\s|=|$)/.test(lower)
     || /^pnpm\s+(?:-r|--recursive)\s+/.test(lower);
 }
 
