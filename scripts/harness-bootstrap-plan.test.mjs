@@ -709,6 +709,7 @@ test('screens mutating git and docker commands after global options', () => {
   assert(!survey.commands.some((run) => run.command === 'npm run test:docker-host'));
   assert(!survey.commands.some((run) => run.command === 'npm run check:aws'));
   assert(!survey.commands.some((run) => run.command === 'npm run validate:pulumi'));
+  assert(!survey.commands.some((run) => run.command === 'npm run build:config'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
@@ -1029,6 +1030,17 @@ test('keeps singular npm workspace commands scoped to one manifest', () => {
 
   assert.equal(command.safe, true);
   assert(survey.commands.some((run) => run.command === 'npm run build --workspace web'));
+});
+
+test('screens every npm workspace selector before emitting CI commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'multi-workspace-selector'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+  const command = survey.ci.runCommands.find((run) => run.command === 'npm test --workspace safe --workspace unsafe');
+
+  assert.equal(command.safe, false);
+  assert(!survey.commands.some((run) => run.command === 'npm test --workspace safe --workspace unsafe'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'packages/unsafe/package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
 test('resolves explicit package prefixes relative to the caller package', () => {

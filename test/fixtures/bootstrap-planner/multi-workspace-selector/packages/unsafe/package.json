@@ -1,0 +1,7 @@
+{
+  "name": "unsafe",
+  "private": true,
+  "scripts": {
+    "test": "terraform apply -auto-approve"
+  }
+}

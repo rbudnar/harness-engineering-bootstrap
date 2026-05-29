@@ -139,6 +139,7 @@ const cliOptionsWithValues = new Set([
   '--client-certificate',
   '--client-key',
   '--cluster',
+  '--config',
   '--context',
   '--cwd',
   '--endpoint-url',
@@ -2783,24 +2784,28 @@ function packageDirectoryFromCommand(command) {
 }
 
 function packageWorkspaceFromCommand(command) {
+  return packageWorkspacesFromCommand(command)[0] ?? null;
+}
+
+function packageWorkspacesFromCommand(command) {
   const trimmed = stripPackageCommandPrefix(command);
   const words = shellWords(trimmed);
   const manager = words[0]?.toLowerCase();
 
   if (manager === 'npm') {
-    const npmWorkspace = packageOptionValue(words, ['--workspace', '-w']);
-    if (npmWorkspace) return npmWorkspace;
+    const npmWorkspaces = packageOptionValues(words, ['--workspace', '-w']);
+    if (npmWorkspaces.length) return npmWorkspaces;
   }
 
   if (manager === 'pnpm') {
     const pnpmFilter = packageOptionValue(words, ['--filter', '-F']);
-    if (pnpmFilter) return normalizePnpmWorkspaceSelector(pnpmFilter);
+    if (pnpmFilter) return [normalizePnpmWorkspaceSelector(pnpmFilter)];
   }
 
   const yarnWorkspace = trimmed.match(/^yarn\s+workspace\s+("[^"]+"|'[^']+'|\S+)/i);
-  if (yarnWorkspace) return stripYamlQuotes(yarnWorkspace[1].trim());
+  if (yarnWorkspace) return [stripYamlQuotes(yarnWorkspace[1].trim())];
 
-  return null;
+  return [];
 }
 
 function installLifecycleScriptNames(command, scripts) {
@@ -2912,10 +2917,14 @@ function packageScriptManifestsForCommand(command, fallbackManifest, packageMani
     return uniqueManifests.length ? uniqueManifests : [fallbackManifest].filter(Boolean);
   }
 
-  const workspace = packageWorkspaceFromCommand(command);
-  if (workspace) {
-    const targetWorkspaceManifest = packageManifestForWorkspace(workspace, packageManifests);
-    if (targetWorkspaceManifest) return [targetWorkspaceManifest];
+  const workspaces = packageWorkspacesFromCommand(command);
+  if (workspaces.length) {
+    const targetWorkspaceManifests = workspaces
+      .map((workspace) => packageManifestForWorkspace(workspace, packageManifests))
+      .filter(Boolean);
+    if (targetWorkspaceManifests.length === workspaces.length) {
+      return dedupeObjects(targetWorkspaceManifests, (manifest) => manifest.path);
+    }
     const workspaceManifests = packageManifests.filter((manifest) => manifest.path !== 'package.json' && manifest.json?.scripts);
     return workspaceManifests.length ? workspaceManifests : [fallbackManifest].filter(Boolean);
   }
@@ -3121,16 +3130,27 @@ function hasPnpmRecursive(words) {
 }
 
 function packageOptionValue(words, options) {
+  return packageOptionValues(words, options)[0] ?? null;
+}
+
+function packageOptionValues(words, options) {
   const normalizedOptions = options.map((option) => option.toLowerCase());
+  const values = [];
   for (let index = 1; index < words.length; index += 1) {
     const word = words[index];
     const lower = word.toLowerCase();
     const option = normalizedOptions.find((candidate) => lower === candidate || lower.startsWith(`${candidate}=`));
     if (!option) continue;
-    if (lower.includes('=')) return word.slice(option.length + 1);
-    return words[index + 1] ?? null;
+    if (lower.includes('=')) {
+      values.push(word.slice(option.length + 1));
+      continue;
+    }
+    if (words[index + 1]) {
+      values.push(words[index + 1]);
+      index += 1;
+    }
   }
-  return null;
+  return values;
 }
 
 function scriptNameAfterPackageOptions(words, startIndex, blockedCommands = []) {

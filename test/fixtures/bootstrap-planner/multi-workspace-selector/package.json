@@ -1,0 +1,7 @@
+{
+  "name": "multi-workspace-selector-fixture",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ]
+}
