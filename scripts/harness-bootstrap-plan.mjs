@@ -2395,7 +2395,7 @@ function unsafeMakeTargetReasonFromDirectory(command, unsafeMakeTargets, baseDir
 }
 
 function makeInvocationFromCommandPart(part, currentDirectory = '') {
-  const words = shellWords(part);
+  const words = shellWords(stripPackageCommandPrefix(part));
   if (!isMakeCommandWord(words[0])) return null;
 
   let directory = normalizePackageDirectory(currentDirectory || '');
@@ -2725,7 +2725,7 @@ function unsafePackageScriptReason(command, packageManifest, packageManifests = 
       currentDirectory = cdCommand.directory;
       continue;
     }
-    const scopedDirectoryReason = unsafeScopedPackageDirectoryReason(part);
+    const scopedDirectoryReason = unsafeScopedPackageDirectoryReason(part, currentDirectory);
     if (scopedDirectoryReason) return scopedDirectoryReason;
 
     const partManifest = packageManifestForCommand(part, packageManifests, currentDirectory) ?? packageManifest;
@@ -2862,8 +2862,8 @@ function packageWorkspacesFromCommand(command) {
   }
 
   if (manager === 'pnpm') {
-    const pnpmFilter = packageOptionValue(words, ['--filter', '-F']);
-    if (pnpmFilter) return [normalizePnpmWorkspaceSelector(pnpmFilter)];
+    const pnpmFilters = packageOptionValues(words, ['--filter', '-F']);
+    if (pnpmFilters.length) return pnpmFilters.map((filter) => normalizePnpmWorkspaceSelector(filter));
   }
 
   const yarnWorkspace = trimmed.match(/^yarn\s+workspace\s+("[^"]+"|'[^']+'|\S+)/i);
@@ -2939,7 +2939,7 @@ function findUnsafePackageScript(scriptName, scripts, chain = [], context = {}) 
       currentDirectory = cdCommand.directory;
       continue;
     }
-    if (unsafeScopedPackageDirectoryReason(part)) return { scriptName, chain: nextChain };
+    if (unsafeScopedPackageDirectoryReason(part, currentDirectory)) return { scriptName, chain: nextChain };
 
     const partManifest = packageManifestForCommand(part, context.packageManifests ?? [], currentDirectory) ?? context.manifest;
     for (const lifecycleManifest of installLifecycleManifestsForCommand(part, partManifest, context.packageManifests ?? [])) {
@@ -3448,11 +3448,11 @@ function isSafeValidationCommandPart(part) {
   return validationPatterns.some((pattern) => pattern.test(lower));
 }
 
-function unsafeScopedPackageDirectoryReason(command) {
+function unsafeScopedPackageDirectoryReason(command, currentDirectory = '') {
   const directories = scopedPackageDirectoryValues(command);
   if (!directories.length) return null;
   const unsafeDirectory = directories.find((directory) => (
-    !isStaticRelativeDirectory(directory) || cdTargetEscapesRepo(directory, '')
+    !isStaticRelativeDirectory(directory) || cdTargetEscapesRepo(directory, currentDirectory)
   ));
   if (!unsafeDirectory) return null;
   return 'it uses a dynamic or out-of-repo package directory option';

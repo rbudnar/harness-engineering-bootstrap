@@ -581,6 +581,18 @@ test('screens make -f package wrappers through included makefiles', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens env-prefixed package make targets', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'package-env-make-target'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'Makefile'
+    && hint.reason === 'make target "prod" may mutate external state'
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens bare make invocations through the default target', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'bare-make-default'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -763,6 +775,13 @@ test('keeps safe quoted scoped package paths as validation commands', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'quoted-safe-package'));
 
   assert(survey.commands.some((run) => run.command === 'npm --prefix "services/api v2" test'));
+});
+
+test('resolves safe sibling package prefixes from the caller package', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'nested-sibling-prefix'));
+
+  assert(survey.commands.some((run) => run.command === 'npm --prefix packages/web run build'));
+  assert(!survey.runtimeSafetyHints.some((hint) => hint.path === 'packages/web/package.json'));
 });
 
 test('screens quoted scoped pnpm yarn and bun package paths', () => {
@@ -966,6 +985,15 @@ test('screens pnpm and yarn workspace delegated package scripts', () => {
   assert(!survey.commands.some((run) => run.command === 'npm run build'));
   assert(!survey.commands.some((run) => run.command === 'npm run check'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'packages/api/package.json'));
+});
+
+test('screens every pnpm filter before trusting delegated scripts', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'pnpm-multiple-filter-workspaces'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'pnpm test'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'packages/unsafe/package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
 test('screens workspace-wide and equals selector delegated scripts', () => {

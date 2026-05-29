@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "scripts": {
+    "test": "CI=1 make prod"
+  }
+}
