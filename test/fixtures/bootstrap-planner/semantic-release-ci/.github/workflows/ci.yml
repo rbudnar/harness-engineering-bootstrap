@@ -12,4 +12,8 @@ jobs:
       - run: pnpm exec semantic-release
       - run: npm exec -- changeset publish
       - run: npx --yes changeset publish
+      - run: changeset publish
+      - run: pnpm changeset publish
+      - run: yarn changeset publish
+      - run: bun changeset publish
       - run: semantic-release

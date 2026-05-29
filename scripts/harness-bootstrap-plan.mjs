@@ -108,6 +108,7 @@ const dangerousCommandPatterns = [
   /\bgh\s+release\b/,
   /\b(npx|npm\s+exec|pnpm\s+(?:exec|dlx)|yarn\s+(?:exec|dlx)|bunx)\s+(semantic-release|release-it)\b/,
   /\b(npx|npm\s+exec|pnpm\s+(?:exec|dlx)|yarn\s+(?:exec|dlx)|bunx)\b.*\bchangeset\s+publish\b/,
+  /(^|\s)(?:(?:pnpm|yarn|bun)\s+)?changeset\s+publish(?:\s|$)/,
   /(^|\s)(semantic-release|release-it)(\s|$)/,
   /\b(node|tsx?|python3?|bash|sh|pwsh|powershell)\s+\S*(deploy|release|publish|provision)[\w./\\-]*/i,
   /\b(npm|pnpm|yarn|bun)\s+(run\s+)?[\w:-]*(deploy|publish|release)[\w:-]*\b/,

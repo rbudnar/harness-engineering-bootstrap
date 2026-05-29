@@ -1519,10 +1519,18 @@ test('uses direct release CLIs as runtime-safety evidence', () => {
   assert(survey.ci.runCommands.some((run) => run.command === 'pnpm exec semantic-release' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'npm exec -- changeset publish' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'npx --yes changeset publish' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'changeset publish' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'pnpm changeset publish' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'yarn changeset publish' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'bun changeset publish' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'semantic-release' && !run.safe));
   assert(survey.runtimeSafetyHints.some((hint) => (
     hint.path === '.github/workflows/ci.yml'
     && hint.reason.includes('semantic-release')
+  )));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === '.github/workflows/ci.yml'
+    && hint.reason.includes('changeset publish')
   )));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
