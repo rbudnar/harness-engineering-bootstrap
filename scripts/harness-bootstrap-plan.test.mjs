@@ -545,6 +545,15 @@ test('screens pnpm and yarn workspace delegated package scripts', () => {
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'packages/api/package.json'));
 });
 
+test('screens workspace-wide and equals selector delegated scripts', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workspace-selector-edge-package'));
+
+  assert(!survey.commands.some((run) => run.command === 'npm run build'));
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(!survey.commands.some((run) => run.command === 'npm run lint'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'packages/api/package.json'));
+});
+
 test('resolves explicit package prefixes relative to the caller package', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'relative-prefix-package'));
 
@@ -589,6 +598,27 @@ test('uses mutating kubectl commands as runtime-safety evidence', () => {
     && hint.reason.includes('kubectl create namespace preview')
   )));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('uses AWS S3 writes as runtime-safety evidence', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'aws-s3-ci'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => run.command === 'aws s3 sync dist s3://example-bucket' && !run.safe));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === '.github/workflows/ci.yml'
+    && hint.reason.includes('aws s3 sync dist s3://example-bucket')
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('keeps validation-looking shell text inspect-only', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'validation-token-noise-ci'));
+
+  assert(survey.ci.runCommands.some((run) => run.command === 'echo npm test' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'npm test & ./scripts/provision-preview.sh' && !run.safe));
+  assert(!survey.commands.some((run) => run.command === 'echo npm test'));
+  assert(!survey.commands.some((run) => run.command === 'npm test & ./scripts/provision-preview.sh'));
 });
 
 test('parses Azure shell shortcut steps for runtime-safety evidence', () => {

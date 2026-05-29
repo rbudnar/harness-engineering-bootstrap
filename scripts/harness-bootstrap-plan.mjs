@@ -76,6 +76,7 @@ const dangerousCommandPatterns = [
   /\byarn\s+--cwd\s+\S+\s+(run\s+)?[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
   /\bbun\s+--cwd\s+\S+\s+run\s+[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
   /\baz\s+.+\b(create|delete|deploy|update)\b/,
+  /\baws\s+(s3|s3api)\s+(sync|cp|mv|rm|rb|mb|put|delete|create|update)\b/,
   /\baws\s+.+\b(put|delete|create|deploy|publish|update)\b/,
   /\bgcloud\s+.+\b(deploy|delete|create|update)\b/,
   /\brm\s+-rf\b/,
@@ -1930,16 +1931,18 @@ function unsafePackageScriptReason(command, packageManifest, packageManifests = 
     }
 
     const scriptName = packageScriptNameFromCommand(part);
-    const targetManifest = packageManifestForCommand(part, packageManifests, packageManifest.directory) ?? packageManifest;
-    const targetPackageJson = targetManifest?.json;
-    if (!scriptName || !targetPackageJson?.scripts || !Object.hasOwn(targetPackageJson.scripts, scriptName)) continue;
-    const unsafeScript = findUnsafePackageScript(scriptName, targetPackageJson.scripts, [], {
-      manifest: targetManifest,
-      packageManifests,
-      unsafeMakeTargets: options.unsafeMakeTargets,
-    });
-    if (unsafeScript) {
-      return `it calls package script "${scriptName}" whose dependency chain "${unsafeScript.chain.join(' -> ')}" may mutate external state`;
+    if (!scriptName) continue;
+    for (const targetManifest of packageScriptManifestsForCommand(part, packageManifest, packageManifests, packageManifest.directory)) {
+      const targetPackageJson = targetManifest?.json;
+      if (!targetPackageJson?.scripts || !Object.hasOwn(targetPackageJson.scripts, scriptName)) continue;
+      const unsafeScript = findUnsafePackageScript(scriptName, targetPackageJson.scripts, [], {
+        manifest: targetManifest,
+        packageManifests,
+        unsafeMakeTargets: options.unsafeMakeTargets,
+      });
+      if (unsafeScript) {
+        return `it calls package script "${scriptName}" whose dependency chain "${unsafeScript.chain.join(' -> ')}" may mutate external state`;
+      }
     }
   }
 
@@ -2020,13 +2023,13 @@ function packageDirectoryFromCommand(command) {
 
 function packageWorkspaceFromCommand(command) {
   const trimmed = command.trim();
-  const npmWorkspace = trimmed.match(/^npm\s+(?:--workspace|-w)\s+("[^"]+"|'[^']+'|\S+)/i);
+  const npmWorkspace = trimmed.match(/^npm\s+(?:--workspace|-w)(?:=|\s+)("[^"]+"|'[^']+'|\S+)/i);
   if (npmWorkspace) return stripYamlQuotes(npmWorkspace[1].trim());
 
   const trailingNpmWorkspace = trimmed.match(/^npm\s+(?:run\s+[\w:-]+|test|ci|install)\b.*(?:--workspace|-w)(?:=|\s+)("[^"]+"|'[^']+'|\S+)/i);
   if (trailingNpmWorkspace) return stripYamlQuotes(trailingNpmWorkspace[1].trim());
 
-  const pnpmFilter = trimmed.match(/^pnpm\s+(?:--filter|-F)\s+("[^"]+"|'[^']+'|\S+)/i);
+  const pnpmFilter = trimmed.match(/^pnpm\s+(?:--filter|-F)(?:=|\s+)("[^"]+"|'[^']+'|\S+)/i);
   if (pnpmFilter) return stripYamlQuotes(pnpmFilter[1].trim());
 
   const yarnWorkspace = trimmed.match(/^yarn\s+workspace\s+("[^"]+"|'[^']+'|\S+)/i);
@@ -2058,7 +2061,7 @@ function isWorkspaceInstallCommand(command, packageManifest, packageManifests) {
   if (!packageManifest || packageManifests.length <= 1) return false;
   const lower = command.trim().toLowerCase();
   if (packageManifest.path !== 'package.json') return false;
-  return /--workspaces?\b/.test(lower)
+  return /(?:^|\s)--workspaces(?:\s|=|$)/.test(lower)
     || /^(pnpm|yarn)\s+install\b/.test(lower)
     || (/^npm\s+(ci|install)\b/.test(lower) && Boolean(packageManifest.json?.workspaces));
 }
@@ -2117,17 +2120,35 @@ function findUnsafePackageScript(scriptName, scripts, chain = [], context = {}) 
 
     const childScript = packageScriptNameFromCommand(part);
     if (!childScript) continue;
-    const childManifest = partManifest ?? context.manifest;
-    const childScripts = childManifest?.json?.scripts ?? scripts;
-    const unsafeScript = findUnsafePackageScript(childScript, childScripts, nextChain, {
-      ...context,
-      manifest: childManifest,
-      visited: nextVisited,
-    });
-    if (unsafeScript) return unsafeScript;
+    for (const childManifest of packageScriptManifestsForCommand(part, partManifest ?? context.manifest, context.packageManifests ?? [], currentDirectory)) {
+      const childScripts = childManifest?.json?.scripts ?? scripts;
+      const unsafeScript = findUnsafePackageScript(childScript, childScripts, nextChain, {
+        ...context,
+        manifest: childManifest,
+        visited: nextVisited,
+      });
+      if (unsafeScript) return unsafeScript;
+    }
   }
 
   return null;
+}
+
+function packageScriptManifestsForCommand(command, fallbackManifest, packageManifests = [], workingDirectory = null) {
+  if (isAllWorkspacePackageScriptCommand(command, fallbackManifest, packageManifests)) {
+    const workspaceManifests = packageManifests.filter((manifest) => manifest.path !== 'package.json' && manifest.json?.scripts);
+    return workspaceManifests.length ? workspaceManifests : [fallbackManifest].filter(Boolean);
+  }
+
+  const targetManifest = packageManifestForCommand(command, packageManifests, workingDirectory) ?? fallbackManifest;
+  return [targetManifest].filter(Boolean);
+}
+
+function isAllWorkspacePackageScriptCommand(command, packageManifest, packageManifests) {
+  if (!packageManifest || packageManifests.length <= 1) return false;
+  const lower = command.trim().toLowerCase();
+  return /--workspaces?\b/.test(lower)
+    || /^pnpm\s+(?:-r|--recursive)\s+/.test(lower);
 }
 
 function lifecycleScriptNames(scriptName, scripts) {
@@ -2148,16 +2169,16 @@ function packageScriptNameFromCommand(command) {
   const trailingNpmWorkspaceTest = trimmed.match(/^npm\s+test\b.*(?:--workspace|-w)(?:=|\s+)\S+/i);
   if (trailingNpmWorkspaceTest) return 'test';
 
-  const npmWorkspaceRun = trimmed.match(/^npm\s+(?:--workspace|-w)\s+\S+\s+run\s+([\w:-]+)/i);
+  const npmWorkspaceRun = trimmed.match(/^npm\s+(?:--workspace|-w)(?:=|\s+)\S+\s+run\s+([\w:-]+)/i);
   if (npmWorkspaceRun) return npmWorkspaceRun[1];
 
-  const npmWorkspaceTest = trimmed.match(/^npm\s+(?:--workspace|-w)\s+\S+\s+test\b/i);
+  const npmWorkspaceTest = trimmed.match(/^npm\s+(?:--workspace|-w)(?:=|\s+)\S+\s+test\b/i);
   if (npmWorkspaceTest) return 'test';
 
-  const pnpmFilterRun = trimmed.match(/^pnpm\s+(?:--filter|-F)\s+\S+\s+run\s+([\w:-]+)/i);
+  const pnpmFilterRun = trimmed.match(/^pnpm\s+(?:--filter|-F)(?:=|\s+)\S+\s+run\s+([\w:-]+)/i);
   if (pnpmFilterRun) return pnpmFilterRun[1];
 
-  const pnpmFilterDirect = trimmed.match(/^pnpm\s+(?:--filter|-F)\s+\S+\s+([\w:-]+)/i);
+  const pnpmFilterDirect = trimmed.match(/^pnpm\s+(?:--filter|-F)(?:=|\s+)\S+\s+([\w:-]+)/i);
   if (pnpmFilterDirect && !['add', 'install', 'remove'].includes(pnpmFilterDirect[1].toLowerCase())) {
     return pnpmFilterDirect[1] === 'test' ? 'test' : pnpmFilterDirect[1];
   }
@@ -2242,22 +2263,25 @@ function isRuntimeSurfacePath(path) {
 function isSafeValidationCommandPart(part) {
   const lower = part.toLowerCase();
   if (dangerousCommandPatterns.some((pattern) => pattern.test(lower))) return false;
+  if (/(^|[^&])&(?!&)/.test(lower)) return false;
 
   const validationPatterns = [
-    /\b(node\s+--test|npm\s+test|pnpm\s+test|yarn\s+test|bun\s+test)\b/,
-    /\bnpm\s+--prefix\s+\S+\s+(test|run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*)\b/,
-    /\bpnpm\s+--dir\s+\S+\s+(test|run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*)\b/,
-    /\byarn\s+--cwd\s+\S+\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*\b/,
-    /\bbun\s+--cwd\s+\S+\s+run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*\b/,
-    /\b(npm|pnpm|yarn|bun)\s+run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*\b/,
-    /\b(npm|pnpm|yarn|bun)\s+(build|lint|typecheck|check|validate)\b/,
-    /\b(pytest|python\s+-m\s+pytest|go\s+test|cargo\s+test|mvn\s+test|gradle\s+test)\b/,
-    /\b(make)\s+(test|build|lint|check|quality|validate|coverage)\b/,
-    /\b(terraform\s+validate|terraform\s+fmt\s+-check)\b/,
-    /\b(template-fitness|validate-harness|harness-audit)\b/,
-    /\bnpm\s+ci\b/,
-    /\bpnpm\s+install\b/,
-    /\byarn\s+install\b/,
+    /^node\s+--test(?:\s+.*)?$/,
+    /^(npm|pnpm|yarn|bun)\s+test(?:\s+.*)?$/,
+    /^npm\s+--prefix(?:=|\s+)\S+\s+(test|run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*)(?:\s+.*)?$/,
+    /^pnpm\s+--dir(?:=|\s+)\S+\s+(test|run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*)(?:\s+.*)?$/,
+    /^yarn\s+--cwd(?:=|\s+)\S+\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*(?:\s+.*)?$/,
+    /^bun\s+--cwd(?:=|\s+)\S+\s+run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*(?:\s+.*)?$/,
+    /^(npm|pnpm|yarn|bun)\s+run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*(?:\s+.*)?$/,
+    /^(npm|pnpm|yarn|bun)\s+(build|lint|typecheck|check|validate)(?:\s+.*)?$/,
+    /^(pytest|python\s+-m\s+pytest|go\s+test|cargo\s+test|mvn\s+test|gradle\s+test)(?:\s+.*)?$/,
+    /^make\s+(test|build|lint|check|quality|validate|coverage)(?:\s+\w+=\S+)?$/,
+    /^(terraform\s+validate|terraform\s+fmt\s+-check)(?:\s+.*)?$/,
+    /^node\s+\S*(template-fitness|validate-harness|harness-audit)\S*(?:\s+.*)?$/,
+    /^(template-fitness|validate-harness|harness-audit)(?:\s+.*)?$/,
+    /^npm\s+ci(?:\s+.*)?$/,
+    /^pnpm\s+install(?:\s+.*)?$/,
+    /^yarn\s+install(?:\s+.*)?$/,
   ];
 
   return validationPatterns.some((pattern) => pattern.test(lower));

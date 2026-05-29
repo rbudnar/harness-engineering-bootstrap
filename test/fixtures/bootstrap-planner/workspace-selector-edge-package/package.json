@@ -1,0 +1,12 @@
+{
+  "name": "workspace-selector-edge-package-fixture",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "check": "npm --workspace=api run build",
+    "lint": "pnpm --filter=api run check"
+  }
+}

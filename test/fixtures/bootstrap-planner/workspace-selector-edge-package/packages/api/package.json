@@ -1,0 +1,8 @@
+{
+  "name": "api",
+  "private": true,
+  "scripts": {
+    "build": "terraform apply -auto-approve",
+    "check": "docker push ghcr.io/example/api"
+  }
+}
