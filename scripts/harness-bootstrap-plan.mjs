@@ -2607,7 +2607,18 @@ function hasDangerousCommand(command) {
 
 function hasDangerousCliVerb(part) {
   const words = shellWords(part).map((word) => word.toLowerCase());
-  const [command, ...args] = words;
+  let commandIndex = 0;
+  if (['npx', 'bunx'].includes(words[commandIndex])) {
+    commandIndex = skipPackageExecutorOptions(words, commandIndex + 1);
+  } else if (words[commandIndex] === 'npm' && words[commandIndex + 1] === 'exec') {
+    commandIndex = skipPackageExecutorOptions(words, commandIndex + 2);
+  } else if (words[commandIndex] === 'pnpm' && ['exec', 'dlx'].includes(words[commandIndex + 1])) {
+    commandIndex = skipPackageExecutorOptions(words, commandIndex + 2);
+  } else if (words[commandIndex] === 'yarn' && ['exec', 'dlx'].includes(words[commandIndex + 1])) {
+    commandIndex = skipPackageExecutorOptions(words, commandIndex + 2);
+  }
+  const command = words[commandIndex];
+  const args = words.slice(commandIndex + 1);
   const mutatingVerbs = {
     kubectl: new Set(['apply', 'create', 'delete', 'replace', 'rollout', 'scale', 'patch', 'set', 'annotate', 'label', 'drain', 'taint', 'expose', 'autoscale']),
     helm: new Set(['upgrade', 'install', 'uninstall', 'delete', 'rollback']),
