@@ -65,6 +65,8 @@ const dangerousCommandPatterns = [
   /\bpnpm\s+publish\b/,
   /\byarn\s+npm\s+publish\b/,
   /\bbun\s+publish\b/,
+  /\bdocker\s+push\b/,
+  /\bdocker\s+buildx\s+build\b.*\s--push(?:\s|=|$)/,
   /\bgit\s+push\b/,
   /\bgh\s+release\b/,
   /\b(node|tsx?|python3?|bash|sh|pwsh|powershell)\s+\S*(deploy|release|publish|provision)[\w./\\-]*/i,
@@ -1363,7 +1365,12 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
       }
 
       const blockCommand = normalizeRunBlock(blockLines);
-      if (blockCommand) commands.push(classifyCiRunCommand(source, blockCommand, true, packageManifests, { unsafeMakeTargets }));
+      if (blockCommand) {
+        commands.push(classifyCiRunCommand(source, blockCommand, true, packageManifests, {
+          workingDirectory: blockWorkingDirectory,
+          unsafeMakeTargets,
+        }));
+      }
     } else {
       commands.push(classifyCiRunCommand(source, stripYamlQuotes(value), false, packageManifests, {
         workingDirectory: contextualWorkingDirectory,
@@ -2027,7 +2034,11 @@ function isWorkspaceInstallCommand(command, packageManifest, packageManifests) {
 
 function isInstallCommand(command) {
   const trimmed = command.trim().toLowerCase();
-  return /^(npm\s+ci|npm\s+install|pnpm\s+install|yarn\s+install|bun\s+install)\b/.test(trimmed);
+  return /^(npm\s+ci|npm\s+install|pnpm\s+install|yarn\s+install|bun\s+install)\b/.test(trimmed)
+    || /^npm\s+(?:(?:--prefix|--workspace|-w)(?:=|\s+)\S+|--workspaces?)\s+(ci|install)\b/.test(trimmed)
+    || /^pnpm\s+(?:(?:--dir|--filter|-F)(?:=|\s+)\S+)\s+install\b/.test(trimmed)
+    || /^yarn\s+--cwd(?:=|\s+)\S+\s+install\b/.test(trimmed)
+    || /^bun\s+--cwd(?:=|\s+)\S+\s+install\b/.test(trimmed);
 }
 
 function findUnsafePackageScript(scriptName, scripts, chain = [], context = {}) {

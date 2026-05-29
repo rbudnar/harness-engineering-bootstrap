@@ -241,6 +241,19 @@ test('screens scoped install lifecycle hooks before emitting install commands', 
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens option-before scoped install lifecycle hooks', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'option-before-install'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'npm --prefix services/api ci'
+    && !run.safe
+    && run.packageScriptReason.includes('preinstall')
+  )));
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens trailing workspace commands before emitting CI validation commands', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'trailing-workspace-ci'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -498,6 +511,18 @@ test('keeps generic CI job working-directory commands inspect-only', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('keeps generic CI block working-directory commands inspect-only', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'circleci-block-working-directory'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+  const command = survey.ci.runCommands.find((run) => run.command === 'npm test');
+
+  assert.equal(command.workingDirectory, 'services/api');
+  assert.equal(command.safe, false);
+  assert.match(command.packageScriptReason, /pretest/);
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens root scripts delegated to prefixed package commands', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'delegated-prefix-package'));
 
@@ -533,6 +558,16 @@ test('screens equals-form scoped package commands', () => {
   assert(!survey.commands.some((run) => run.command === 'npm run build'));
   assert(!survey.commands.some((run) => run.command === 'npm run check'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'services/api/package.json'));
+});
+
+test('treats Docker registry pushes as inspect-only commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'docker-push-command'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => run.command === 'docker push ghcr.io/example/app' && !run.safe));
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
 test('keeps workflow default working-directory scoped to its job', () => {

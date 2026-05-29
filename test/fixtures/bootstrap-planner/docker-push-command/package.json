@@ -1,0 +1,7 @@
+{
+  "name": "docker-push-command-fixture",
+  "private": true,
+  "scripts": {
+    "check": "docker buildx build --push -t ghcr.io/example/app ."
+  }
+}
