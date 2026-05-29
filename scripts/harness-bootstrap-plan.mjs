@@ -1088,14 +1088,14 @@ function parseMakeTargetRecipes(text, path) {
   const directory = dirname(path) === '.' ? '' : normalizePath(dirname(path));
 
   for (const line of text.split(/\r?\n/)) {
-    const defaultGoalMatch = line.match(/^\.DEFAULT_GOAL\s*(?::=|\?=|\+=|=)\s*([A-Za-z0-9_.-]+)/);
+    const defaultGoalMatch = line.match(/^\.DEFAULT_GOAL\s*(?::=|\?=|\+=|=)\s*([^\s#]+)/);
     if (defaultGoalMatch) {
       explicitDefaultTarget = defaultGoalMatch[1];
       currentTarget = null;
       continue;
     }
 
-    const match = line.match(/^([A-Za-z0-9_.-]+)\s*:(?!=)\s*(.*)$/);
+    const match = line.match(/^([^\s:#=]+)\s*:(?!=)\s*(.*)$/);
     if (match) {
       currentTarget = {
         name: match[1],
@@ -1109,7 +1109,9 @@ function parseMakeTargetRecipes(text, path) {
     }
 
     if (currentTarget && /^\s+/.test(line)) {
-      currentTarget.recipe = `${currentTarget.recipe}\n${line.trim()}`.trim();
+      const recipeLine = line.trim();
+      if (recipeLine.startsWith('#')) continue;
+      currentTarget.recipe = `${currentTarget.recipe}\n${recipeLine}`.trim();
     } else if (line.trim() && !line.startsWith('#')) {
       currentTarget = null;
     }
@@ -1384,8 +1386,12 @@ function workflowStepMetadataRuntimeSafetyReason(lines, stepIndex, action = '') 
 
   const text = metadata.join('\n');
   if (/\$\{\{\s*secrets\./i.test(text)) return 'GitHub workflow step references secrets';
-  if (/docker\/build-push-action/i.test(action) && /(^|\n)push:\s*true(?:\s|$)/i.test(text)) {
-    return 'GitHub workflow step pushes Docker images';
+  if (/docker\/build-push-action/i.test(action)) {
+    const pushMatch = text.match(/(^|\n)push:\s*("[^"]+"|'[^']+'|[^\s#]+)/i);
+    if (pushMatch) {
+      const pushValue = stripYamlQuotes(pushMatch[2].trim()).toLowerCase();
+      if (!['false', 'no', 'off', '0'].includes(pushValue)) return 'GitHub workflow step pushes Docker images';
+    }
   }
   return null;
 }
@@ -1956,6 +1962,10 @@ function readText(root, path) {
 
 function readTemplateVersion() {
   try {
+    if (!existsSync(join(repoRoot, 'templates', 'Harness Engineering Bootstrap.md'))
+      || !existsSync(join(repoRoot, 'scripts', 'template-fitness.mjs'))) {
+      return '0.0.0';
+    }
     return readFileSync(join(repoRoot, 'VERSION'), 'utf8').split(/\r?\n/)[0]?.trim() || '0.0.0';
   } catch {
     return '0.0.0';
@@ -2725,10 +2735,14 @@ function workingDirectoryFromCdCommand(command) {
 }
 
 function splitShellCommandParts(command) {
-  return command
+  return normalizeShellContinuations(command)
     .split(/\r?\n|&&|\|\||;/)
     .map((part) => part.trim())
     .filter(Boolean);
+}
+
+function normalizeShellContinuations(command) {
+  return String(command ?? '').replace(/\\\s*\r?\n\s*/g, ' ');
 }
 
 function shellWords(command) {

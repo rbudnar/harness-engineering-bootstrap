@@ -6,7 +6,11 @@ jobs:
     steps:
       - uses: docker/build-push-action@v6
         with:
-          push: true
+          push: "${{ github.ref == 'refs/heads/main' }}"
       - run: npm test
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: |
+          docker buildx build \
+            --push \
+            -t ghcr.io/acme/app:latest .

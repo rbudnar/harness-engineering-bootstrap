@@ -501,6 +501,24 @@ test('screens nested Makefiles before emitting package validation commands', () 
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('parses slash Make targets and ignores commented recipes', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'slash-make-target'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'make release/prod'
+    && !run.safe
+    && run.inspectOnlyReason.includes('make target "release/prod"')
+  )));
+  assert(survey.commands.some((run) => run.command === 'make check'));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'Makefile'
+    && hint.reason === 'make target "release/prod" may mutate external state'
+  )));
+  assert(!survey.runtimeSafetyHints.some((hint) => hint.reason.includes('make target "check"')));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens package scripts that call runtime-surface files', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'package-runtime-surface'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -818,6 +836,10 @@ test('uses workflow step metadata as runtime-safety evidence', () => {
     && !run.safe
     && run.runtimeSafetyReason === 'GitHub workflow step references secrets'
   )));
+  assert(survey.ci.runCommands.some((run) => (
+    run.command.includes('docker buildx build')
+    && !run.safe
+  )));
   assert(survey.runtimeSafetyHints.some((hint) => (
     hint.path === '.github/workflows/ci.yml'
     && hint.reason.includes('Docker images')
@@ -825,6 +847,10 @@ test('uses workflow step metadata as runtime-safety evidence', () => {
   assert(survey.runtimeSafetyHints.some((hint) => (
     hint.path === '.github/workflows/ci.yml'
     && hint.reason.includes('secrets')
+  )));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === '.github/workflows/ci.yml'
+    && hint.reason.includes('docker buildx build')
   )));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
@@ -1123,6 +1149,23 @@ test('copied planner helpers do not trust application VERSION files', () => {
     assert.equal(plan.survey.versionState.source, null);
     assert.equal(plan.operation, 'update');
     assert.equal(plan.updatePlan.status, 'needs-version-baseline');
+
+    const defaultOutput = execFileSync(
+      process.execPath,
+      [
+        resolve(tempRoot, 'scripts', 'harness-bootstrap-plan.mjs'),
+        '--repo',
+        tempRoot,
+        '--json',
+        '--date',
+        '2026-05-28',
+      ],
+      { cwd: tempRoot, encoding: 'utf8' },
+    );
+    const defaultPlan = JSON.parse(defaultOutput);
+
+    assert.equal(defaultPlan.plannerVersion, '0.0.0');
+    assert.equal(defaultPlan.targetVersion, '0.0.0');
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }
