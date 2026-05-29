@@ -2434,7 +2434,9 @@ function makeInvocationFromCommandPart(part, currentDirectory = '') {
     if (word === '-f' || word === '--file' || word === '--makefile') {
       const next = words[index + 1];
       if (next) {
-        directory = makefileDirectoryForOption(next, directory);
+        const inspectedMakefile = inspectMakefileOption(next, directory);
+        if (inspectedMakefile.unsafeReason) return { directory, targets, unsafeReason: inspectedMakefile.unsafeReason };
+        directory = inspectedMakefile.directory;
         index += 1;
       }
       continue;
@@ -2442,7 +2444,9 @@ function makeInvocationFromCommandPart(part, currentDirectory = '') {
 
     const makefileMatch = word.match(/^(?:--file|--makefile)=(.+)$/);
     if (makefileMatch) {
-      directory = makefileDirectoryForOption(stripYamlQuotes(makefileMatch[1]), directory);
+      const inspectedMakefile = inspectMakefileOption(makefileMatch[1], directory);
+      if (inspectedMakefile.unsafeReason) return { directory, targets, unsafeReason: inspectedMakefile.unsafeReason };
+      directory = inspectedMakefile.directory;
       continue;
     }
 
@@ -2476,6 +2480,26 @@ function inspectMakeDirectoryOption(value, currentDirectory) {
   }
   return {
     directory: resolvePackageDirectory(directory, currentDirectory),
+    unsafeReason: null,
+  };
+}
+
+function inspectMakefileOption(value, currentDirectory) {
+  const file = stripYamlQuotes(String(value ?? '').trim());
+  if (!isStaticRelativeDirectory(file)) {
+    return {
+      directory: normalizePackageDirectory(currentDirectory || ''),
+      unsafeReason: 'it uses a dynamic or non-relative makefile path',
+    };
+  }
+  if (cdTargetEscapesRepo(file, currentDirectory)) {
+    return {
+      directory: normalizePackageDirectory(currentDirectory || ''),
+      unsafeReason: 'it uses a makefile path outside the surveyed repository',
+    };
+  }
+  return {
+    directory: makefileDirectoryForOption(file, currentDirectory),
     unsafeReason: null,
   };
 }
@@ -2553,6 +2577,7 @@ function hasDangerousCommand(command) {
           || hasDangerousDockerCommand(inspectedPart)
           || hasDangerousGitCommand(inspectedPart)
           || hasDangerousGhCommand(inspectedPart)
+          || hasDangerousForwardedTarget(inspectedPart)
           || hasDangerousTaskTarget(inspectedPart)
           || dangerousCommandPatterns.some((pattern) => pattern.test(inspectedPart.toLowerCase()))
           || commandPartReferencesRuntimeSurface(inspectedPart)
@@ -2578,6 +2603,10 @@ function hasDangerousTaskTarget(part) {
   if (!normalized) return false;
   return /(?:^|\s)[@A-Za-z0-9_./-]+:(?:deploy|release|publish|provision)(?:\b|[:._-])/i.test(normalized)
     || /(?:^|\s)--target(?:=|\s+)(?:deploy|release|publish|provision)(?:\b|[:._-])/i.test(normalized);
+}
+
+function hasDangerousForwardedTarget(part) {
+  return /(?:^|\s)--target(?:=|\s+)(?:deploy|release|publish|provision)(?:\b|[:._-])/i.test(String(part ?? ''));
 }
 
 function taskRunnerCommandText(part) {
@@ -3258,6 +3287,7 @@ function packageOptionValues(words, options) {
   const values = [];
   for (let index = 1; index < words.length; index += 1) {
     const word = words[index];
+    if (word === '--') break;
     const lower = word.toLowerCase();
     const option = normalizedOptions.find((candidate) => lower === candidate || lower.startsWith(`${candidate}=`));
     if (!option) continue;
@@ -3479,6 +3509,7 @@ function isRuntimeSurfacePath(path) {
 function isSafeValidationCommandPart(part) {
   const lower = part.toLowerCase();
   if (dangerousCommandPatterns.some((pattern) => pattern.test(lower))) return false;
+  if (hasDangerousForwardedTarget(part)) return false;
   if (/(^|[^&])&(?!&)/.test(lower)) return false;
   if (unsafeScopedPackageDirectoryReason(part)) return false;
 

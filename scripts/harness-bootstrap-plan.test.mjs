@@ -620,6 +620,16 @@ test('screens env-prefixed package make targets', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens dynamic and escaping makefile paths before trusting package scripts', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'make-unsafe-file-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens dynamic and escaping make directories before trusting package scripts', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'make-unsafe-directory-package'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -1033,6 +1043,19 @@ test('screens every pnpm filter before trusting delegated scripts', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('stops parsing workspace options after package argument separator', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workspace-arg-separator-ci'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'npm test -- --workspace api'
+    && !run.safe
+    && run.packageScriptReason.includes('package script "test"')
+  )));
+  assert(!survey.commands.some((run) => run.command === 'npm test -- --workspace api'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens workspace-wide and equals selector delegated scripts', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'workspace-selector-edge-package'));
 
@@ -1435,6 +1458,18 @@ test('uses task-runner deploy targets as runtime-safety evidence', () => {
     hint.path === 'package.json'
     && hint.reason === 'package script "test" may mutate external state'
   )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('keeps forwarded deploy targets inspect-only', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'forwarded-target-ci'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'npm run build -- --target deploy'
+    && !run.safe
+  )));
+  assert(!survey.commands.some((run) => run.command === 'npm run build -- --target deploy'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
