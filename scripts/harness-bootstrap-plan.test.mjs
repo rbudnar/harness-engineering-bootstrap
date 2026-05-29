@@ -353,6 +353,19 @@ test('screens nested package scripts before marking CI commands safe', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens trailing npm prefix package scripts before marking CI commands safe', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'trailing-prefix-package-ci'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'npm run build --prefix services/api'
+    && !run.safe
+    && run.packageScriptReason.includes('build')
+  )));
+  assert(!survey.commands.some((run) => run.command === 'npm run build --prefix services/api'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens legacy prepublish lifecycle hooks before install commands', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'prepublish-lifecycle-ci'));
 

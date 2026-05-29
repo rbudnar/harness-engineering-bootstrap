@@ -2164,8 +2164,8 @@ function packageDirectoryFromCommand(command) {
   const beforeCommand = trimmed.match(/^(?:npm\s+--prefix|pnpm\s+--dir|yarn\s+--cwd|bun\s+--cwd)(?:=|\s+)("[^"]+"|'[^']+'|\S+)/i);
   if (beforeCommand) return stripYamlQuotes(beforeCommand[1].trim());
 
-  const npmInstallPrefix = trimmed.match(/^npm\s+(?:ci|install)\b.*(?:\s|^)--prefix(?:=|\s+)("[^"]+"|'[^']+'|\S+)/i);
-  if (npmInstallPrefix) return stripYamlQuotes(npmInstallPrefix[1].trim());
+  const trailingNpmPrefix = trimmed.match(/^npm\s+(?:run\s+[\w:-]+|test|ci|install)\b.*(?:\s|^)--prefix(?:=|\s+)("[^"]+"|'[^']+'|\S+)/i);
+  if (trailingNpmPrefix) return stripYamlQuotes(trailingNpmPrefix[1].trim());
 
   return null;
 }
@@ -2352,6 +2352,12 @@ function packageScriptNameFromCommand(command) {
 
   const npmPrefixTest = trimmed.match(/^npm\s+--prefix(?:=|\s+)\S+\s+test\b/i);
   if (npmPrefixTest) return 'test';
+
+  const trailingNpmPrefixRun = trimmed.match(/^npm\s+run\s+([\w:-]+)\b.*(?:\s|^)--prefix(?:=|\s+)\S+/i);
+  if (trailingNpmPrefixRun) return trailingNpmPrefixRun[1];
+
+  const trailingNpmPrefixTest = trimmed.match(/^npm\s+test\b.*(?:\s|^)--prefix(?:=|\s+)\S+/i);
+  if (trailingNpmPrefixTest) return 'test';
 
   const pnpmDirRun = trimmed.match(/^pnpm\s+--dir(?:=|\s+)\S+\s+run\s+([\w:-]+)/i);
   if (pnpmDirRun) return pnpmDirRun[1];
