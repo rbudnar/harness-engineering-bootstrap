@@ -1361,7 +1361,7 @@ function collectWorkflowRunCommands(text, source, packageManifests = [], unsafeM
         index = nextIndex;
       }
 
-      const blockCommand = normalizeRunBlock(blockLines);
+      const blockCommand = normalizeRunBlock(blockLines, { folded: command.startsWith('>') });
       if (blockCommand) {
         commands.push(classifyCiRunCommand(source, blockCommand, true, packageManifests, { workingDirectory, runtimeSafetyReason, unsafeMakeTargets }));
       }
@@ -1374,13 +1374,11 @@ function collectWorkflowRunCommands(text, source, packageManifests = [], unsafeM
 }
 
 function workflowStepMetadataRuntimeSafetyReason(lines, stepIndex, action = '') {
-  const baseIndent = indentation(lines[stepIndex]);
+  const { start, end } = workflowStepBounds(lines, stepIndex);
   const metadata = [];
-  for (let nextIndex = stepIndex + 1; nextIndex < lines.length; nextIndex += 1) {
+  for (let nextIndex = start; nextIndex < end; nextIndex += 1) {
     const line = lines[nextIndex];
     if (!line.trim()) continue;
-    const nextIndent = indentation(line);
-    if (nextIndent <= baseIndent) break;
     metadata.push(line.trim());
   }
 
@@ -1394,6 +1392,35 @@ function workflowStepMetadataRuntimeSafetyReason(lines, stepIndex, action = '') 
     }
   }
   return null;
+}
+
+function workflowStepBounds(lines, index) {
+  const currentIndent = indentation(lines[index]);
+  let start = index;
+  for (let previousIndex = index; previousIndex >= 0; previousIndex -= 1) {
+    const line = lines[previousIndex];
+    if (!line.trim()) continue;
+    const lineIndent = indentation(line);
+    if (lineIndent <= currentIndent && /^\s*-\s+/.test(line)) {
+      start = previousIndex;
+      break;
+    }
+    if (lineIndent < currentIndent) break;
+  }
+
+  const stepIndent = indentation(lines[start]);
+  let end = lines.length;
+  for (let nextIndex = start + 1; nextIndex < lines.length; nextIndex += 1) {
+    const line = lines[nextIndex];
+    if (!line.trim()) continue;
+    const lineIndent = indentation(line);
+    if (lineIndent < stepIndent || (lineIndent === stepIndent && /^\s*-\s+/.test(line))) {
+      end = nextIndex;
+      break;
+    }
+  }
+
+  return { start, end };
 }
 
 function classifyWorkflowUsesStep(source, action, metadataReason = null) {
@@ -2084,15 +2111,15 @@ function indentation(line) {
   return line.match(/^\s*/)?.[0].length ?? 0;
 }
 
-function normalizeRunBlock(lines) {
+function normalizeRunBlock(lines, options = {}) {
   const nonEmpty = lines.filter((line) => line.trim());
   if (!nonEmpty.length) return '';
 
   const minIndent = Math.min(...nonEmpty.map((line) => indentation(line)));
-  return lines
+  const normalizedLines = lines
     .map((line) => line.slice(Math.min(minIndent, line.length)).trim())
-    .filter((line) => line && !line.startsWith('#'))
-    .join('\n');
+    .filter((line) => line && !line.startsWith('#'));
+  return normalizedLines.join(options.folded ? ' ' : '\n');
 }
 
 function classifyCiRunCommand(source, command, multiline, packageManifests = [], options = {}) {
@@ -2151,7 +2178,7 @@ function unsafeMakeTargetReasonFromDirectory(command, unsafeMakeTargets, baseDir
 
 function makeInvocationFromCommandPart(part, currentDirectory = '') {
   const words = shellWords(part);
-  if (words[0] !== 'make') return null;
+  if (!isMakeCommandWord(words[0])) return null;
 
   let directory = normalizePackageDirectory(currentDirectory || '');
   const targets = [];
@@ -2177,6 +2204,10 @@ function makeInvocationFromCommandPart(part, currentDirectory = '') {
   }
 
   return { directory, targets };
+}
+
+function isMakeCommandWord(word) {
+  return ['make', '$(MAKE)', '${MAKE}'].includes(String(word ?? '').replace(/^[@+-]+/, ''));
 }
 
 function makeTargetsFromCommandPart(part) {

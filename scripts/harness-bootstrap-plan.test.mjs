@@ -461,6 +461,23 @@ test('propagates unsafe nested Make targets through recipes', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('propagates unsafe recursive Make invocations through recipes', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'recursive-make-target'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'make check'));
+  assert(!survey.commands.some((run) => run.command === 'make quality'));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'Makefile'
+    && hint.reason === 'make target "check" may mutate external state'
+  )));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'Makefile'
+    && hint.reason === 'make target "quality" may mutate external state'
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens bare make invocations through the default target', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'bare-make-default'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -837,7 +854,16 @@ test('uses workflow step metadata as runtime-safety evidence', () => {
     && run.runtimeSafetyReason === 'GitHub workflow step references secrets'
   )));
   assert(survey.ci.runCommands.some((run) => (
+    run.command === 'npm run build'
+    && !run.safe
+    && run.runtimeSafetyReason === 'GitHub workflow step references secrets'
+  )));
+  assert(survey.ci.runCommands.some((run) => (
     run.command.includes('docker buildx build')
+    && !run.safe
+  )));
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'git push origin main'
     && !run.safe
   )));
   assert(survey.runtimeSafetyHints.some((hint) => (
@@ -851,6 +877,10 @@ test('uses workflow step metadata as runtime-safety evidence', () => {
   assert(survey.runtimeSafetyHints.some((hint) => (
     hint.path === '.github/workflows/ci.yml'
     && hint.reason.includes('docker buildx build')
+  )));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === '.github/workflows/ci.yml'
+    && hint.reason.includes('git push origin main')
   )));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });

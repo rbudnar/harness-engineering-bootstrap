@@ -10,7 +10,13 @@ jobs:
       - run: npm test
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm run build
       - run: |
           docker buildx build \
             --push \
             -t ghcr.io/acme/app:latest .
+      - run: >
+          git
+          push origin main
