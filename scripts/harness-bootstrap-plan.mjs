@@ -968,8 +968,23 @@ function collectCi(root, files, packageManifests = [], unsafeMakeTargets = new S
 
   return {
     files: ciFiles,
-    runCommands: dedupeObjects(runCommands, (item) => `${item.source}\0${item.workingDirectory ?? ''}\0${item.command}`),
+    runCommands: dedupeCiRunCommands(runCommands),
   };
+}
+
+function dedupeCiRunCommands(commands) {
+  const byKey = new Map();
+  for (const command of commands) {
+    const key = `${command.source}\0${command.workingDirectory ?? ''}\0${command.command}`;
+    const existing = byKey.get(key);
+    if (!existing
+      || (existing.safe && !command.safe)
+      || (!existing.runtimeSafetyReason && command.runtimeSafetyReason)
+      || (!existing.packageScriptReason && command.packageScriptReason)) {
+      byKey.set(key, command);
+    }
+  }
+  return [...byKey.values()];
 }
 
 function collectCommands({ packageScripts, makeTargets, ci }) {
@@ -1083,7 +1098,7 @@ function collectMakeTargetRecipes(root, fileSet) {
 
 function parseMakeTargetRecipes(text, path) {
   const targets = [];
-  let currentTarget = null;
+  let currentTargets = [];
   let explicitDefaultTarget = null;
   const directory = dirname(path) === '.' ? '' : normalizePath(dirname(path));
 
@@ -1091,33 +1106,46 @@ function parseMakeTargetRecipes(text, path) {
     const defaultGoalMatch = line.match(/^\.DEFAULT_GOAL\s*(?::=|\?=|\+=|=)\s*([^\s#]+)/);
     if (defaultGoalMatch) {
       explicitDefaultTarget = defaultGoalMatch[1];
-      currentTarget = null;
+      currentTargets = [];
       continue;
     }
 
-    const match = line.match(/^([^\s:#=]+)\s*:(?!=)\s*(.*)$/);
+    const match = line.match(/^([^\s:=#][^:=#]*?)\s*:(?!=)\s*(.*)$/);
     if (match) {
-      currentTarget = {
-        name: match[1],
-        prerequisites: match[2].split(/\s+/).map((value) => value.trim()).filter(Boolean),
-        recipe: '',
+      const { prerequisites, recipe } = splitMakeRuleTail(match[2]);
+      currentTargets = match[1].trim().split(/\s+/).filter(Boolean).map((name) => ({
+        name,
+        prerequisites,
+        recipe,
         path,
         directory,
-      };
-      targets.push(currentTarget);
+      }));
+      targets.push(...currentTargets);
       continue;
     }
 
-    if (currentTarget && /^\s+/.test(line)) {
+    if (currentTargets.length && /^\s+/.test(line)) {
       const recipeLine = line.trim();
       if (recipeLine.startsWith('#')) continue;
-      currentTarget.recipe = `${currentTarget.recipe}\n${recipeLine}`.trim();
+      for (const target of currentTargets) {
+        target.recipe = `${target.recipe}\n${recipeLine}`.trim();
+      }
     } else if (line.trim() && !line.startsWith('#')) {
-      currentTarget = null;
+      currentTargets = [];
     }
   }
 
   return targets.map((target) => ({ ...target, explicitDefaultTarget }));
+}
+
+function splitMakeRuleTail(tail) {
+  const separatorIndex = tail.indexOf(';');
+  const prerequisiteText = separatorIndex >= 0 ? tail.slice(0, separatorIndex) : tail;
+  const recipe = separatorIndex >= 0 ? tail.slice(separatorIndex + 1).trim() : '';
+  return {
+    prerequisites: prerequisiteText.split(/\s+/).map((value) => value.trim()).filter(Boolean),
+    recipe: recipe.startsWith('#') ? '' : recipe,
+  };
 }
 
 function unsafeMakeTargetKeys(targets) {

@@ -478,6 +478,29 @@ test('propagates unsafe recursive Make invocations through recipes', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens inline and multi-target Make recipes before emitting validation commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'make-inline-multitarget'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'make test'));
+  assert(!survey.commands.some((run) => run.command === 'make build'));
+  assert(!survey.commands.some((run) => run.command === 'make check'));
+  assert(survey.commands.some((run) => run.command === 'make lint'));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'Makefile'
+    && hint.reason === 'make target "test" may mutate external state'
+  )));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'Makefile'
+    && hint.reason === 'make target "build" may mutate external state'
+  )));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'Makefile'
+    && hint.reason === 'make target "check" may mutate external state'
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens bare make invocations through the default target', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'bare-make-default'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -883,6 +906,22 @@ test('uses workflow step metadata as runtime-safety evidence', () => {
   assert(survey.runtimeSafetyHints.some((hint) => (
     hint.path === '.github/workflows/ci.yml'
     && hint.reason.includes('git push origin main')
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('preserves unsafe workflow metadata when duplicate run commands exist', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workflow-duplicate-unsafe'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+  const npmTestRuns = survey.ci.runCommands.filter((run) => run.command === 'npm test');
+
+  assert.equal(npmTestRuns.length, 1);
+  assert.equal(npmTestRuns[0].safe, false);
+  assert.equal(npmTestRuns[0].runtimeSafetyReason, 'GitHub workflow step references secrets');
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === '.github/workflows/ci.yml'
+    && hint.reason.includes('secrets')
   )));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
