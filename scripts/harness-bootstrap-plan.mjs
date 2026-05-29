@@ -3394,7 +3394,10 @@ function canonicalPackageScriptName(name) {
 function stripPackageCommandPrefix(command) {
   const words = shellWords(command);
   let index = 0;
-  if (['cross-env', 'cross-env-shell', 'env'].includes(words[index]?.toLowerCase())) index += 1;
+  if (words[index]?.toLowerCase() === 'cross-env-shell') {
+    return stripPackageCommandPrefix(words.slice(index + 1).join(' '));
+  }
+  if (['cross-env', 'env'].includes(words[index]?.toLowerCase())) index += 1;
   while (isEnvironmentAssignment(words[index])) index += 1;
   if (words[index] === '--') index += 1;
   return index > 0 ? words.slice(index).join(' ') : String(command ?? '').trim();

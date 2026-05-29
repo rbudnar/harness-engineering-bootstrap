@@ -1059,6 +1059,15 @@ test('screens env-prefixed mutating package scripts', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens cross-env-shell mutating package scripts', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'cross-env-shell-mutating-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens workspace delegated package scripts', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'workspace-delegated-package'));
 
