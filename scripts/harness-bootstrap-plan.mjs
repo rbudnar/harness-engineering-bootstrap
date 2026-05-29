@@ -65,6 +65,14 @@ const dangerousCommandPatterns = [
   /\bpulumi\s+stack\s+(init|rm)\b/,
   /\bkubectl\s+(apply|create|delete|replace|rollout|scale|patch|set|annotate|label|drain|taint|expose|autoscale)\b/,
   /\bhelm\s+(upgrade|install|uninstall|delete|rollback)\b/,
+  /\bdocker\s+login\b/,
+  /\bgh\s+auth\s+login\b/,
+  /\baz\s+login\b/,
+  /\bgcloud\s+auth\s+login\b/,
+  /\baws\s+configure\b/,
+  /\bnpm\s+(adduser|login)\b/,
+  /\bpnpm\s+login\b/,
+  /\byarn\s+npm\s+login\b/,
   /\bnpm\s+publish\b/,
   /\bpnpm\s+publish\b/,
   /\byarn\s+npm\s+publish\b/,
@@ -2730,7 +2738,12 @@ function packageScriptNameFromCommand(command) {
 
 function hasNpmAllWorkspaces(words) {
   return words[0]?.toLowerCase() === 'npm'
-    && words.some((word) => /^--workspaces(?:=(?:true|1))?$/i.test(word));
+    && words.some((word) => isNpmAllWorkspacesOption(word));
+}
+
+function isNpmAllWorkspacesOption(word) {
+  return /^--(?:workspaces|ws)(?:=(?:true|1))?$/i.test(String(word ?? ''))
+    || String(word ?? '').toLowerCase() === '-ws';
 }
 
 function hasPnpmRecursive(words) {
