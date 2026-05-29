@@ -1,0 +1,7 @@
+{
+  "name": "api",
+  "private": true,
+  "scripts": {
+    "test": "cd ../.. && npm test"
+  }
+}

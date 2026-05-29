@@ -56,6 +56,27 @@ const packageFiles = [
   'composer.json',
 ];
 
+const prioritySurveyPaths = [
+  'AGENTS.md',
+  'CLAUDE.md',
+  'GEMINI.md',
+  '.github/copilot-instructions.md',
+  'README.md',
+  'CHANGELOG.md',
+  'VERSION',
+  'docs/README.md',
+  'docs/harness-version.json',
+  '.harness/harness-version.json',
+  'harness-version.json',
+  'docs/dogfooding.md',
+  'docs/decisions.md',
+  'scripts/check.sh',
+  'scripts/template-fitness.mjs',
+  'scripts/validate-harness.py',
+  'scripts/validate-docs.py',
+  '.github/workflows/template-fitness.yml',
+];
+
 const dangerousCommandPatterns = [
   /\bterraform\s+apply\b/,
   /\bterraform\s+destroy\b/,
@@ -1646,7 +1667,7 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
       for (const inlineCommand of inlineCommands) {
         const command = stripYamlQuotes(inlineCommand);
         const changedDirectory = workingDirectoryFromCdCommand(command);
-        if (changedDirectory) {
+        if (changedDirectory !== null) {
           inlineWorkingDirectory = changedDirectory;
           commands.push(classifyCiRunCommand(source, command, false, packageManifests, { unsafeMakeTargets }));
         } else {
@@ -1692,7 +1713,7 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
         if (listCommand) {
           const command = stripYamlQuotes(listCommand.trim());
           const changedDirectory = workingDirectoryFromCdCommand(command);
-          if (changedDirectory) {
+          if (changedDirectory !== null) {
             blockWorkingDirectory = changedDirectory;
             commands.push(classifyCiRunCommand(source, command, false, packageManifests, { unsafeMakeTargets }));
           } else {
@@ -2078,8 +2099,24 @@ function isInstructionFilePath(path) {
 
 function walkFiles(root, options) {
   const paths = [];
+  const seen = new Set();
   const maxFiles = options.maxFiles ?? 5000;
   let truncated = false;
+
+  function addPath(path) {
+    if (seen.has(path)) return;
+    seen.add(path);
+    paths.push(path);
+  }
+
+  for (const path of [...prioritySurveyPaths, ...packageFiles]) {
+    const fullPath = join(root, path);
+    try {
+      if (existsSync(fullPath) && statSync(fullPath).isFile()) addPath(path);
+    } catch {
+      // Ignore unreadable priority paths; the normal walk has the same tolerance.
+    }
+  }
 
   function walk(dir) {
     if (paths.length >= maxFiles) {
@@ -2103,7 +2140,7 @@ function walkFiles(root, options) {
       }
 
       const fullPath = join(dir, entry.name);
-      paths.push(normalizePath(relative(root, fullPath)));
+      addPath(normalizePath(relative(root, fullPath)));
     }
 
     for (const entry of entries.filter((item) => item.isDirectory())) {
@@ -2316,9 +2353,9 @@ function unsafeMakeTargetReason(command, unsafeMakeTargets, baseDirectory = '') 
 function unsafeMakeTargetReasonFromDirectory(command, unsafeMakeTargets, baseDirectory = '') {
   let currentDirectory = normalizePackageDirectory(baseDirectory || '');
   for (const part of splitShellCommandParts(command)) {
-    const changedDirectory = workingDirectoryFromCdCommand(part);
-    if (changedDirectory) {
-      currentDirectory = resolvePackageDirectory(changedDirectory, currentDirectory);
+    const changedDirectory = resolvedWorkingDirectoryFromCdCommand(part, currentDirectory);
+    if (changedDirectory !== null) {
+      currentDirectory = changedDirectory;
       continue;
     }
 
@@ -2610,9 +2647,9 @@ function unsafePackageScriptReason(command, packageManifest, packageManifests = 
 
   let currentDirectory = packageManifest.directory ?? null;
   for (const part of splitShellCommandParts(command)) {
-    const changedDirectory = workingDirectoryFromCdCommand(part);
-    if (changedDirectory) {
-      currentDirectory = resolvePackageDirectory(changedDirectory, currentDirectory);
+    const changedDirectory = resolvedWorkingDirectoryFromCdCommand(part, currentDirectory);
+    if (changedDirectory !== null) {
+      currentDirectory = changedDirectory;
       continue;
     }
 
@@ -2816,9 +2853,9 @@ function findUnsafePackageScript(scriptName, scripts, chain = [], context = {}) 
 
   let currentDirectory = context.manifest?.directory ?? null;
   for (const part of splitShellCommandParts(body)) {
-    const changedDirectory = workingDirectoryFromCdCommand(part);
-    if (changedDirectory) {
-      currentDirectory = resolvePackageDirectory(changedDirectory, currentDirectory);
+    const changedDirectory = resolvedWorkingDirectoryFromCdCommand(part, currentDirectory);
+    if (changedDirectory !== null) {
+      currentDirectory = changedDirectory;
       continue;
     }
 
@@ -3156,19 +3193,40 @@ function yarnWorkspacesForeachScriptName(command) {
 }
 
 function workingDirectoryFromCdCommand(command) {
+  return resolvedWorkingDirectoryFromCdCommand(command, '');
+}
+
+function resolvedWorkingDirectoryFromCdCommand(command, currentDirectory = '') {
   const match = command.trim().match(/^cd\s+("[^"]+"|'[^']+'|[^;&|]+)\s*$/i);
   if (!match) return null;
   const directory = stripYamlQuotes(match[1].trim());
-  return isStaticInRepoDirectory(directory) ? directory : null;
+  if (!isStaticRelativeDirectory(directory) || cdTargetEscapesRepo(directory, currentDirectory)) return null;
+  return resolvePackageDirectory(directory, currentDirectory);
 }
 
-function isStaticInRepoDirectory(directory) {
+function isStaticRelativeDirectory(directory) {
   const normalized = normalizePath(directory).trim();
   return Boolean(normalized)
-    && !normalized.startsWith('../')
-    && normalized !== '..'
     && !/^(?:[A-Za-z]:|\/|\\\\|~)/.test(normalized)
     && !/[$%{}*?`]/.test(normalized);
+}
+
+function cdTargetEscapesRepo(directory, currentDirectory = '') {
+  const parts = [
+    ...normalizePackageDirectory(currentDirectory || '').split('/').filter(Boolean),
+    ...normalizePackageDirectory(directory).split('/').filter(Boolean),
+  ];
+  let depth = 0;
+  for (const part of parts) {
+    if (part === '.') continue;
+    if (part === '..') {
+      if (depth === 0) return true;
+      depth -= 1;
+      continue;
+    }
+    depth += 1;
+  }
+  return false;
 }
 
 function splitShellCommandParts(command) {

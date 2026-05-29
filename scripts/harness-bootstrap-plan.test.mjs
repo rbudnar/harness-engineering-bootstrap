@@ -755,6 +755,15 @@ test('screens package wrappers that change directories before child scripts', ()
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens package wrappers that change to parent directories before child scripts', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'package-wrapper-parent-cd'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm --prefix packages/api test'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens package wrappers that run install lifecycle hooks', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'package-wrapper-install'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -1644,6 +1653,8 @@ test('scans root metadata before truncating large repository walks', () => {
 
   assert.equal(survey.files.truncated, true);
   assert.deepEqual(survey.instructionFiles, ['AGENTS.md']);
+  assert.equal(survey.docs.hasDocsReadme, true);
+  assert.equal(survey.versionState.installedVersion, '0.1.0');
   assert(survey.packageFiles.includes('package.json'));
   assert(survey.commands.some((run) => run.command === 'npm test'));
 });

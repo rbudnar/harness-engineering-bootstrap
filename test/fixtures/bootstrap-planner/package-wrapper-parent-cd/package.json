@@ -1,0 +1,11 @@
+{
+  "name": "package-wrapper-parent-cd-fixture",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "npm run deploy",
+    "deploy": "gh release create v1.0.0"
+  }
+}
