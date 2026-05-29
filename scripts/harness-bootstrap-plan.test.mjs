@@ -142,6 +142,14 @@ test('screens unsafe package bodies and top-level generated/runtime surfaces', (
   assert(nestedPlan.triggeredModules.some((module) => module.id === 'repo-contracts'));
 });
 
+test('detects modern Compose files as runtime surfaces', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'compose-file'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'compose.yaml'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('honors packageManager declarations without lockfiles', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'declared-package-manager'));
   const commands = survey.commands.map((command) => command.command);
@@ -193,6 +201,15 @@ test('renders reusable commands for Windows paths and quoted CI arguments', () =
   assert.match(plan.planArtifact.validationCommand, /--repo "C:\\Users\\Example Repo\\project"/);
   assert.match(plan.planArtifact.validationCommand, /node /);
   assert.match(plan.planArtifact.validationCommand, /scripts[\\/]harness-bootstrap-plan\.mjs/);
+});
+
+test('recognizes Gradle and Maven wrapper validation commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'java-wrapper-ci'));
+
+  assert(survey.ci.runCommands.some((run) => run.command === './gradlew test' && run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === './mvnw test' && run.safe));
+  assert(survey.commands.some((run) => run.command === './gradlew test'));
+  assert(survey.commands.some((run) => run.command === './mvnw test'));
 });
 
 test('keeps workflow working-directory steps inspect-only', () => {
@@ -1106,6 +1123,15 @@ test('treats Docker registry pushes as inspect-only commands', () => {
 
   assert(survey.ci.runCommands.some((run) => run.command === 'docker push ghcr.io/example/app' && !run.safe));
   assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('treats Docker Compose pushes as inspect-only commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'docker-compose-push-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm run build'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });

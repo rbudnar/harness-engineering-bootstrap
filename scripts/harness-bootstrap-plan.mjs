@@ -100,6 +100,7 @@ const dangerousCommandPatterns = [
   /\byarn\s+npm\s+publish\b/,
   /\bbun\s+publish\b/,
   /\bdocker\s+push\b/,
+  /\bdocker-compose\s+push\b/,
   /\bdocker\s+buildx\s+build\b.*\s--push(?:\s|=|$)/,
   /\bgit\s+push\b/,
   /\bgh\s+release\b/,
@@ -2594,9 +2595,14 @@ function hasDangerousAwsCommand(part) {
 
 function hasDangerousDockerCommand(part) {
   const words = shellWords(part).map((word) => word.toLowerCase());
+  if (words[0] === 'docker-compose') {
+    const args = stripCliGlobalOptions(words.slice(1), 'docker');
+    return args[0] === 'push';
+  }
   if (words[0] !== 'docker') return false;
   const args = stripCliGlobalOptions(words.slice(1), 'docker');
   if (['push', 'login'].includes(args[0])) return true;
+  if (args[0] === 'compose' && args[1] === 'push') return true;
   return args[0] === 'buildx'
     && args[1] === 'build'
     && words.some((word) => word === '--push' || word.startsWith('--push='));
@@ -3400,6 +3406,8 @@ function isRuntimeSurfacePath(path) {
   return name === 'dockerfile'
     || name.startsWith('dockerfile.')
     || lower.includes('docker-compose')
+    || name === 'compose.yaml'
+    || name === 'compose.yml'
     || lower.endsWith('.tf')
     || hasPathSegment(lower, 'terraform')
     || name === 'pulumi.yaml'
@@ -3435,7 +3443,7 @@ function isSafeValidationCommandPart(part) {
     /^bun\s+--cwd(?:=|\s+)("[^"]+"|'[^']+'|\S+)\s+run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*(?:\s+.*)?$/,
     /^(npm|pnpm|yarn|bun)\s+run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*(?:\s+.*)?$/,
     /^(npm|pnpm|yarn|bun)\s+(build|lint|typecheck|check|validate)(?:\s+.*)?$/,
-    /^(pytest|python\s+-m\s+pytest|go\s+test|cargo\s+test|mvn\s+test|gradle\s+test)(?:\s+.*)?$/,
+    /^(pytest|python\s+-m\s+pytest|go\s+test|cargo\s+test|mvn\s+test|gradle\s+test|(?:\.\/|\.\\)?mvnw(?:\.cmd)?\s+test|(?:\.\/|\.\\)?gradlew(?:\.bat)?\s+test)(?:\s+.*)?$/,
     /^make\s+(test|build|lint|check|quality|validate|coverage)(?:\s+\w+=\S+)?$/,
     /^(terraform\s+validate|terraform\s+fmt\s+-check)(?:\s+.*)?$/,
     /^node\s+\S*(template-fitness|validate-harness|harness-audit)\S*(?:\s+.*)?$/,

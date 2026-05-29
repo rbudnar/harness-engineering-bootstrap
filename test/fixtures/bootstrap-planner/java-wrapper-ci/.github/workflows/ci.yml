@@ -1,0 +1,6 @@
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./gradlew test
+      - run: ./mvnw test
