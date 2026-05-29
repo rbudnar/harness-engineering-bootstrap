@@ -1,0 +1,11 @@
+name: CI
+
+on:
+  pull_request:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - run: npx semantic-release
+      - run: npm exec release-it

@@ -753,6 +753,31 @@ test('uses mutating commands with boolean global flags as runtime-safety evidenc
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('uses release actions as runtime-safety evidence', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workflow-release-action'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => run.command === 'uses: softprops/action-gh-release@v2' && !run.safe));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === '.github/workflows/ci.yml'
+    && hint.reason.includes('softprops/action-gh-release@v2')
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('uses direct release CLIs as runtime-safety evidence', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'semantic-release-ci'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => run.command === 'npx semantic-release' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'npm exec release-it' && !run.safe));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === '.github/workflows/ci.yml'
+    && hint.reason.includes('semantic-release')
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('keeps validation-looking shell text inspect-only', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'validation-token-noise-ci'));
 

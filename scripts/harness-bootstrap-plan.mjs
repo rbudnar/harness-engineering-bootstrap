@@ -69,6 +69,8 @@ const dangerousCommandPatterns = [
   /\bdocker\s+buildx\s+build\b.*\s--push(?:\s|=|$)/,
   /\bgit\s+push\b/,
   /\bgh\s+release\b/,
+  /\b(npx|npm\s+exec|pnpm\s+dlx|yarn\s+dlx|bunx)\s+(semantic-release|release-it)\b/,
+  /\b(npx|npm\s+exec|pnpm\s+dlx|yarn\s+dlx|bunx)\s+changeset\s+publish\b/,
   /\b(node|tsx?|python3?|bash|sh|pwsh|powershell)\s+\S*(deploy|release|publish|provision)[\w./\\-]*/i,
   /\b(npm|pnpm|yarn|bun)\s+(run\s+)?[\w:-]*(deploy|publish|release)[\w:-]*\b/,
   /\bnpm\s+--prefix\s+\S+\s+(run\s+)?[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
@@ -1232,7 +1234,7 @@ function collectRuntimeSafetyHints(files, ci = { runCommands: [] }, packageManif
     .filter((command) => !command.safe && isRuntimeSafetyCommand(command))
     .map((command) => ({
       path: command.source,
-      reason: `CI command may mutate external state: ${formatInlineValue(command.command)}`,
+      reason: command.runtimeSafetyReason ?? `CI command may mutate external state: ${formatInlineValue(command.command)}`,
     }));
 
   const packageHints = collectPackageRuntimeSafetyHints(packageManifests);
@@ -1255,7 +1257,7 @@ function collectPackageRuntimeSafetyHints(packageManifests) {
 }
 
 function isRuntimeSafetyCommand(command) {
-  return hasDangerousCommand(command.command) || Boolean(command.packageScriptReason);
+  return hasDangerousCommand(command.command) || Boolean(command.packageScriptReason) || Boolean(command.runtimeSafetyReason);
 }
 
 function isDeploymentScriptPath(path) {
@@ -1301,6 +1303,13 @@ function collectWorkflowRunCommands(text, source, packageManifests = [], unsafeM
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
+    const usesMatch = line.match(/^(\s*)-?\s*uses:\s*(.*)\s*$/);
+    if (usesMatch) {
+      const action = stripYamlQuotes(usesMatch[2].trim());
+      if (isRuntimeSafetyAction(action)) commands.push(classifyWorkflowUsesStep(source, action));
+      continue;
+    }
+
     const match = line.match(/^(\s*)-?\s*run:\s*(.*)\s*$/);
     if (!match) continue;
     if (isWorkflowDefaultsRunKey(lines, index)) continue;
@@ -1336,6 +1345,23 @@ function collectWorkflowRunCommands(text, source, packageManifests = [], unsafeM
   }
 
   return commands;
+}
+
+function classifyWorkflowUsesStep(source, action) {
+  return {
+    source,
+    command: `uses: ${action}`,
+    multiline: false,
+    workingDirectory: null,
+    packageScriptReason: null,
+    safe: false,
+    inspectOnlyReason: `GitHub Action may mutate external state: ${action}`,
+    runtimeSafetyReason: `GitHub Action may mutate external state: ${formatInlineValue(action)}`,
+  };
+}
+
+function isRuntimeSafetyAction(action) {
+  return /(^|[-_/])(deploy|release|publish)([-_/@]|$)/i.test(action);
 }
 
 function collectGenericCiRunCommands(text, source, packageManifests = [], unsafeMakeTargets = new Set()) {
