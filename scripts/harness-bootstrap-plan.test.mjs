@@ -301,6 +301,11 @@ test('keeps unsafe Makefile recipes out of validation commands', () => {
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
 
   assert(!survey.commands.some((run) => run.command === 'make build'));
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'make build'
+    && !run.safe
+    && run.inspectOnlyReason.includes('make target "build"')
+  )));
   assert(survey.runtimeSafetyHints.some((hint) => (
     hint.path === 'Makefile'
     && hint.reason === 'make target "build" may mutate external state'
@@ -336,7 +341,10 @@ test('parses inline non-GitHub CI script arrays into individual commands', () =>
 test('parses CircleCI run steps for runtime-safety triggers', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'circleci-runtime'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+  const commands = survey.ci.runCommands.map((run) => run.command);
 
+  assert(commands.includes('pytest'));
+  assert(survey.commands.some((run) => run.command === 'pytest'));
   assert(survey.ci.runCommands.some((run) => run.command === 'terraform apply -auto-approve' && !run.safe));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === '.circleci/config.yml'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
@@ -360,6 +368,15 @@ test('keeps workflow default working-directory scoped to its job', () => {
   )));
   assert(rootCommand);
   assert.equal(rootCommand.safe, true);
+});
+
+test('honors workflow-level default working-directory', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workflow-default-top-level'));
+  const command = survey.ci.runCommands.find((run) => run.command === 'npm test');
+
+  assert.equal(command.workingDirectory, 'services/api');
+  assert.equal(command.safe, false);
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
 });
 
 test('detects existing bootstraps and emits versioned update guidance', () => {

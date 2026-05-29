@@ -1,6 +1,11 @@
 version: 2.1
 
 jobs:
+  test:
+    steps:
+      - run:
+          name: Test
+          command: pytest
   deploy:
     steps:
       - run: terraform apply -auto-approve
