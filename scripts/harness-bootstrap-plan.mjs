@@ -112,7 +112,7 @@ const dangerousCommandPatterns = [
   /\bpnpm\s+--dir\s+\S+\s+(run\s+)?[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
   /\byarn\s+--cwd\s+\S+\s+(run\s+)?[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
   /\bbun\s+--cwd\s+\S+\s+run\s+[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
-  /\baz\s+.+\b(create|delete|deploy|update)\b/,
+  /\baz\s+.+\b(create|delete|deploy|update|upload|import|set|purge|restore|start|stop|restart|scale)\b/,
   /\baws\s+(s3|s3api)\s+(sync|cp|mv|rm|rb|mb|put|delete|create|update)\b/,
   /\baws\s+.+\b(put|delete|create|deploy|publish|update)\b/,
   /\bgcloud\s+.+\b(deploy|delete|create|update)\b/,
@@ -2613,9 +2613,60 @@ function hasDangerousGhCommand(part) {
   const words = shellWords(part).map((word) => word.toLowerCase());
   if (words[0] !== 'gh') return false;
   const args = stripCliGlobalOptions(words.slice(1), 'gh');
+  if (args[0] === 'api') {
+    const apiIndex = words.indexOf('api', 1);
+    return hasDangerousGhApiCommand(words.slice(apiIndex + 1));
+  }
   if (args[0] === 'auth' && args[1] === 'login') return true;
-  if (args[0] === 'pr' && args[1] === 'merge') return true;
-  return args[0] === 'release';
+  if (args[0] === 'release') return true;
+
+  const mutatingVerbs = {
+    issue: new Set(['create', 'edit', 'close', 'reopen', 'delete', 'transfer', 'pin', 'unpin', 'lock', 'unlock']),
+    pr: new Set(['merge', 'comment', 'review', 'ready', 'close', 'reopen', 'edit', 'lock', 'unlock']),
+    workflow: new Set(['run', 'enable', 'disable']),
+    run: new Set(['cancel', 'delete', 'rerun']),
+    repo: new Set(['create', 'delete', 'edit', 'rename', 'archive', 'unarchive', 'fork', 'sync']),
+    secret: new Set(['set', 'delete', 'remove']),
+    variable: new Set(['set', 'delete', 'remove']),
+    label: new Set(['create', 'edit', 'delete']),
+    gist: new Set(['create', 'edit', 'delete']),
+    codespace: new Set(['create', 'delete', 'stop', 'rebuild']),
+    project: new Set(['create', 'edit', 'delete', 'close', 'reopen', 'item-add', 'item-edit', 'item-delete', 'field-create', 'field-delete']),
+  };
+  return Boolean(mutatingVerbs[args[0]]?.has(args[1]));
+}
+
+function hasDangerousGhApiCommand(args) {
+  let method = null;
+  let hasFieldWrite = false;
+
+  for (let index = 0; index < args.length; index += 1) {
+    const word = args[index];
+    if (word === '--method' || word === '-X') {
+      method = args[index + 1] ?? method;
+      index += 1;
+      continue;
+    }
+    if (word.startsWith('--method=')) {
+      method = word.slice('--method='.length);
+      continue;
+    }
+    if (word.startsWith('-X') && word.length > 2) {
+      method = word.slice(2);
+      continue;
+    }
+    if (['-f', '-F', '--field', '--raw-field', '--input'].includes(word)
+      || word.startsWith('-f=')
+      || word.startsWith('-F=')
+      || word.startsWith('--field=')
+      || word.startsWith('--raw-field=')
+      || word.startsWith('--input=')) {
+      hasFieldWrite = true;
+    }
+  }
+
+  const normalizedMethod = method?.toLowerCase();
+  return ['post', 'put', 'patch', 'delete'].includes(normalizedMethod) || (!normalizedMethod && hasFieldWrite);
 }
 
 function firstCliVerb(args, command = '') {

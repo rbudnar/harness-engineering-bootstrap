@@ -3,6 +3,8 @@
   "private": true,
   "scripts": {
     "check": "gh --repo owner/repo pr merge 123 --merge",
-    "validate": "gh --hostname github.com release create v1.0.0"
+    "validate": "gh --hostname github.com release create v1.0.0",
+    "quality": "gh issue create --title \"Found\" --body \"Body\"",
+    "lint": "gh api repos/owner/repo/issues --method POST -f title=Found"
   }
 }

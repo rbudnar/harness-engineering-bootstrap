@@ -720,7 +720,21 @@ test('screens mutating gh commands after global options', () => {
 
   assert(!survey.commands.some((run) => run.command === 'npm run check'));
   assert(!survey.commands.some((run) => run.command === 'npm run validate'));
+  assert(!survey.commands.some((run) => run.command === 'npm run quality'));
+  assert(!survey.commands.some((run) => run.command === 'npm run lint'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('screens Azure storage upload package scripts', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'azure-storage-upload-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm run validate'));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'package.json'
+    && hint.reason === 'package script "validate" may mutate external state'
+  )));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
