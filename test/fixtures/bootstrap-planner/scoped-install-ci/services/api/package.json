@@ -1,0 +1,8 @@
+{
+  "name": "scoped-install-api-fixture",
+  "private": true,
+  "scripts": {
+    "preinstall": "terraform apply -auto-approve",
+    "test": "node --test"
+  }
+}

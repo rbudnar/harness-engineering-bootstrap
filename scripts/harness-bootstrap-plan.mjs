@@ -1894,9 +1894,13 @@ function packageManifestForCommand(command, packageManifests, workingDirectory =
 
   const workspace = packageWorkspaceFromCommand(command);
   if (workspace) {
+    const normalizedWorkspace = normalizePackageDirectory(workspace);
+    const workspaceBasename = basename(normalizedWorkspace);
     const manifest = packageManifests.find((item) => (
       item.json?.name === workspace
+      || item.directory === normalizedWorkspace
       || (item.directory && basename(item.directory) === workspace)
+      || (item.directory && basename(item.directory) === workspaceBasename)
     ));
     if (manifest) return manifest;
   }
@@ -1939,16 +1943,27 @@ function resolvePackageDirectory(directory, baseDirectory = null) {
 
 function packageDirectoryFromCommand(command) {
   const trimmed = command.trim();
-  const match = trimmed.match(/^(?:npm\s+--prefix|pnpm\s+--dir|yarn\s+--cwd|bun\s+--cwd)\s+("[^"]+"|'[^']+'|\S+)/i);
-  if (!match) return null;
-  return stripYamlQuotes(match[1].trim());
+  const beforeCommand = trimmed.match(/^(?:npm\s+--prefix|pnpm\s+--dir|yarn\s+--cwd|bun\s+--cwd)\s+("[^"]+"|'[^']+'|\S+)/i);
+  if (beforeCommand) return stripYamlQuotes(beforeCommand[1].trim());
+
+  const npmInstallPrefix = trimmed.match(/^npm\s+(?:ci|install)\b.*(?:\s|^)--prefix(?:=|\s+)("[^"]+"|'[^']+'|\S+)/i);
+  if (npmInstallPrefix) return stripYamlQuotes(npmInstallPrefix[1].trim());
+
+  return null;
 }
 
 function packageWorkspaceFromCommand(command) {
   const trimmed = command.trim();
-  const match = trimmed.match(/^npm\s+(?:--workspace|-w)\s+("[^"]+"|'[^']+'|\S+)/i);
-  if (!match) return null;
-  return stripYamlQuotes(match[1].trim());
+  const npmWorkspace = trimmed.match(/^npm\s+(?:--workspace|-w)\s+("[^"]+"|'[^']+'|\S+)/i);
+  if (npmWorkspace) return stripYamlQuotes(npmWorkspace[1].trim());
+
+  const pnpmFilter = trimmed.match(/^pnpm\s+(?:--filter|-F)\s+("[^"]+"|'[^']+'|\S+)/i);
+  if (pnpmFilter) return stripYamlQuotes(pnpmFilter[1].trim());
+
+  const yarnWorkspace = trimmed.match(/^yarn\s+workspace\s+("[^"]+"|'[^']+'|\S+)/i);
+  if (yarnWorkspace) return stripYamlQuotes(yarnWorkspace[1].trim());
+
+  return null;
 }
 
 function installLifecycleScriptNames(command, scripts) {
@@ -2022,6 +2037,19 @@ function packageScriptNameFromCommand(command) {
 
   const npmWorkspaceTest = trimmed.match(/^npm\s+(?:--workspace|-w)\s+\S+\s+test\b/i);
   if (npmWorkspaceTest) return 'test';
+
+  const pnpmFilterRun = trimmed.match(/^pnpm\s+(?:--filter|-F)\s+\S+\s+run\s+([\w:-]+)/i);
+  if (pnpmFilterRun) return pnpmFilterRun[1];
+
+  const pnpmFilterDirect = trimmed.match(/^pnpm\s+(?:--filter|-F)\s+\S+\s+([\w:-]+)/i);
+  if (pnpmFilterDirect && !['add', 'install', 'remove'].includes(pnpmFilterDirect[1].toLowerCase())) {
+    return pnpmFilterDirect[1] === 'test' ? 'test' : pnpmFilterDirect[1];
+  }
+
+  const yarnWorkspaceRun = trimmed.match(/^yarn\s+workspace\s+\S+\s+(?:run\s+)?([\w:-]+)/i);
+  if (yarnWorkspaceRun && !['add', 'install', 'remove'].includes(yarnWorkspaceRun[1].toLowerCase())) {
+    return yarnWorkspaceRun[1];
+  }
 
   const npmPrefixRun = trimmed.match(/^npm\s+--prefix\s+\S+\s+run\s+([\w:-]+)/i);
   if (npmPrefixRun) return npmPrefixRun[1];

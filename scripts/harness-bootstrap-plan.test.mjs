@@ -228,6 +228,19 @@ test('screens install lifecycle hooks before emitting install commands', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens scoped install lifecycle hooks before emitting install commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'scoped-install-ci'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'npm ci --prefix services/api'
+    && !run.safe
+    && run.packageScriptReason.includes('preinstall')
+  )));
+  assert(!survey.commands.some((run) => run.command === 'npm ci --prefix services/api'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('keeps piped validation commands inspect-only', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'piped-validation-ci'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -424,6 +437,14 @@ test('screens workspace delegated package scripts', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'workspace-delegated-package'));
 
   assert(!survey.commands.some((run) => run.command === 'npm run build'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'packages/api/package.json'));
+});
+
+test('screens pnpm and yarn workspace delegated package scripts', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workspace-selector-package'));
+
+  assert(!survey.commands.some((run) => run.command === 'npm run build'));
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'packages/api/package.json'));
 });
 
