@@ -591,6 +591,45 @@ test('uses mutating kubectl commands as runtime-safety evidence', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('parses Azure shell shortcut steps for runtime-safety evidence', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'azure-shell-shortcut'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => run.command === 'kubectl apply -f k8s/service.yaml' && !run.safe));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'azure-pipelines.yml'
+    && hint.reason.includes('kubectl apply -f k8s/service.yaml')
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('honors Azure same-step workingDirectory for scripts', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'azure-working-directory'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+  const command = survey.ci.runCommands.find((run) => run.command === 'npm test');
+
+  assert.equal(command.workingDirectory, 'services/api');
+  assert.equal(command.safe, false);
+  assert.match(command.packageScriptReason, /pretest/);
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('parses Jenkins Windows and PowerShell shell steps', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'jenkins-windows-shells'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+  const commands = survey.ci.runCommands.map((run) => run.command);
+
+  assert(commands.includes('kubectl apply -f k8s/service.yaml'));
+  assert(commands.includes('kubectl create namespace preview'));
+  assert(commands.includes('terraform apply -auto-approve'));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'Jenkinsfile'
+    && hint.reason.includes('kubectl apply -f k8s/service.yaml')
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('keeps workflow default working-directory scoped to its job', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'workflow-default-scope'));
   const rootCommand = survey.ci.runCommands.find((run) => run.command === 'npm test' && !run.workingDirectory);

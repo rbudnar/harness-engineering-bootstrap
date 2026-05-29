@@ -1257,17 +1257,18 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    const shellMatch = line.match(/^\s*sh\s+['"](.+)['"]\s*$/);
+    const shellMatch = line.match(/^\s*(?:sh|bat|powershell|pwsh)\s+['"](.+)['"]\s*$/);
     if (shellMatch) {
       commands.push(classifyCiRunCommand(source, shellMatch[1].trim(), false, packageManifests, { unsafeMakeTargets }));
       continue;
     }
 
-    const keyMatch = line.match(/^\s*(?:-\s*)?(?:run|script|command):\s*(.*)\s*$/);
+    const keyMatch = line.match(/^\s*(?:-\s*)?(?:run|script|command|bash|powershell|pwsh):\s*(.*)\s*$/);
     if (!keyMatch) continue;
 
     const value = keyMatch[1].trim();
-    const contextualWorkingDirectory = findGenericWorkingDirectory(lines, index);
+    const contextualWorkingDirectory = findGenericSameStepWorkingDirectory(lines, index)
+      ?? findGenericWorkingDirectory(lines, index);
     const inlineCommands = parseInlineCommandArray(value);
     if (inlineCommands) {
       let inlineWorkingDirectory = contextualWorkingDirectory;
@@ -1319,9 +1320,13 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
               unsafeMakeTargets,
             }));
           }
-        } else if (/^\s*working_directory:\s*/.test(nextLine) || /^\s*working-directory:\s*/.test(nextLine)) {
+        } else if (parseGenericWorkingDirectory(nextLine)) {
           const nestedWorkingDirectory = nextLine.match(/^\s*working[-_]directory:\s*(.+?)\s*$/)?.[1];
-          if (nestedWorkingDirectory) blockWorkingDirectory = stripYamlQuotes(nestedWorkingDirectory.trim());
+          if (nestedWorkingDirectory) {
+            blockWorkingDirectory = stripYamlQuotes(nestedWorkingDirectory.trim());
+          } else {
+            blockWorkingDirectory = parseGenericWorkingDirectory(nextLine);
+          }
         } else if (/^\s*command:\s*/.test(nextLine)) {
           const nestedCommand = nextLine.match(/^\s*command:\s*(.*?)\s*$/)?.[1]?.trim();
           if (/^[|>]/.test(nestedCommand) || nestedCommand === '') {
@@ -1400,8 +1405,28 @@ function findGenericWorkingDirectory(lines, runIndex) {
   return null;
 }
 
+function findGenericSameStepWorkingDirectory(lines, runIndex) {
+  const runIndent = indentation(lines[runIndex]);
+  let nestedIndent = null;
+
+  for (let index = runIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!line.trim()) continue;
+
+    const currentIndent = indentation(line);
+    if (currentIndent <= runIndent) break;
+    if (nestedIndent === null) nestedIndent = currentIndent;
+    if (currentIndent < nestedIndent) break;
+
+    const workingDirectory = parseGenericWorkingDirectory(line);
+    if (workingDirectory) return workingDirectory;
+  }
+
+  return null;
+}
+
 function parseGenericWorkingDirectory(line) {
-  const match = line.match(/^\s*(?:-\s*)?working[-_]directory:\s*(.+?)\s*$/);
+  const match = line.match(/^\s*(?:-\s*)?working[-_]?directory:\s*(.+?)\s*$/i);
   if (!match) return null;
   return stripYamlQuotes(match[1].trim());
 }
