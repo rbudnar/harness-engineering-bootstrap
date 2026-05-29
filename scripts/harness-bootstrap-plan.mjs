@@ -242,7 +242,7 @@ export function surveyRepository(inputPath, options = {}) {
   const packageManifests = collectPackageManifests(root, allFiles);
   const rootPackageManifest = packageManifests.find((manifest) => manifest.path === 'package.json');
   const packageJson = rootPackageManifest?.json ?? null;
-  const detectedInstructionFiles = instructionFiles.filter((path) => fileSet.has(path));
+  const detectedInstructionFiles = detectInstructionFiles(allFiles, fileSet);
   const docs = collectDocs(allFiles);
   const packageManager = inferPackageManager(fileSet, packageJson);
   const unsafeMakeTargets = collectUnsafeMakeTargets(root, fileSet);
@@ -1362,7 +1362,7 @@ function classifyWorkflowUsesStep(source, action) {
 }
 
 function isRuntimeSafetyAction(action) {
-  return /(^|[-_/])(deploy|release|publish)([-_/@]|$)/i.test(action);
+  return /(^|[-_/])(auth|credential|credentials|deploy|login|publish|release)([-_/@]|$)/i.test(action);
 }
 
 function collectGenericCiRunCommands(text, source, packageManifests = [], unsafeMakeTargets = new Set()) {
@@ -1819,7 +1819,7 @@ function isDefaultsRunWorkingDirectory(lines, workingDirectoryIndex) {
 function collectHarnessControls(files) {
   return files.filter((path) => {
     const lower = path.toLowerCase();
-    return instructionFiles.map((file) => file.toLowerCase()).includes(lower)
+    return isInstructionFilePath(lower)
       || lower === 'docs/dogfooding.md'
       || lower.includes('/harness')
       || lower.includes('/decisions')
@@ -1832,6 +1832,17 @@ function collectHarnessControls(files) {
       || lower.includes('harness-metrics')
       || lower.includes('harness-health');
   }).sort();
+}
+
+function detectInstructionFiles(files, fileSet) {
+  return instructionFiles.filter((path) => fileSet.has(path) || files.some((file) => file.startsWith(`${path}/`)));
+}
+
+function isInstructionFilePath(path) {
+  return instructionFiles.some((file) => {
+    const lower = file.toLowerCase();
+    return path === lower || path.startsWith(`${lower}/`);
+  });
 }
 
 function walkFiles(root, options) {

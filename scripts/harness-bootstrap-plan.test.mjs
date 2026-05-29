@@ -409,6 +409,15 @@ test('detects nested MCP config files as runtime surfaces', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('detects directory-backed instruction adapters', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'directory-instruction-adapters'));
+
+  assert(survey.instructionFiles.includes('.cursor/rules'));
+  assert(survey.instructionFiles.includes('.windsurf/rules'));
+  assert(survey.harnessControls.includes('.cursor/rules/repo.mdc'));
+  assert(survey.harnessControls.includes('.windsurf/rules/repo.md'));
+});
+
 test('keeps unsafe Makefile recipes out of validation commands', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'unsafe-make'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -770,6 +779,17 @@ test('uses release actions as runtime-safety evidence', () => {
     hint.path === '.github/workflows/ci.yml'
     && hint.reason.includes('softprops/action-gh-release@v2')
   )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('uses credential actions as runtime-safety evidence', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workflow-credential-action'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => run.command === 'uses: aws-actions/configure-aws-credentials@v4' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'uses: azure/login@v2' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'uses: docker/login-action@v3' && !run.safe));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === '.github/workflows/ci.yml'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
