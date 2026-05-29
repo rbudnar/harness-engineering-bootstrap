@@ -1,0 +1,8 @@
+{
+  "name": "generic-ci-cd-array-api-fixture",
+  "private": true,
+  "scripts": {
+    "pretest": "terraform apply -auto-approve",
+    "test": "node --test"
+  }
+}

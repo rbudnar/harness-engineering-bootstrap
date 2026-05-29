@@ -950,11 +950,11 @@ function collectPackageFiles(files) {
 
 function collectPackageScripts(packageManifests, packageManager, fileSet = new Set()) {
   return packageManifests.flatMap((manifest) => (
-    collectPackageScriptsFromManifest(manifest, packageManagerForManifest(fileSet, manifest, packageManager))
+    collectPackageScriptsFromManifest(manifest, packageManagerForManifest(fileSet, manifest, packageManager), packageManifests)
   ));
 }
 
-function collectPackageScriptsFromManifest(manifest, packageManager) {
+function collectPackageScriptsFromManifest(manifest, packageManager, packageManifests = []) {
   const packageJson = manifest.json;
   if (!packageJson || typeof packageJson.scripts !== 'object') return [];
 
@@ -965,7 +965,7 @@ function collectPackageScriptsFromManifest(manifest, packageManager) {
       return {
         source: manifest.path,
         command,
-        unsafeReason: unsafePackageScriptReason(command, packageJson),
+        unsafeReason: unsafePackageScriptReason(command, manifest, packageManifests),
       };
     })
     .filter((script) => !script.unsafeReason)
@@ -1241,8 +1241,19 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
     const value = keyMatch[1].trim();
     const inlineCommands = parseInlineCommandArray(value);
     if (inlineCommands) {
+      let inlineWorkingDirectory = null;
       for (const inlineCommand of inlineCommands) {
-        commands.push(classifyCiRunCommand(source, inlineCommand, false, packageManifests, { unsafeMakeTargets }));
+        const command = stripYamlQuotes(inlineCommand);
+        const changedDirectory = workingDirectoryFromCdCommand(command);
+        if (changedDirectory) {
+          inlineWorkingDirectory = changedDirectory;
+          commands.push(classifyCiRunCommand(source, command, false, packageManifests, { unsafeMakeTargets }));
+        } else {
+          commands.push(classifyCiRunCommand(source, command, false, packageManifests, {
+            workingDirectory: inlineWorkingDirectory,
+            unsafeMakeTargets,
+          }));
+        }
       }
       continue;
     }
@@ -1268,7 +1279,17 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
 
         const listCommand = nextLine.match(/^\s*-\s+(.+?)\s*$/)?.[1];
         if (listCommand) {
-          commands.push(classifyCiRunCommand(source, stripYamlQuotes(listCommand.trim()), false, packageManifests, { unsafeMakeTargets }));
+          const command = stripYamlQuotes(listCommand.trim());
+          const changedDirectory = workingDirectoryFromCdCommand(command);
+          if (changedDirectory) {
+            blockWorkingDirectory = changedDirectory;
+            commands.push(classifyCiRunCommand(source, command, false, packageManifests, { unsafeMakeTargets }));
+          } else {
+            commands.push(classifyCiRunCommand(source, command, false, packageManifests, {
+              workingDirectory: blockWorkingDirectory,
+              unsafeMakeTargets,
+            }));
+          }
         } else if (/^\s*working_directory:\s*/.test(nextLine) || /^\s*working-directory:\s*/.test(nextLine)) {
           const nestedWorkingDirectory = nextLine.match(/^\s*working[-_]directory:\s*(.+?)\s*$/)?.[1];
           if (nestedWorkingDirectory) blockWorkingDirectory = stripYamlQuotes(nestedWorkingDirectory.trim());
@@ -1729,8 +1750,8 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
     ? `it declares working-directory ${formatInlineValue(workingDirectory)}; inspect and run from that directory manually`
     : null;
   const makeTargetReason = unsafeMakeTargetReason(command, unsafeMakeTargets);
-  const packageJson = packageJsonForCommand(command, packageManifests, workingDirectory);
-  const packageScriptReason = unsafePackageScriptReason(command, packageJson);
+  const packageManifest = packageManifestForCommand(command, packageManifests, workingDirectory);
+  const packageScriptReason = unsafePackageScriptReason(command, packageManifest, packageManifests);
   const safe = !workingDirectoryReason && !makeTargetReason && !packageScriptReason && isSafeValidationCommand(command);
   return {
     source,
@@ -1770,20 +1791,29 @@ function hasDangerousCommand(command) {
     .some((part) => dangerousCommandPatterns.some((pattern) => pattern.test(part.toLowerCase())));
 }
 
-function unsafePackageScriptReason(command, packageJson) {
+function unsafePackageScriptReason(command, packageManifest, packageManifests = []) {
+  const packageJson = packageManifest?.json;
   if (!packageJson || typeof packageJson.scripts !== 'object') return null;
 
   for (const part of splitShellCommandParts(command)) {
     for (const lifecycleScript of installLifecycleScriptNames(part, packageJson.scripts)) {
-      const unsafeLifecycleScript = findUnsafePackageScript(lifecycleScript, packageJson.scripts);
+      const unsafeLifecycleScript = findUnsafePackageScript(lifecycleScript, packageJson.scripts, [], {
+        manifest: packageManifest,
+        packageManifests,
+      });
       if (unsafeLifecycleScript) {
         return `it may run install lifecycle "${lifecycleScript}" whose dependency chain "${unsafeLifecycleScript.chain.join(' -> ')}" may mutate external state`;
       }
     }
 
     const scriptName = packageScriptNameFromCommand(part);
-    if (!scriptName || !Object.hasOwn(packageJson.scripts, scriptName)) continue;
-    const unsafeScript = findUnsafePackageScript(scriptName, packageJson.scripts);
+    const targetManifest = packageManifestForCommand(part, packageManifests, packageManifest.directory) ?? packageManifest;
+    const targetPackageJson = targetManifest?.json;
+    if (!scriptName || !targetPackageJson?.scripts || !Object.hasOwn(targetPackageJson.scripts, scriptName)) continue;
+    const unsafeScript = findUnsafePackageScript(scriptName, targetPackageJson.scripts, [], {
+      manifest: targetManifest,
+      packageManifests,
+    });
     if (unsafeScript) {
       return `it calls package script "${scriptName}" whose dependency chain "${unsafeScript.chain.join(' -> ')}" may mutate external state`;
     }
@@ -1793,14 +1823,18 @@ function unsafePackageScriptReason(command, packageJson) {
 }
 
 function packageJsonForCommand(command, packageManifests, workingDirectory = null) {
+  return packageManifestForCommand(command, packageManifests, workingDirectory)?.json ?? null;
+}
+
+function packageManifestForCommand(command, packageManifests, workingDirectory = null) {
   const directory = workingDirectory || packageDirectoryFromCommand(command);
   if (directory) {
     const normalizedDirectory = normalizePackageDirectory(directory);
     const manifest = packageManifests.find((item) => item.directory === normalizedDirectory);
-    if (manifest) return manifest.json;
+    if (manifest) return manifest;
   }
 
-  return packageManifests.find((item) => item.path === 'package.json')?.json ?? null;
+  return packageManifests.find((item) => item.path === 'package.json') ?? null;
 }
 
 function normalizePackageDirectory(directory) {
@@ -1835,13 +1869,20 @@ function isInstallCommand(command) {
   return /^(npm\s+ci|npm\s+install|pnpm\s+install|yarn\s+install|bun\s+install)\b/.test(trimmed);
 }
 
-function findUnsafePackageScript(scriptName, scripts, chain = []) {
+function findUnsafePackageScript(scriptName, scripts, chain = [], context = {}) {
   if (!Object.hasOwn(scripts, scriptName)) return null;
-  if (chain.includes(scriptName)) return null;
+  const manifestPath = context.manifest?.path ?? 'package.json';
+  const visitKey = `${manifestPath}\0${scriptName}`;
+  if (context.visited?.has(visitKey)) return null;
 
+  const nextVisited = new Set(context.visited ?? []);
+  nextVisited.add(visitKey);
   const nextChain = [...chain, scriptName];
   for (const lifecycleScript of lifecycleScriptNames(scriptName, scripts)) {
-    const unsafeLifecycleScript = findUnsafePackageScript(lifecycleScript, scripts, nextChain);
+    const unsafeLifecycleScript = findUnsafePackageScript(lifecycleScript, scripts, nextChain, {
+      ...context,
+      visited: nextVisited,
+    });
     if (unsafeLifecycleScript) return unsafeLifecycleScript;
   }
 
@@ -1851,7 +1892,13 @@ function findUnsafePackageScript(scriptName, scripts, chain = []) {
   for (const part of splitShellCommandParts(body)) {
     const childScript = packageScriptNameFromCommand(part);
     if (!childScript) continue;
-    const unsafeScript = findUnsafePackageScript(childScript, scripts, nextChain);
+    const childManifest = packageManifestForCommand(part, context.packageManifests ?? [], context.manifest?.directory) ?? context.manifest;
+    const childScripts = childManifest?.json?.scripts ?? scripts;
+    const unsafeScript = findUnsafePackageScript(childScript, childScripts, nextChain, {
+      ...context,
+      manifest: childManifest,
+      visited: nextVisited,
+    });
     if (unsafeScript) return unsafeScript;
   }
 
@@ -1901,6 +1948,12 @@ function packageScriptNameFromCommand(command) {
   if (direct && !['add', 'install', 'remove'].includes(direct[1].toLowerCase())) return direct[1];
 
   return null;
+}
+
+function workingDirectoryFromCdCommand(command) {
+  const match = command.trim().match(/^cd\s+("[^"]+"|'[^']+'|[^;&|]+)\s*$/i);
+  if (!match) return null;
+  return stripYamlQuotes(match[1].trim());
 }
 
 function splitShellCommandParts(command) {

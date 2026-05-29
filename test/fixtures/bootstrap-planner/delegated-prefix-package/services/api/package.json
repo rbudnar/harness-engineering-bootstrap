@@ -2,6 +2,6 @@
   "name": "delegated-prefix-package-api-fixture",
   "private": true,
   "scripts": {
-    "deploy": "terraform apply -auto-approve"
+    "build": "terraform apply -auto-approve"
   }
 }

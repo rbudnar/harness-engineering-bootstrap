@@ -354,6 +354,18 @@ test('parses inline non-GitHub CI script arrays into individual commands', () =>
   assert(!commands.some((command) => command.includes('[')));
 });
 
+test('preserves directory context across generic CI script arrays', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'generic-ci-cd-array'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+  const testCommand = survey.ci.runCommands.find((run) => run.command === 'npm test');
+
+  assert.equal(testCommand.workingDirectory, 'services/api');
+  assert.equal(testCommand.safe, false);
+  assert.match(testCommand.packageScriptReason, /pretest/);
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('parses CircleCI run steps for runtime-safety triggers', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'circleci-runtime'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });

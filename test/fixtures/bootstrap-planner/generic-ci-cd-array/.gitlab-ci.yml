@@ -1,0 +1,4 @@
+test:
+  script:
+    - cd services/api
+    - npm test
