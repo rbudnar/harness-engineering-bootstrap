@@ -296,6 +296,43 @@ test('detects top-level MCP directories as runtime surfaces', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('keeps unsafe Makefile recipes out of validation commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'unsafe-make'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'make build'));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'Makefile'
+    && hint.reason === 'make target "build" may mutate external state'
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('detects deployment-oriented script filenames', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'deploy-script-filename'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'scripts/deploy.sh'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('does not treat application task source folders as handoff plans', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'app-task-folder'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert.equal(survey.planHints.length, 0);
+  assert(plan.rejectedModules.some((module) => module.id === 'long-running-handoff'));
+});
+
+test('parses inline non-GitHub CI script arrays into individual commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'inline-ci-array'));
+  const commands = survey.ci.runCommands.map((run) => run.command);
+
+  assert(commands.includes('npm ci'));
+  assert(commands.includes('npm test'));
+  assert(!commands.includes('["npm ci", "npm test"]'));
+});
+
 test('detects existing bootstraps and emits versioned update guidance', () => {
   const fixture = resolve(fixturesRoot, 'existing-bootstrapped');
   const survey = surveyRepository(fixture);

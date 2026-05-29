@@ -1,0 +1,5 @@
+build:
+	terraform apply -auto-approve
+
+test:
+	node --test

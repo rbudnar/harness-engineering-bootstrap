@@ -206,6 +206,7 @@ export function surveyRepository(inputPath, options = {}) {
   const packageManager = inferPackageManager(fileSet, packageJson);
   const packageScripts = collectPackageScripts(packageManifests, packageManager);
   const makeTargets = collectMakeTargets(root, fileSet);
+  const makeRuntimeSafetyHints = collectMakeRuntimeSafetyHints(root, fileSet);
   const ci = collectCi(root, allFiles, packageManifests);
   const scriptFiles = allFiles.filter((path) => path.startsWith('scripts/')).sort();
   const harnessControls = collectHarnessControls(allFiles);
@@ -240,7 +241,10 @@ export function surveyRepository(inputPath, options = {}) {
     dataHints: collectDataHints(allFiles),
     internalDataStoreHints: collectInternalDataStoreHints(allFiles),
     repoDependencyHints: collectRepoDependencyHints(allFiles, packageJson),
-    runtimeSafetyHints: collectRuntimeSafetyHints(allFiles, ci, packageManifests),
+    runtimeSafetyHints: dedupeObjects(
+      [...collectRuntimeSafetyHints(allFiles, ci, packageManifests), ...makeRuntimeSafetyHints],
+      (hint) => `${hint.path}\0${hint.reason}`,
+    ),
     planHints: collectPlanHints(allFiles),
     urlMapHints: collectUrlMapHints(allFiles),
     evidenceHints: collectEvidenceHints(allFiles),
@@ -981,13 +985,43 @@ function scopedPackageScriptCommand(packageManager, name, directory) {
 }
 
 function collectMakeTargets(root, fileSet) {
+  return collectMakeTargetRecipes(root, fileSet)
+    .filter((target) => /^(test|build|lint|check|quality|validate|coverage)$/i.test(target.name))
+    .filter((target) => !hasDangerousCommand(target.recipe))
+    .map((target) => ({ source: 'Makefile', command: `make ${target.name}` }));
+}
+
+function collectMakeRuntimeSafetyHints(root, fileSet) {
+  return collectMakeTargetRecipes(root, fileSet)
+    .filter((target) => hasDangerousCommand(target.recipe))
+    .map((target) => ({
+      path: 'Makefile',
+      reason: `make target "${target.name}" may mutate external state`,
+    }));
+}
+
+function collectMakeTargetRecipes(root, fileSet) {
   if (!fileSet.has('Makefile')) return [];
   const text = readText(root, 'Makefile');
-  return text.split(/\r?\n/)
-    .map((line) => line.match(/^([A-Za-z0-9_.-]+):(?!=)/)?.[1])
-    .filter(Boolean)
-    .filter((name) => /^(test|build|lint|check|quality|validate|coverage)$/i.test(name))
-    .map((name) => ({ source: 'Makefile', command: `make ${name}` }));
+  const targets = [];
+  let currentTarget = null;
+
+  for (const line of text.split(/\r?\n/)) {
+    const match = line.match(/^([A-Za-z0-9_.-]+):(?!=)/);
+    if (match) {
+      currentTarget = { name: match[1], recipe: '' };
+      targets.push(currentTarget);
+      continue;
+    }
+
+    if (currentTarget && /^\s+/.test(line)) {
+      currentTarget.recipe = `${currentTarget.recipe}\n${line.trim()}`.trim();
+    } else if (line.trim() && !line.startsWith('#')) {
+      currentTarget = null;
+    }
+  }
+
+  return targets;
 }
 
 function collectSourceRoots(files) {
@@ -1056,6 +1090,7 @@ function collectRuntimeSafetyHints(files, ci = { runCommands: [] }, packageManif
       || hasPathSegment(lower, 'k8s')
       || hasPathSegment(lower, 'helm')
       || hasPathSegment(lower, 'deploy')
+      || isDeploymentScriptPath(lower)
       || hasPathSegment(lower, 'infra')
       || lower.endsWith('.env.example')
       || lower.endsWith('.env.sample')
@@ -1095,14 +1130,31 @@ function isRuntimeSafetyCommand(command) {
   return hasDangerousCommand(command.command) || Boolean(command.packageScriptReason);
 }
 
+function isDeploymentScriptPath(path) {
+  const name = basename(path);
+  const stem = name.replace(/\.[^.]+$/, '');
+  return /^(deploy|release|publish|provision)([-_.].*)?$/i.test(stem);
+}
+
 function collectPlanHints(files) {
   return files.filter((path) => {
     const lower = path.toLowerCase();
-    return lower.includes('/plans/')
-      || lower.includes('/handoff')
-      || lower.includes('/task-contract')
-      || lower.includes('/tasks/');
+    return isPlanOrHandoffPath(lower);
   }).map((path) => ({ path, reason: 'plan, handoff, or task-contract surface' }));
+}
+
+function isPlanOrHandoffPath(path) {
+  return path.startsWith('docs/plans/')
+    || path.startsWith('docs/tasks/')
+    || path.startsWith('docs/handoff')
+    || path.startsWith('docs/task-contract')
+    || path.startsWith('.harness/plans/')
+    || path.startsWith('.harness/tasks/')
+    || path.startsWith('.harness/handoff')
+    || path.startsWith('.harness/task-contract')
+    || path.startsWith('.omc/plans/')
+    || path.startsWith('plans/')
+    || /(^|\/)(handoff|task-contract)([-_.\/]|$)/i.test(path);
 }
 
 function collectUrlMapHints(files) {
@@ -1174,6 +1226,14 @@ function collectGenericCiRunCommands(text, source, packageManifests = []) {
     if (!keyMatch) continue;
 
     const value = keyMatch[1].trim();
+    const inlineCommands = parseInlineCommandArray(value);
+    if (inlineCommands) {
+      for (const inlineCommand of inlineCommands) {
+        commands.push(classifyCiRunCommand(source, inlineCommand, false, packageManifests));
+      }
+      continue;
+    }
+
     if (/^[|>]/.test(value) || value === '') {
       const blockLines = [];
       const baseIndent = indentation(line);
@@ -1208,6 +1268,12 @@ function collectGenericCiRunCommands(text, source, packageManifests = []) {
   }
 
   return commands;
+}
+
+function parseInlineCommandArray(value) {
+  if (!/^\[.*\]$/.test(value)) return null;
+  const commands = [...value.matchAll(/["']([^"']+)["']/g)].map((match) => match[1].trim()).filter(Boolean);
+  return commands.length ? commands : null;
 }
 
 function findWorkflowWorkingDirectory(lines, runIndex) {
