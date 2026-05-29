@@ -2894,6 +2894,24 @@ function packageScriptNameFromCommand(command) {
   if (manager === 'npm') {
     const prefixScriptName = npmPrefixScriptNameFromWords(words);
     if (prefixScriptName) return prefixScriptName;
+
+    const scopedScriptName = scopedPackageScriptNameFromWords(words, ['ci', 'install']);
+    if (scopedScriptName) return scopedScriptName;
+  }
+
+  if (manager === 'pnpm') {
+    const scopedScriptName = scopedPackageScriptNameFromWords(words, ['add', 'ci', 'dlx', 'exec', 'install', 'remove']);
+    if (scopedScriptName) return scopedScriptName;
+  }
+
+  if (manager === 'yarn') {
+    const scopedScriptName = scopedPackageScriptNameFromWords(words, ['add', 'dlx', 'exec', 'install', 'npm', 'remove']);
+    if (scopedScriptName) return scopedScriptName;
+  }
+
+  if (manager === 'bun') {
+    const scopedScriptName = scopedPackageScriptNameFromWords(words, ['add', 'install', 'remove', 'x']);
+    if (scopedScriptName) return scopedScriptName;
   }
 
   const npmAllWorkspaceRun = trimmed.match(/^npm\s+--workspaces(?:=(?:true|1))?\s+(?:run\s+)?([\w:-]+)/i);
@@ -2987,6 +3005,24 @@ function npmPrefixScriptNameFromWords(words) {
     return validPackageScriptName(scriptName) ? canonicalPackageScriptName(scriptName) : null;
   }
   return null;
+}
+
+function scopedPackageScriptNameFromWords(words, blockedCommands = []) {
+  const manager = words[0]?.toLowerCase();
+  const scopedOptions = {
+    npm: ['--prefix', '--workspace', '-w'],
+    pnpm: ['--dir', '--filter', '-F'],
+    yarn: ['--cwd'],
+    bun: ['--cwd'],
+  }[manager] ?? [];
+
+  if (!words.some((word) => packageOptionMatches(word, scopedOptions))) return null;
+  return scriptNameAfterPackageOptions(words, 1, blockedCommands);
+}
+
+function packageOptionMatches(word, options) {
+  const lower = String(word ?? '').toLowerCase();
+  return options.some((option) => lower === option.toLowerCase() || lower.startsWith(`${option.toLowerCase()}=`));
 }
 
 function hasNpmAllWorkspaces(words) {

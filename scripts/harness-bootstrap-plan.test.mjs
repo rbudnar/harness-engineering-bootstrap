@@ -718,6 +718,25 @@ test('keeps safe quoted scoped package paths as validation commands', () => {
   assert(survey.commands.some((run) => run.command === 'npm --prefix "services/api v2" test'));
 });
 
+test('screens quoted scoped pnpm yarn and bun package paths', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'quoted-scoped-package-managers'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  for (const command of [
+    'pnpm --dir "services/api v2" run build',
+    'yarn --cwd "services/api v2" build',
+    'bun --cwd "services/api v2" run build',
+  ]) {
+    assert(survey.ci.runCommands.some((run) => (
+      run.command === command
+      && !run.safe
+      && run.packageScriptReason.includes('build')
+    )));
+    assert(!survey.commands.some((run) => run.command === command));
+  }
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens package wrappers that change directories before child scripts', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'package-wrapper-cwd'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
