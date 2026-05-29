@@ -1086,7 +1086,7 @@ function collectMakeTargets(root, fileSet) {
 }
 
 function collectMakeRuntimeSafetyHints(root, fileSet) {
-  const targets = collectMakeTargetRecipes(root, fileSet);
+  const targets = collectMakeTargetRecipes(root, fileSet, { includeIncludedMakefiles: true });
   const unsafeTargets = unsafeMakeTargetKeys(targets);
   return targets
     .filter((target) => unsafeTargets.has(makeTargetKey(target.directory, target.name)))
@@ -1097,14 +1097,21 @@ function collectMakeRuntimeSafetyHints(root, fileSet) {
 }
 
 function collectUnsafeMakeTargets(root, fileSet) {
-  return unsafeMakeTargetKeys(collectMakeTargetRecipes(root, fileSet));
+  return unsafeMakeTargetKeys(collectMakeTargetRecipes(root, fileSet, { includeIncludedMakefiles: true }));
 }
 
-function collectMakeTargetRecipes(root, fileSet) {
+function collectMakeTargetRecipes(root, fileSet, options = {}) {
   return [...fileSet]
-    .filter((path) => basename(path) === 'Makefile')
+    .filter((path) => isMakefilePath(path, options))
     .sort()
     .flatMap((path) => parseMakeTargetRecipes(readText(root, path), path));
+}
+
+function isMakefilePath(path, options = {}) {
+  const name = basename(path).toLowerCase();
+  return name === 'makefile'
+    || name === 'gnumakefile'
+    || (options.includeIncludedMakefiles && name.endsWith('.mk'));
 }
 
 function parseMakeTargetRecipes(text, path) {
@@ -2245,11 +2252,71 @@ function makeInvocationFromCommandPart(part, currentDirectory = '') {
       continue;
     }
 
+    if (word === '-f' || word === '--file' || word === '--makefile') {
+      const next = words[index + 1];
+      if (next) {
+        directory = makefileDirectoryForOption(next, directory);
+        index += 1;
+      }
+      continue;
+    }
+
+    const makefileMatch = word.match(/^(?:--file|--makefile)=(.+)$/);
+    if (makefileMatch) {
+      directory = makefileDirectoryForOption(stripYamlQuotes(makefileMatch[1]), directory);
+      continue;
+    }
+
+    if (makeOptionConsumesNext(word)) {
+      if (words[index + 1]) index += 1;
+      continue;
+    }
+
+    if (makeOptionHasInlineValue(word)) continue;
+
     if (word.startsWith('-') || word.includes('=')) continue;
     targets.push(word);
   }
 
   return { directory, targets };
+}
+
+function makefileDirectoryForOption(value, currentDirectory) {
+  const normalized = normalizePackageDirectory(value);
+  const makefileDirectory = dirname(normalized);
+  if (makefileDirectory === '.') return normalizePackageDirectory(currentDirectory || '');
+  return resolvePackageDirectory(makefileDirectory, currentDirectory);
+}
+
+function makeOptionConsumesNext(option) {
+  const raw = String(option ?? '');
+  const lower = String(option ?? '').toLowerCase();
+  return [
+    '-f',
+    '--file',
+    '--makefile',
+    '-j',
+    '--jobs',
+    '-l',
+    '--load-average',
+    '--max-load',
+    '-o',
+    '--old-file',
+    '--assume-old',
+    '--what-if',
+    '--new-file',
+    '--assume-new',
+    '--eval',
+  ].includes(lower)
+    || raw === '-I'
+    || raw === '-W';
+}
+
+function makeOptionHasInlineValue(option) {
+  const raw = String(option ?? '');
+  const lower = raw.toLowerCase();
+  return /^-(?:[fjlo]\S+|I\S+|W\S+)/.test(raw)
+    || /^(--file|--makefile|--directory|--include-dir|--jobs|--load-average|--max-load|--old-file|--assume-old|--what-if|--new-file|--assume-new|--eval)=/.test(lower);
 }
 
 function isMakeCommandWord(word) {

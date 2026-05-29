@@ -501,6 +501,47 @@ test('screens inline and multi-target Make recipes before emitting validation co
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens lowercase makefile recipes before trusting CI make commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'lowercase-makefile-ci'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'make test'
+    && !run.safe
+    && run.inspectOnlyReason.includes('make target "test"')
+  )));
+  assert(!survey.commands.some((run) => run.command === 'make test'));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'makefile'
+    && hint.reason === 'make target "test" may mutate external state'
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('screens make options before deciding whether default targets are safe', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'make-option-default'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'Makefile'
+    && hint.reason === 'make target "deploy" may mutate external state'
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('screens make -f package wrappers through included makefiles', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'make-file-option-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'ci.mk'
+    && hint.reason === 'make target "test" may mutate external state'
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens bare make invocations through the default target', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'bare-make-default'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
