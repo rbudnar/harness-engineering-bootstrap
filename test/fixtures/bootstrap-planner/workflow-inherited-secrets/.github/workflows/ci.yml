@@ -1,0 +1,11 @@
+name: ci
+on:
+  - push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      TOKEN: ${{ secrets.PROD_TOKEN }}
+    steps:
+      - run: npm test

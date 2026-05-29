@@ -1,6 +1,9 @@
 {
   "scripts": {
     "check": "nx run api:deploy",
-    "test": "nx affected --target=deploy"
+    "test": "nx affected --target=deploy",
+    "quality": "npx --yes nx run api:deploy",
+    "validate": "NODE_ENV=prod nx run @scope/api:deploy",
+    "coverage": "npm exec nx affected --target=deploy"
   }
 }

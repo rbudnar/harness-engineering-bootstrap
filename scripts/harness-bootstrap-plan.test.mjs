@@ -992,6 +992,19 @@ test('uses workflow step metadata as runtime-safety evidence', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('uses inherited workflow secrets as runtime-safety evidence', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workflow-inherited-secrets'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'npm test'
+    && !run.safe
+    && run.runtimeSafetyReason === 'GitHub workflow step inherits secrets'
+  )));
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('preserves unsafe workflow metadata when duplicate run commands exist', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'workflow-duplicate-unsafe'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -1055,6 +1068,9 @@ test('uses task-runner deploy targets as runtime-safety evidence', () => {
 
   assert(!survey.commands.some((run) => run.command === 'npm run check'));
   assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(!survey.commands.some((run) => run.command === 'npm run quality'));
+  assert(!survey.commands.some((run) => run.command === 'npm run validate'));
+  assert(!survey.commands.some((run) => run.command === 'npm run coverage'));
   assert(survey.runtimeSafetyHints.some((hint) => (
     hint.path === 'package.json'
     && hint.reason === 'package script "check" may mutate external state'
@@ -1062,6 +1078,18 @@ test('uses task-runner deploy targets as runtime-safety evidence', () => {
   assert(survey.runtimeSafetyHints.some((hint) => (
     hint.path === 'package.json'
     && hint.reason === 'package script "test" may mutate external state'
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('screens env-prefixed Yarn foreach workspace scripts', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'env-yarn-foreach-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'yarn run check'));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'packages/api/package.json'
+    && hint.reason === 'package script "build" may mutate external state'
   )));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
@@ -1212,6 +1240,16 @@ test('honors workflow-level default working-directory declared after jobs', () =
 
   assert.equal(command.workingDirectory, 'services/api');
   assert.equal(command.safe, false);
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+});
+
+test('honors four-space workflow-level default working-directory', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workflow-four-space-default'));
+  const command = survey.ci.runCommands.find((run) => run.command === 'npm test');
+
+  assert.equal(command.workingDirectory, 'services/api');
+  assert.equal(command.safe, false);
+  assert.match(command.packageScriptReason, /pretest/);
   assert(!survey.commands.some((run) => run.command === 'npm test'));
 });
 

@@ -67,6 +67,7 @@ const dangerousCommandPatterns = [
   /\bhelm\s+(upgrade|install|uninstall|delete|rollback)\b/,
   /\bdocker\s+login\b/,
   /\bgh\s+auth\s+login\b/,
+  /\bgh\s+pr\s+merge\b/,
   /\baz\s+login\b/,
   /\bgcloud\s+auth\s+login\b/,
   /\baws\s+configure\b/,
@@ -1430,6 +1431,7 @@ function workflowStepMetadataRuntimeSafetyReason(lines, stepIndex, action = '') 
 
   const text = metadata.join('\n');
   if (/\$\{\{\s*secrets\./i.test(text)) return 'GitHub workflow step references secrets';
+  if (workflowInheritedSecretText(lines, stepIndex)) return 'GitHub workflow step inherits secrets';
   if (/docker\/build-push-action/i.test(action)) {
     const pushMatch = text.match(/(^|\n)push:\s*("[^"]+"|'[^']+'|[^\s#]+)/i);
     if (pushMatch) {
@@ -1438,6 +1440,33 @@ function workflowStepMetadataRuntimeSafetyReason(lines, stepIndex, action = '') 
     }
   }
   return null;
+}
+
+function workflowInheritedSecretText(lines, stepIndex) {
+  return workflowInheritedScopeLines(lines, stepIndex).join('\n').match(/\$\{\{\s*secrets\./i)?.[0] ?? null;
+}
+
+function workflowInheritedScopeLines(lines, stepIndex) {
+  const inherited = [];
+  const jobsIndex = lines.findIndex((line) => /^jobs:\s*$/.test(line));
+  if (jobsIndex > 0) inherited.push(...lines.slice(0, jobsIndex));
+
+  const jobStart = findWorkflowJobStart(lines, stepIndex);
+  const jobIndent = indentation(lines[jobStart] ?? '');
+  let stepsIndex = stepIndex;
+  for (let index = jobStart + 1; index < stepIndex; index += 1) {
+    const line = lines[index];
+    if (!line.trim()) continue;
+    const currentIndent = indentation(line);
+    if (currentIndent <= jobIndent) break;
+    if (/^\s*steps:\s*$/.test(line)) {
+      stepsIndex = index;
+      break;
+    }
+  }
+
+  if (stepsIndex > jobStart) inherited.push(...lines.slice(jobStart, stepsIndex));
+  return inherited;
 }
 
 function workflowStepBounds(lines, index) {
@@ -1895,25 +1924,36 @@ function findWorkflowJobStart(lines, runIndex) {
   for (let index = runIndex - 1; index >= 0; index -= 1) {
     const line = lines[index];
     if (!line.trim()) continue;
-    if (indentation(line) === 2 && /^\s{2}[\w-]+:\s*$/.test(line)) return index;
+    if (isWorkflowJobKey(lines, index)) return index;
     if (indentation(line) === 0 && /^jobs:\s*$/.test(line)) return index;
   }
 
   return 0;
 }
 
+function isWorkflowJobKey(lines, index) {
+  const line = lines[index];
+  const currentIndent = indentation(line);
+  if (!/^\s*[\w.-]+:\s*$/.test(line) || currentIndent === 0) return false;
+  for (let previousIndex = index - 1; previousIndex >= 0; previousIndex -= 1) {
+    const previousLine = lines[previousIndex];
+    if (!previousLine.trim()) continue;
+    if (indentation(previousLine) < currentIndent) return /^jobs:\s*$/.test(previousLine);
+  }
+  return false;
+}
+
 function findWorkflowTopLevelDefaultWorkingDirectory(lines) {
   for (let index = lines.length - 1; index >= 0; index -= 1) {
-    if (indentation(lines[index]) !== 4) continue;
     const value = parseWorkflowWorkingDirectory(lines[index]);
-    if (!value || !isDefaultsRunWorkingDirectory(lines, index)) continue;
+    if (!value || !isDefaultsRunWorkingDirectory(lines, index, 0)) continue;
     return value;
   }
 
   return null;
 }
 
-function isDefaultsRunWorkingDirectory(lines, workingDirectoryIndex) {
+function isDefaultsRunWorkingDirectory(lines, workingDirectoryIndex, expectedDefaultsIndent = null) {
   const workingDirectoryIndent = indentation(lines[workingDirectoryIndex]);
   let runIndent = null;
 
@@ -1931,7 +1971,9 @@ function isDefaultsRunWorkingDirectory(lines, workingDirectoryIndex) {
       continue;
     }
 
-    if (currentIndent < runIndent && /^\s*defaults:\s*$/.test(line)) return true;
+    if (currentIndent < runIndent && /^\s*defaults:\s*$/.test(line)) {
+      return expectedDefaultsIndent === null || currentIndent === expectedDefaultsIndent;
+    }
     if (currentIndent < runIndent) return false;
   }
 
@@ -2370,10 +2412,39 @@ function hasDangerousCliVerb(part) {
 }
 
 function hasDangerousTaskTarget(part) {
-  const lower = part.toLowerCase();
-  if (!/^(?:npx\s+|pnpm\s+(?:exec\s+|dlx\s+)?|yarn\s+)?(?:nx|turbo|moon|lage)\b/.test(lower)) return false;
-  return /(?:^|\s)[\w./-]+:(?:deploy|release|publish|provision)(?:\b|[:._-])/i.test(lower)
-    || /(?:^|\s)--target(?:=|\s+)(?:deploy|release|publish|provision)(?:\b|[:._-])/i.test(lower);
+  const normalized = taskRunnerCommandText(part);
+  if (!normalized) return false;
+  return /(?:^|\s)[@A-Za-z0-9_./-]+:(?:deploy|release|publish|provision)(?:\b|[:._-])/i.test(normalized)
+    || /(?:^|\s)--target(?:=|\s+)(?:deploy|release|publish|provision)(?:\b|[:._-])/i.test(normalized);
+}
+
+function taskRunnerCommandText(part) {
+  const words = shellWords(stripPackageCommandPrefix(part));
+  const lower = words.map((word) => word.toLowerCase());
+  let index = 0;
+
+  if (['npx', 'bunx'].includes(lower[index])) {
+    index = skipPackageExecutorOptions(words, index + 1);
+  } else if (lower[index] === 'npm' && lower[index + 1] === 'exec') {
+    index = skipPackageExecutorOptions(words, index + 2);
+  } else if (lower[index] === 'pnpm' && ['exec', 'dlx'].includes(lower[index + 1])) {
+    index = skipPackageExecutorOptions(words, index + 2);
+  } else if (lower[index] === 'yarn' && ['exec', 'dlx'].includes(lower[index + 1])) {
+    index = skipPackageExecutorOptions(words, index + 2);
+  }
+
+  if (!['nx', 'turbo', 'moon', 'lage'].includes(lower[index])) return null;
+  return words.slice(index).join(' ');
+}
+
+function skipPackageExecutorOptions(words, startIndex) {
+  let index = startIndex;
+  while (index < words.length && words[index]?.startsWith('-')) {
+    const option = words[index].toLowerCase();
+    if (!option.includes('=') && ['-p', '--package', '-c', '--call'].includes(option) && words[index + 1]) index += 2;
+    else index += 1;
+  }
+  return index;
 }
 
 function hasDangerousAwsCommand(part) {
@@ -2697,7 +2768,7 @@ function isAllWorkspacePackageScriptCommand(command, packageManifest, packageMan
   const words = shellWords(stripPackageCommandPrefix(command));
   return hasNpmAllWorkspaces(words)
     || hasPnpmRecursive(words)
-    || Boolean(yarnWorkspacesForeachScriptName(command));
+    || Boolean(yarnWorkspacesForeachScriptName(stripPackageCommandPrefix(command)));
 }
 
 function lifecycleScriptNames(scriptName, scripts) {
@@ -2739,7 +2810,7 @@ function packageScriptNameFromCommand(command) {
     return pnpmRecursiveRun[1] === 'test' ? 'test' : pnpmRecursiveRun[1];
   }
 
-  const yarnForeachRun = yarnWorkspacesForeachScriptName(command);
+  const yarnForeachRun = yarnWorkspacesForeachScriptName(trimmed);
   if (yarnForeachRun) return yarnForeachRun;
 
   const trailingNpmWorkspaceRun = trimmed.match(/^npm\s+run\s+([\w:-]+)\b.*(?:--workspace|-w)(?:=|\s+)\S+/i);
