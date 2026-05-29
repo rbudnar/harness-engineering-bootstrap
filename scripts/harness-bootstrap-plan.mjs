@@ -2243,6 +2243,7 @@ function hasDangerousCommand(command) {
       && (
         hasDangerousCliVerb(part)
         || hasDangerousAwsCommand(part)
+        || hasDangerousTaskTarget(part)
         || dangerousCommandPatterns.some((pattern) => pattern.test(part.toLowerCase()))
         || commandPartReferencesRuntimeSurface(part)
       )
@@ -2260,6 +2261,13 @@ function hasDangerousCliVerb(part) {
   if (!mutatingVerbs[command]) return false;
   const verb = firstCliVerb(args, command);
   return Boolean(verb && mutatingVerbs[command].has(verb));
+}
+
+function hasDangerousTaskTarget(part) {
+  const lower = part.toLowerCase();
+  if (!/^(?:npx\s+|pnpm\s+(?:exec\s+|dlx\s+)?|yarn\s+)?(?:nx|turbo|moon|lage)\b/.test(lower)) return false;
+  return /(?:^|\s)[\w./-]+:(?:deploy|release|publish|provision)(?:\b|[:._-])/i.test(lower)
+    || /(?:^|\s)--target(?:=|\s+)(?:deploy|release|publish|provision)(?:\b|[:._-])/i.test(lower);
 }
 
 function hasDangerousAwsCommand(part) {
@@ -2316,8 +2324,16 @@ function unsafePackageScriptReason(command, packageManifest, packageManifests = 
   const packageJson = packageManifest?.json;
   if (!packageJson) return null;
 
+  let currentDirectory = packageManifest.directory ?? null;
   for (const part of splitShellCommandParts(command)) {
-    for (const lifecycleManifest of installLifecycleManifestsForCommand(part, packageManifest, packageManifests)) {
+    const changedDirectory = workingDirectoryFromCdCommand(part);
+    if (changedDirectory) {
+      currentDirectory = resolvePackageDirectory(changedDirectory, currentDirectory);
+      continue;
+    }
+
+    const partManifest = packageManifestForCommand(part, packageManifests, currentDirectory) ?? packageManifest;
+    for (const lifecycleManifest of installLifecycleManifestsForCommand(part, partManifest, packageManifests)) {
       const lifecyclePackageJson = lifecycleManifest.json;
       if (!lifecyclePackageJson || typeof lifecyclePackageJson.scripts !== 'object') continue;
       for (const lifecycleScript of installLifecycleScriptNames(part, lifecyclePackageJson.scripts)) {
@@ -2334,7 +2350,7 @@ function unsafePackageScriptReason(command, packageManifest, packageManifests = 
 
     const scriptName = packageScriptNameFromCommand(part);
     if (!scriptName) continue;
-    for (const targetManifest of packageScriptManifestsForCommand(part, packageManifest, packageManifests, packageManifest.directory)) {
+    for (const targetManifest of packageScriptManifestsForCommand(part, partManifest, packageManifests, currentDirectory)) {
       const targetPackageJson = targetManifest?.json;
       if (!targetPackageJson?.scripts || !Object.hasOwn(targetPackageJson.scripts, scriptName)) continue;
       const unsafeScript = findUnsafePackageScript(scriptName, targetPackageJson.scripts, [], {
@@ -2599,6 +2615,11 @@ function packageScriptNameFromCommand(command) {
 
   if (manager === 'pnpm' && hasPnpmRecursive(words)) {
     const scriptName = scriptNameAfterPackageOptions(words, 1, ['add', 'ci', 'install', 'remove']);
+    if (scriptName) return scriptName;
+  }
+
+  if (manager === 'npm' && words[1]?.toLowerCase() === 'run') {
+    const scriptName = scriptNameAfterPackageOptions(words, 2, ['ci', 'install']);
     if (scriptName) return scriptName;
   }
 

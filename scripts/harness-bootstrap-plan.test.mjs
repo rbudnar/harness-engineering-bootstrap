@@ -714,8 +714,10 @@ test('screens workspace-wide and equals selector delegated scripts', () => {
 
   assert(!survey.commands.some((run) => run.command === 'npm run build'));
   assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(!survey.commands.some((run) => run.command === 'npm run coverage'));
   assert(!survey.commands.some((run) => run.command === 'npm run lint'));
   assert(!survey.commands.some((run) => run.command === 'npm run quality'));
+  assert(!survey.commands.some((run) => run.command === 'npm run test:ci'));
   assert(!survey.commands.some((run) => run.command === 'npm run typecheck'));
   assert(!survey.commands.some((run) => run.command === 'npm run validate'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'packages/api/package.json'));
@@ -897,6 +899,20 @@ test('keeps cd preamble validation blocks as CI commands', () => {
   assert(!plan.openQuestions.some((question) => question.includes('exact command')));
 });
 
+test('screens cd preamble package scripts in their changed directory', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workflow-cd-unsafe-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'cd services/api\nnpm test'
+    && !run.safe
+    && run.packageScriptReason.includes('package script "test"')
+  )));
+  assert(!survey.commands.some((run) => run.command === 'cd services/api\nnpm test'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'services/api/package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('uses direct release CLIs as runtime-safety evidence', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'semantic-release-ci'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -908,6 +924,23 @@ test('uses direct release CLIs as runtime-safety evidence', () => {
   assert(survey.runtimeSafetyHints.some((hint) => (
     hint.path === '.github/workflows/ci.yml'
     && hint.reason.includes('semantic-release')
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('uses task-runner deploy targets as runtime-safety evidence', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'target-deploy-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'package.json'
+    && hint.reason === 'package script "check" may mutate external state'
+  )));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'package.json'
+    && hint.reason === 'package script "test" may mutate external state'
   )));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });

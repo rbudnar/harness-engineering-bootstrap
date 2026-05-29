@@ -1,0 +1,6 @@
+{
+  "scripts": {
+    "check": "nx run api:deploy",
+    "test": "nx affected --target=deploy"
+  }
+}
