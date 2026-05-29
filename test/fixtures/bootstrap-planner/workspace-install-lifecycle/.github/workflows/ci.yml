@@ -10,3 +10,4 @@ jobs:
       - run: pnpm install
       - run: yarn install
       - run: npm ci --workspaces
+      - run: npm ci --workspace web --workspace api

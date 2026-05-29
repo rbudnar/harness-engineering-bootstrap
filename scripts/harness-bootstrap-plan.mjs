@@ -2683,7 +2683,8 @@ function hasDangerousTaskTarget(part) {
   const normalized = taskRunnerCommandText(part);
   if (!normalized) return false;
   return /(?:^|\s)[@A-Za-z0-9_./-]+:(?:deploy|release|publish|provision)(?:\b|[:._-])/i.test(normalized)
-    || /(?:^|\s)--target(?:=|\s+)(?:deploy|release|publish|provision)(?:\b|[:._-])/i.test(normalized);
+    || /(?:^|\s)--target(?:=|\s+)(?:deploy|release|publish|provision)(?:\b|[:._-])/i.test(normalized)
+    || /(?:^|\s)(?:deploy|release|publish|provision)(?:\b|[:._-])/i.test(normalized);
 }
 
 function hasDangerousForwardedTarget(part) {
@@ -3039,6 +3040,17 @@ function installLifecycleScriptNames(command, scripts) {
 
 function installLifecycleManifestsForCommand(command, packageManifest, packageManifests) {
   if (!isInstallCommand(command)) return [];
+  const selectedWorkspaces = packageWorkspacesFromCommand(command);
+  if (selectedWorkspaces.length) {
+    const selectedManifests = selectedWorkspaces
+      .map((workspace) => packageManifestForWorkspace(workspace, packageManifests))
+      .filter(Boolean);
+    if (selectedManifests.length === selectedWorkspaces.length) {
+      return dedupeObjects(selectedManifests, (manifest) => manifest.path);
+    }
+    const workspaceManifests = packageManifests.filter((manifest) => manifest.path !== 'package.json' && packageScriptsObject(manifest.json?.scripts));
+    return workspaceManifests.length ? workspaceManifests : [packageManifest].filter(Boolean);
+  }
   if (!isWorkspaceInstallCommand(command, packageManifest, packageManifests)) return [packageManifest].filter(Boolean);
   return packageManifests.filter((manifest) => packageScriptsObject(manifest.json?.scripts));
 }
@@ -3129,16 +3141,20 @@ function findUnsafePackageScript(scriptName, scripts, chain = [], context = {}) 
       }
     }
 
-    const childScript = packageScriptNameFromCommand(part);
-    if (!childScript) continue;
-    for (const childManifest of packageScriptManifestsForCommand(part, partManifest ?? context.manifest, context.packageManifests ?? [], currentDirectory)) {
-      const childScripts = packageScriptsObject(childManifest?.json?.scripts) ?? scriptMap;
-      const unsafeScript = findUnsafePackageScript(childScript, childScripts, nextChain, {
-        ...context,
-        manifest: childManifest,
-        visited: nextVisited,
-      });
-      if (unsafeScript) return unsafeScript;
+    const childScripts = packageScriptNamesFromAggregatorCommand(part);
+    const directChildScript = packageScriptNameFromCommand(part);
+    if (directChildScript) childScripts.push(directChildScript);
+    if (!childScripts.length) continue;
+    for (const childScript of dedupe(childScripts)) {
+      for (const childManifest of packageScriptManifestsForCommand(part, partManifest ?? context.manifest, context.packageManifests ?? [], currentDirectory)) {
+        const targetScripts = packageScriptsObject(childManifest?.json?.scripts) ?? scriptMap;
+        const unsafeScript = findUnsafePackageScript(childScript, targetScripts, nextChain, {
+          ...context,
+          manifest: childManifest,
+          visited: nextVisited,
+        });
+        if (unsafeScript) return unsafeScript;
+      }
     }
   }
 
@@ -3190,6 +3206,28 @@ function lifecycleScriptNames(scriptName, scripts) {
 
 function isAuthorityPackageScript(name) {
   return /(^|[:._-])(deploy|release|publish|provision)([:._-]|$)/i.test(name);
+}
+
+function packageScriptNamesFromAggregatorCommand(command) {
+  const words = shellWords(stripPackageCommandPrefix(command));
+  const aggregator = words[0]?.toLowerCase();
+  if (!['npm-run-all', 'run-s', 'run-p'].includes(aggregator)) return [];
+
+  const scripts = [];
+  for (let index = 1; index < words.length; index += 1) {
+    const word = words[index];
+    if (!word || word === '--') continue;
+    if (word.startsWith('-')) {
+      if (aggregatorOptionConsumesNext(word) && words[index + 1]) index += 1;
+      continue;
+    }
+    scripts.push(word);
+  }
+  return scripts;
+}
+
+function aggregatorOptionConsumesNext(option) {
+  return !option.includes('=') && ['-c', '--config', '-l', '--label', '-n', '--max-parallel'].includes(option.toLowerCase());
 }
 
 function packageScriptNameFromCommand(command) {

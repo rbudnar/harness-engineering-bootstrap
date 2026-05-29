@@ -362,7 +362,7 @@ test('screens workspace install lifecycle hooks before emitting install commands
   const survey = surveyRepository(resolve(fixturesRoot, 'workspace-install-lifecycle'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
 
-  for (const command of ['pnpm install', 'yarn install', 'npm ci --workspaces']) {
+  for (const command of ['pnpm install', 'yarn install', 'npm ci --workspaces', 'npm ci --workspace web --workspace api']) {
     assert(survey.ci.runCommands.some((run) => (
       run.command === command
       && !run.safe
@@ -1572,6 +1572,7 @@ test('uses task-runner deploy targets as runtime-safety evidence', () => {
   assert(!survey.commands.some((run) => run.command === 'npm run check'));
   assert(!survey.commands.some((run) => run.command === 'npm test'));
   assert(!survey.commands.some((run) => run.command === 'npm run quality'));
+  assert(!survey.commands.some((run) => run.command === 'npm run build'));
   assert(!survey.commands.some((run) => run.command === 'npm run validate'));
   assert(!survey.commands.some((run) => run.command === 'npm run coverage'));
   assert(survey.runtimeSafetyHints.some((hint) => (
@@ -1582,6 +1583,17 @@ test('uses task-runner deploy targets as runtime-safety evidence', () => {
     hint.path === 'package.json'
     && hint.reason === 'package script "test" may mutate external state'
   )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('screens package script aggregators before emitting validation commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'script-aggregator-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(!survey.commands.some((run) => run.command === 'npm run lint'));
+  assert(!survey.commands.some((run) => run.command === 'npm run build'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
