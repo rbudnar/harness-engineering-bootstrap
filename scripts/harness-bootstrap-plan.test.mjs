@@ -258,6 +258,44 @@ test('surveys nested package manifests for validation commands', () => {
   assert(commands.includes('npm --prefix services/api run build'));
 });
 
+test('screens nested package scripts before marking CI commands safe', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'nested-package-ci'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'npm --prefix services/api run build'
+    && !run.safe
+    && run.packageScriptReason.includes('build')
+  )));
+  assert(!survey.commands.some((run) => run.command === 'npm --prefix services/api run build'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('screens legacy prepublish lifecycle hooks before install commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'prepublish-lifecycle-ci'));
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'npm ci'
+    && !run.safe
+    && run.inspectOnlyReason.includes('prepublish')
+  )));
+  assert(!survey.commands.some((run) => run.command === 'npm ci'));
+});
+
+test('reports non-JavaScript package manifests in surveys', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'python-package'));
+
+  assert.deepEqual(survey.packageFiles, ['pyproject.toml']);
+});
+
+test('detects top-level MCP directories as runtime surfaces', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'root-mcp-directory'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'mcp/server.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('detects existing bootstraps and emits versioned update guidance', () => {
   const fixture = resolve(fixturesRoot, 'existing-bootstrapped');
   const survey = surveyRepository(fixture);

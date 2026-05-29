@@ -206,7 +206,7 @@ export function surveyRepository(inputPath, options = {}) {
   const packageManager = inferPackageManager(fileSet, packageJson);
   const packageScripts = collectPackageScripts(packageManifests, packageManager);
   const makeTargets = collectMakeTargets(root, fileSet);
-  const ci = collectCi(root, allFiles, packageJson);
+  const ci = collectCi(root, allFiles, packageManifests);
   const scriptFiles = allFiles.filter((path) => path.startsWith('scripts/')).sort();
   const harnessControls = collectHarnessControls(allFiles);
   const versionState = collectVersionState(root, allFiles);
@@ -228,7 +228,7 @@ export function surveyRepository(inputPath, options = {}) {
       truncated: files.truncated,
     },
     instructionFiles: detectedInstructionFiles,
-    packageFiles: packageManifests.map((manifest) => manifest.path),
+    packageFiles: collectPackageFiles(allFiles),
     docs,
     ci,
     commands: collectCommands({ packageScripts, makeTargets, ci }),
@@ -884,7 +884,7 @@ function collectBootstrapState({ instructionFiles, docs, harnessControls, versio
   };
 }
 
-function collectCi(root, files, packageJson = null) {
+function collectCi(root, files, packageManifests = []) {
   const ciFiles = files.filter((path) => {
     const lower = path.toLowerCase();
     return lower.startsWith('.github/workflows/')
@@ -899,9 +899,9 @@ function collectCi(root, files, packageJson = null) {
   for (const path of ciFiles) {
     const text = readText(root, path);
     if (path.toLowerCase().startsWith('.github/workflows/')) {
-      runCommands.push(...collectWorkflowRunCommands(text, path, packageJson));
+      runCommands.push(...collectWorkflowRunCommands(text, path, packageManifests));
     } else {
-      runCommands.push(...collectGenericCiRunCommands(text, path, packageJson));
+      runCommands.push(...collectGenericCiRunCommands(text, path, packageManifests));
     }
   }
 
@@ -931,6 +931,12 @@ function collectPackageManifests(root, files) {
       json: readJson(root, path),
     }))
     .filter((manifest) => manifest.json && typeof manifest.json === 'object');
+}
+
+function collectPackageFiles(files) {
+  return files
+    .filter((path) => packageFiles.includes(basename(path)))
+    .sort();
 }
 
 function collectPackageScripts(packageManifests, packageManager) {
@@ -1053,7 +1059,7 @@ function collectRuntimeSafetyHints(files, ci = { runCommands: [] }, packageManif
       || hasPathSegment(lower, 'infra')
       || lower.endsWith('.env.example')
       || lower.endsWith('.env.sample')
-      || lower.includes('/mcp')
+      || hasPathSegment(lower, 'mcp')
       || lower === '.mcp.json'
       || lower === 'mcp.json'
       || hasPathSegment(lower, 'secrets');
@@ -1109,7 +1115,7 @@ function collectEvidenceHints(files) {
     .map((path) => ({ path, reason: 'source-heavy research or evidence surface' }));
 }
 
-function collectWorkflowRunCommands(text, source, packageJson = null) {
+function collectWorkflowRunCommands(text, source, packageManifests = []) {
   const lines = text.split(/\r?\n/);
   const commands = [];
 
@@ -1142,17 +1148,17 @@ function collectWorkflowRunCommands(text, source, packageJson = null) {
 
       const blockCommand = normalizeRunBlock(blockLines);
       if (blockCommand) {
-        commands.push(classifyCiRunCommand(source, blockCommand, true, packageJson, { workingDirectory }));
+        commands.push(classifyCiRunCommand(source, blockCommand, true, packageManifests, { workingDirectory }));
       }
     } else {
-      commands.push(classifyCiRunCommand(source, stripYamlQuotes(command), false, packageJson, { workingDirectory }));
+      commands.push(classifyCiRunCommand(source, stripYamlQuotes(command), false, packageManifests, { workingDirectory }));
     }
   }
 
   return commands;
 }
 
-function collectGenericCiRunCommands(text, source, packageJson = null) {
+function collectGenericCiRunCommands(text, source, packageManifests = []) {
   const lines = text.split(/\r?\n/);
   const commands = [];
 
@@ -1160,7 +1166,7 @@ function collectGenericCiRunCommands(text, source, packageJson = null) {
     const line = lines[index];
     const shellMatch = line.match(/^\s*sh\s+['"](.+)['"]\s*$/);
     if (shellMatch) {
-      commands.push(classifyCiRunCommand(source, shellMatch[1].trim(), false, packageJson));
+      commands.push(classifyCiRunCommand(source, shellMatch[1].trim(), false, packageManifests));
       continue;
     }
 
@@ -1187,7 +1193,7 @@ function collectGenericCiRunCommands(text, source, packageJson = null) {
 
         const listCommand = nextLine.match(/^\s*-\s+(.+?)\s*$/)?.[1];
         if (listCommand) {
-          commands.push(classifyCiRunCommand(source, stripYamlQuotes(listCommand.trim()), false, packageJson));
+          commands.push(classifyCiRunCommand(source, stripYamlQuotes(listCommand.trim()), false, packageManifests));
         } else {
           blockLines.push(nextLine);
         }
@@ -1195,9 +1201,9 @@ function collectGenericCiRunCommands(text, source, packageJson = null) {
       }
 
       const blockCommand = normalizeRunBlock(blockLines);
-      if (blockCommand) commands.push(classifyCiRunCommand(source, blockCommand, true, packageJson));
+      if (blockCommand) commands.push(classifyCiRunCommand(source, blockCommand, true, packageManifests));
     } else {
-      commands.push(classifyCiRunCommand(source, stripYamlQuotes(value), false, packageJson));
+      commands.push(classifyCiRunCommand(source, stripYamlQuotes(value), false, packageManifests));
     }
   }
 
@@ -1508,11 +1514,12 @@ function normalizeRunBlock(lines) {
     .join('\n');
 }
 
-function classifyCiRunCommand(source, command, multiline, packageJson = null, options = {}) {
+function classifyCiRunCommand(source, command, multiline, packageManifests = [], options = {}) {
   const workingDirectory = options.workingDirectory ?? null;
   const workingDirectoryReason = workingDirectory
     ? `it declares working-directory ${formatInlineValue(workingDirectory)}; inspect and run from that directory manually`
     : null;
+  const packageJson = packageJsonForCommand(command, packageManifests, workingDirectory);
   const packageScriptReason = unsafePackageScriptReason(command, packageJson);
   const safe = !workingDirectoryReason && !packageScriptReason && isSafeValidationCommand(command);
   return {
@@ -1564,12 +1571,31 @@ function unsafePackageScriptReason(command, packageJson) {
   return null;
 }
 
+function packageJsonForCommand(command, packageManifests, workingDirectory = null) {
+  const directory = workingDirectory || packageDirectoryFromCommand(command);
+  if (directory) {
+    const normalizedDirectory = normalizePath(directory).replace(/\/$/, '');
+    const manifest = packageManifests.find((item) => item.directory === normalizedDirectory);
+    if (manifest) return manifest.json;
+  }
+
+  return packageManifests.find((item) => item.path === 'package.json')?.json ?? null;
+}
+
+function packageDirectoryFromCommand(command) {
+  const trimmed = command.trim();
+  const match = trimmed.match(/^(?:npm\s+--prefix|pnpm\s+--dir|yarn\s+--cwd|bun\s+--cwd)\s+("[^"]+"|'[^']+'|\S+)/i);
+  if (!match) return null;
+  return stripYamlQuotes(match[1].trim());
+}
+
 function installLifecycleScriptNames(command, scripts) {
   if (!isInstallCommand(command)) return [];
   return [
     'preinstall',
     'install',
     'postinstall',
+    'prepublish',
     'preprepare',
     'prepare',
     'postprepare',
