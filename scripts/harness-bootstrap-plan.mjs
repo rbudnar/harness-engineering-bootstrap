@@ -1413,6 +1413,7 @@ function isRuntimeSafetyCommand(command) {
 
 function isDeploymentScriptPath(path) {
   const name = basename(path);
+  if (/\.(test|spec)\.[^.]+$/i.test(name)) return false;
   const stem = name.replace(/\.[^.]+$/, '');
   if (!/^(deploy|release|publish|provision)([-_.].*)?$/i.test(stem)) return false;
   const directory = dirname(path);
@@ -2612,6 +2613,12 @@ function hasDangerousCliVerb(part) {
     helm: new Set(['upgrade', 'install', 'uninstall', 'delete', 'rollback']),
     pulumi: new Set(['up', 'destroy', 'cancel', 'refresh', 'import']),
     terraform: new Set(['apply', 'destroy', 'import', 'taint', 'untaint', 'force-unlock']),
+    vercel: new Set(['deploy']),
+    fly: new Set(['deploy']),
+    netlify: new Set(['deploy']),
+    wrangler: new Set(['deploy', 'publish']),
+    firebase: new Set(['deploy']),
+    railway: new Set(['up']),
   };
   if (!mutatingVerbs[command]) return false;
   const verb = firstCliVerb(args, command);
@@ -3523,7 +3530,7 @@ function isRuntimeSurfacePath(path) {
     || isDeploymentScriptPath(lower)
     || hasPathSegment(lower, 'infra')
     || name === '.env'
-    || name.startsWith('.env.')
+    || (name.startsWith('.env.') && !isExampleEnvFileName(name))
     || lower.endsWith('.env')
     || hasPathSegment(lower, 'mcp')
     || name === '.mcp.json'
@@ -3531,6 +3538,10 @@ function isRuntimeSurfacePath(path) {
     || lower === '.mcp.json'
     || lower === 'mcp.json'
     || hasPathSegment(lower, 'secrets');
+}
+
+function isExampleEnvFileName(name) {
+  return /\.(example|sample|template|dist)$/i.test(name);
 }
 
 function isSafeValidationCommandPart(part) {

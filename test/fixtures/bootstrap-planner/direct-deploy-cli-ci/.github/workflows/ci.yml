@@ -1,0 +1,6 @@
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: vercel deploy --prod
+      - run: fly deploy

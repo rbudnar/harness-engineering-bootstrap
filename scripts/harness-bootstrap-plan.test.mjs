@@ -746,6 +746,15 @@ test('screens package scripts that call runtime-surface files', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('does not treat deploy-named tests as runtime surfaces', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'deploy-test-script'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.commands.some((run) => run.command === 'npm test'));
+  assert.equal(survey.runtimeSafetyHints.length, 0);
+  assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens package scripts that directly run runtime-surface files', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'direct-runtime-script-package'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -913,6 +922,14 @@ test('detects committed env files as runtime-safety surfaces', () => {
 
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === '.env.local'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('does not treat example env files as runtime-safety surfaces', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'env-example-file'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert.equal(survey.runtimeSafetyHints.length, 0);
+  assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
 });
 
 test('detects deployment-oriented script filenames', () => {
@@ -1485,6 +1502,16 @@ test('uses direct release CLIs as runtime-safety evidence', () => {
     hint.path === '.github/workflows/ci.yml'
     && hint.reason.includes('semantic-release')
   )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('uses direct deploy CLIs as runtime-safety evidence', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'direct-deploy-cli-ci'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => run.command === 'vercel deploy --prod' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'fly deploy' && !run.safe));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === '.github/workflows/ci.yml'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
