@@ -1,0 +1,7 @@
+{
+  "scripts": {
+    "build": "terraform apply -auto-approve",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  }
+}

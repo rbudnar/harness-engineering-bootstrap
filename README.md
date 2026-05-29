@@ -9,8 +9,10 @@ The goal is not to add more documentation. The goal is to help coding agents loa
 - [Template](templates/Harness%20Engineering%20Bootstrap.md) - the current bootstrap template.
 - [Dogfooding guide](docs/dogfooding.md) - how this repo keeps the template from becoming a fat harness.
 - [Template fitness check](scripts/template-fitness.mjs) - local and CI bloat guard for template changes.
+- [Bootstrap planner](scripts/harness-bootstrap-plan.mjs) - read-only repo survey that emits review-ready markdown or JSON.
 - [Changelog](CHANGELOG.md) - version history and major design changes.
 - [References](REFERENCES.md) - source material and related work used while developing the template.
+- [Version marker](VERSION) - current template version for tags and releases.
 
 ## What This Template Emphasizes
 
@@ -19,6 +21,7 @@ The goal is not to add more documentation. The goal is to help coding agents loa
 - Task-routed docs instead of broad context loading.
 - Decision memory, data contracts, and repo contracts.
 - Deterministic quality gates and harness validation.
+- A read-only bootstrap planner CLI for first-pass repo surveys and review-ready setup plans.
 - Minimal local metrics first; PR metrics and scheduled reporting only when triggered.
 - Guide/sensor and computational/inferential control taxonomy.
 - Programmatic state surfaces before raw context dumps.
@@ -46,6 +49,20 @@ To check an automation proposal file before accepting it:
 ```bash
 node scripts/template-fitness.mjs --suggestion path/to/suggestion.md
 ```
+
+Run the bootstrap planner before testing the template against another repo:
+
+```bash
+node scripts/harness-bootstrap-plan.mjs --repo path/to/repo
+node scripts/harness-bootstrap-plan.mjs --repo path/to/repo --json
+node scripts/harness-bootstrap-plan.mjs --repo path/to/repo --mode update --target-version <tag>
+```
+
+## Release And Update Path
+
+`VERSION`, `CHANGELOG.md`, and GitHub tags/releases are the template release source of truth. Repositories that adopt this template should record accepted bootstrap metadata in `docs/harness-version.json` or `.harness/harness-version.json` so later planner runs can distinguish first-time bootstraps from template updates.
+
+For an already-bootstrapped repository, run the planner in update mode against the target tag before writing files. The plan should classify each upstream template change as already satisfied, applicable, intentionally rejected as bloat, or blocked, and it should name the rollback path before the update PR is merged.
 
 ## How To Use
 

@@ -279,6 +279,22 @@ function checkTemplateShape() {
   }
 }
 
+function checkReleaseMarker() {
+  metric('\nRelease marker:');
+
+  if (!exists('VERSION')) {
+    fail('VERSION is required as the template release marker.');
+    return;
+  }
+
+  const version = read('VERSION').trim();
+  metric(`- VERSION: ${version || 'empty'} (semver-like)`);
+
+  if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
+    fail('VERSION must contain a semver-like value such as 0.1.0 or 0.1.0-beta.1.');
+  }
+}
+
 function parseArgs(args) {
   const suggestionPaths = [];
 
@@ -394,6 +410,7 @@ function main() {
   checkAlwaysOn();
   checkAnchors();
   checkTemplateShape();
+  checkReleaseMarker();
 
   for (const suggestionPath of suggestionPaths) {
     checkSuggestion(suggestionPath);

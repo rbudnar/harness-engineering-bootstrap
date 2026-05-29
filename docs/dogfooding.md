@@ -104,6 +104,15 @@ node scripts/template-fitness.mjs --suggestion path/to/suggestion.md
 
 The gate checks always-on size, anti-bloat anchors, template growth budget, checklist size, triggered-module count, and suggestion admission fields.
 
+## Bootstrap Planner Dogfood
+
+Planner, update-mode, and release-policy changes must stay read-only until a separate accepted issue authorizes writes:
+```bash
+node --test scripts/harness-bootstrap-plan.test.mjs
+node scripts/harness-bootstrap-plan.mjs --repo .
+```
+Output must keep required core, triggered modules, rejected modules, smaller-control rationale, validation steps, open questions, and phase handoff rules visible enough for a fresh reviewer to challenge without manual chat relay.
+
 ## Review Posture
 
 Treat every template addition as guilty until it proves it improves right-context-at-right-time behavior. Prefer deleting, tightening, or routing existing guidance before adding a new section.

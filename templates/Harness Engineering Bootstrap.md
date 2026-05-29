@@ -36,7 +36,7 @@ This bootstrap document is intentionally more detailed than the files it creates
 
 Use it in this order:
 
-1. Survey the repository and produce a short setup plan.
+1. Survey the repository and produce a short, review-ready setup plan.
 2. Create the required core: `AGENTS.md`, `docs/README.md`, architecture docs, decision memory, testing docs, CI/CD docs, human guide, one exact unified quality-gate command, harness validation, and a minimal local metrics baseline.
 3. Add optional modules only when their trigger conditions are already present.
 4. Establish a baseline so future harness changes can be measured.
@@ -64,6 +64,7 @@ Triggered modules:
 - URL-fetchable context maps for remote agents or one-shot URL bootstrap
 - Agent-readable health report for mature harnesses with several validators/metrics
 - Harnessify/workflow-to-control skill or guide for repeated agent friction
+- Durable plan artifacts and single-agent phase separation for multi-session or review-loop-heavy bootstrap work
 - Agent runtime safety docs for repositories that let agents touch real systems, secrets, user data, or autonomous jobs
 - Behavioral drift sensors for long-running agents with stable behavioral anchors or repeated drift failures
 - Evidence packs for source-heavy research tasks where claims need traceable support
@@ -105,6 +106,18 @@ Every nontrivial control should map to at least one layer. If the map reveals a 
 
 ## Phase 0: Repository Survey and Bootstrap Plan
 
+If this repository has the HEB planner helper available, start with the read-only survey:
+
+```bash
+node scripts/harness-bootstrap-plan.mjs --repo <target-repo>
+node scripts/harness-bootstrap-plan.mjs --repo <target-repo> --json
+node scripts/harness-bootstrap-plan.mjs --repo <target-repo> --mode update --target-version <release-tag>
+```
+
+The helper is a planner, not a generator. It may emit markdown or JSON for later reuse, but it must not write target-repo files or silently accept optional modules.
+
+For repositories that are already bootstrapped, use update mode before applying a newer template version. The update plan should compare the accepted local harness against the target release notes, classify each upstream change as already satisfied, applicable, intentionally rejected as bloat, or blocked by missing local trigger evidence, and name the rollback path before merge.
+
 Before writing files, inspect:
 
 - Existing instruction files: `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.cursor/rules`, `.windsurf/rules`
@@ -140,6 +153,26 @@ Then produce a short setup plan:
 - Any bespoke scaffolding that should have a model/tool-upgrade reassessment trigger
 - Measurement script scope
 - Any questions for the human where the code cannot answer safely
+
+For durable bootstrap work, save the accepted plan as a first-class artifact. Use `docs/plans/active/<yyyy-mm-dd>-<slug>.md` when the plan belongs to the repository, or a local-only path such as `.harness/plans/<yyyy-mm-dd>-<slug>.md` for exploratory work that should not be committed.
+
+The plan header should include:
+
+- `status`, `owner`, `created`, `updated`
+- `next_action`, `validation_command`, and `stop_condition`
+- `supersedes`, `superseded_by`, and a retirement or revisit rule
+
+Accepted bootstraps should record template metadata in `docs/harness-version.json` or `.harness/harness-version.json`, including the accepted template version or tag, source release/tag, install or update date, and any intentionally rejected release changes. Update the metadata only after the bootstrap or update PR passes validation. Rollback should be a normal PR revert plus restoration of the previous metadata and validation evidence.
+
+Each execution turn should run this preflight:
+
+1. Reload the active plan instead of trusting chat memory.
+2. Verify repo drift against the files, commands, or issues the plan depends on.
+3. Check the latest user request for changed scope.
+4. Continue only from the next unchecked action.
+5. Append a compact progress-log row before handing off or stopping.
+
+Even when one model does the whole job, keep phase roles separate: planner, executor, reviewer, and closer. A plan is not ready for implementation until a fresh reviewer can see required core, triggered modules, explicitly rejected modules, smaller-control rationale, validation steps, open questions, and the stop condition without asking the human to become the memory bus.
 
 Proceed after the plan is accepted, unless the human explicitly asked you to implement without a plan gate.
 

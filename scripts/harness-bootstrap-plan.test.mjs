@@ -1,0 +1,217 @@
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { dirname, resolve } from 'node:path';
+import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
+import {
+  buildBootstrapPlan,
+  renderMarkdownPlan,
+  repoRoot,
+  surveyRepository,
+} from './harness-bootstrap-plan.mjs';
+
+const testDir = dirname(fileURLToPath(import.meta.url));
+const fixturesRoot = resolve(testDir, '..', 'test', 'fixtures', 'bootstrap-planner');
+
+test('surveys a small JavaScript repo and renders the review-ready plan contract', () => {
+  const fixture = resolve(fixturesRoot, 'basic-js');
+  const survey = surveyRepository(fixture);
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+  const markdown = renderMarkdownPlan(plan);
+
+  assert.deepEqual(survey.instructionFiles, ['AGENTS.md']);
+  assert.deepEqual(
+    survey.commands.map((command) => command.command),
+    ['npm ci\nnpm test', 'npm run build', 'npm run lint', 'npm test'],
+  );
+  assert.equal(plan.requiredCore.find((item) => item.id === 'thin-agent-entrypoint').status, 'present');
+  assert.match(markdown, /## Review And Handoff Contract/);
+  assert.match(markdown, /Planner/);
+  assert.match(markdown, /Explicitly Rejected Modules/);
+  assert.match(markdown, /status: draft/);
+  assert.match(markdown, /supersedes: none/);
+  assert.match(markdown, /superseded_by: none/);
+});
+
+test('triggers contracts and runtime safety only when fixture evidence exists', () => {
+  const fixture = resolve(fixturesRoot, 'data-service');
+  const survey = surveyRepository(fixture);
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+  const triggeredIds = plan.triggeredModules.map((module) => module.id).sort();
+  const rejectedIds = plan.rejectedModules.map((module) => module.id).sort();
+
+  assert(triggeredIds.includes('data-contracts'));
+  assert(triggeredIds.includes('internal-data-store-docs'));
+  assert(triggeredIds.includes('runtime-safety'));
+  assert(triggeredIds.includes('repo-contracts'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'k8s/service.yaml'));
+  assert(rejectedIds.includes('url-context-map'));
+  assert(plan.openQuestions.some((question) => question.includes('data/API/schema dependency')));
+});
+
+test('keeps unsafe CI run steps inspect-only instead of validation commands', () => {
+  const fixture = resolve(fixturesRoot, 'unsafe-ci');
+  const survey = surveyRepository(fixture);
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+  const markdown = renderMarkdownPlan(plan);
+  const validationText = validationStepsText(plan);
+
+  assert(survey.ci.runCommands.some((command) => command.command === 'terraform apply -auto-approve' && !command.safe));
+  assert(survey.ci.runCommands.some((command) => command.command === 'npm ci && npm test && npm run deploy' && !command.safe));
+  assert(!survey.commands.some((command) => command.command.includes('terraform apply')));
+  assert(!survey.commands.some((command) => command.command.includes('npm run deploy')));
+  assert(!survey.commands.some((command) => command.command.includes('build:deploy')));
+  assert(survey.commands.some((command) => command.command === 'npm run build'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  assert(markdown.includes('CI command may mutate external state'));
+  assert(!validationText.includes('Run detected validation candidate from .github/workflows/deploy.yml'));
+  assert(validationText.includes('Inspect CI step from .github/workflows/deploy.yml'));
+});
+
+test('uses conservative data heuristics for root schemas, migrations, and source models', () => {
+  const rootSchema = surveyRepository(resolve(fixturesRoot, 'root-schema'));
+  const rootPlan = buildBootstrapPlan(rootSchema, { date: '2026-05-28' });
+
+  assert(rootSchema.dataHints.some((hint) => hint.path === 'openapi.yaml'));
+  assert(rootSchema.internalDataStoreHints.some((hint) => hint.path === 'migrations/001_init.sql'));
+  assert(rootPlan.triggeredModules.some((module) => module.id === 'data-contracts'));
+  assert(rootPlan.triggeredModules.some((module) => module.id === 'internal-data-store-docs'));
+
+  const sourceModels = surveyRepository(resolve(fixturesRoot, 'source-models'));
+  const sourcePlan = buildBootstrapPlan(sourceModels, { date: '2026-05-28' });
+
+  assert.equal(sourceModels.dataHints.length, 0);
+  assert(sourcePlan.rejectedModules.some((module) => module.id === 'data-contracts'));
+});
+
+test('screens unsafe package bodies and top-level generated/runtime surfaces', () => {
+  const unsafePackage = surveyRepository(resolve(fixturesRoot, 'unsafe-package-script'));
+  const unsafePlan = buildBootstrapPlan(unsafePackage, { date: '2026-05-28' });
+
+  assert(!unsafePackage.commands.some((command) => command.command === 'npm run build'));
+  assert(!unsafePackage.commands.some((command) => command.command === 'npm run format'));
+  assert(unsafePackage.commands.some((command) => command.command === 'npm run format:check'));
+  assert(unsafePackage.ci.runCommands.some((command) => command.command === 'npm run build' && !command.safe));
+  assert(!validationStepsText(unsafePlan).includes('npm run build'));
+
+  const nestedSurfaces = surveyRepository(resolve(fixturesRoot, 'nested-surfaces'));
+  const nestedPlan = buildBootstrapPlan(nestedSurfaces, { date: '2026-05-28' });
+
+  assert(nestedSurfaces.runtimeSafetyHints.some((hint) => hint.path === 'services/api/Dockerfile'));
+  assert(nestedSurfaces.repoDependencyHints.some((hint) => hint.path === 'generated/client.ts'));
+  assert(nestedSurfaces.repoDependencyHints.some((hint) => hint.path === 'vendor-contracts/schema.json'));
+  assert(nestedPlan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  assert(nestedPlan.triggeredModules.some((module) => module.id === 'repo-contracts'));
+});
+
+test('honors packageManager declarations without lockfiles', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'declared-package-manager'));
+  const commands = survey.commands.map((command) => command.command);
+
+  assert.equal(survey.packageManager, 'pnpm');
+  assert(commands.includes('pnpm test'));
+  assert(commands.includes('pnpm run check'));
+  assert(!commands.some((command) => command.startsWith('npm ')));
+});
+
+test('json CLI output is reusable by the future scaffolder surface', () => {
+  const fixture = resolve(fixturesRoot, 'basic-js');
+  const output = execFileSync(
+    process.execPath,
+    ['scripts/harness-bootstrap-plan.mjs', '--repo', fixture, '--json', '--date', '2026-05-28'],
+    { cwd: repoRoot, encoding: 'utf8' },
+  );
+  const plan = JSON.parse(output);
+
+  assert.equal(plan.kind, 'harness-bootstrap-plan');
+  assert.equal(plan.planArtifact.created, '2026-05-28');
+  assert.equal(plan.survey.repoName, 'basic-js');
+  assert(plan.requiredCore.some((item) => item.id === 'quality-gate'));
+  assert(plan.reviewContract.some((item) => item.role === 'Reviewer'));
+});
+
+test('renders reusable commands for Windows paths and quoted CI arguments', () => {
+  const quotedCi = surveyRepository(resolve(fixturesRoot, 'quoted-ci'));
+  const quotedCommand = quotedCi.ci.runCommands.find((command) => command.source === '.github/workflows/ci.yml');
+  assert.equal(quotedCommand.command, 'npm run test -- --grep "foo"');
+  assert(quotedCi.commands.some((command) => command.command === 'npm run test -- --grep "foo"'));
+
+  const basicSurvey = surveyRepository(resolve(fixturesRoot, 'basic-js'));
+  const plan = buildBootstrapPlan(
+    { ...basicSurvey, repoPath: 'C:\\Users\\Example Repo\\project' },
+    { date: '2026-05-28' },
+  );
+
+  assert.match(plan.planArtifact.validationCommand, /--repo "C:\\Users\\Example Repo\\project"/);
+});
+
+test('detects existing bootstraps and emits versioned update guidance', () => {
+  const fixture = resolve(fixturesRoot, 'existing-bootstrapped');
+  const survey = surveyRepository(fixture);
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28', targetVersion: '0.2.0' });
+  const markdown = renderMarkdownPlan(plan);
+
+  assert.equal(survey.bootstrapState.status, 'bootstrapped');
+  assert.equal(survey.versionState.installedVersion, '0.1.0');
+  assert.equal(plan.operation, 'update');
+  assert.equal(plan.updatePlan.status, 'upgrade-available');
+  assert.equal(plan.updatePlan.targetVersion, '0.2.0');
+  assert.match(markdown, /## Template Update Plan/);
+  assert.match(markdown, /--mode update --target-version 0\.2\.0/);
+  assert.match(markdown, /Rollback path/);
+  assert.match(markdown, /docs\/harness-version\.json/);
+});
+
+test('supports explicit update mode for unversioned bootstraps', () => {
+  const fixture = resolve(fixturesRoot, 'unversioned-bootstrapped');
+  const output = execFileSync(
+    process.execPath,
+    [
+      'scripts/harness-bootstrap-plan.mjs',
+      '--repo',
+      fixture,
+      '--json',
+      '--mode',
+      'update',
+      '--target-version',
+      '0.2.0',
+      '--date',
+      '2026-05-28',
+    ],
+    { cwd: repoRoot, encoding: 'utf8' },
+  );
+  const plan = JSON.parse(output);
+
+  assert.equal(plan.operation, 'update');
+  assert.equal(plan.updatePlan.status, 'needs-version-baseline');
+  assert.equal(plan.updatePlan.versionMetadata.path, 'docs/harness-version.json');
+  assert.match(plan.planArtifact.validationCommand, /--mode update --target-version 0\.2\.0/);
+});
+
+test('does not mistake an application VERSION file for HEB metadata', () => {
+  const fixture = resolve(fixturesRoot, 'app-version');
+  const survey = surveyRepository(fixture);
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28', targetVersion: '0.2.0' });
+
+  assert.equal(survey.bootstrapState.status, 'bootstrapped');
+  assert.equal(survey.versionState.installedVersion, null);
+  assert.equal(survey.versionState.source, null);
+  assert.equal(plan.operation, 'update');
+  assert.equal(plan.updatePlan.status, 'needs-version-baseline');
+});
+
+test('the current template repository is a supported survey target', () => {
+  const survey = surveyRepository(repoRoot);
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert.equal(survey.versionState.installedVersion, '0.1.0');
+  assert(survey.harnessControls.includes('scripts/template-fitness.mjs'));
+  assert(survey.commands.some((command) => command.command === 'node --test scripts/harness-bootstrap-plan.test.mjs'));
+  assert(validationStepsText(plan).includes('node scripts/template-fitness.mjs'));
+  assert.equal(plan.requiredCore.find((item) => item.id === 'quality-gate').status, 'present');
+  assert(plan.requiredCore.some((item) => item.id === 'harness-validation' && item.status === 'present'));
+});
+
+function validationStepsText(plan) {
+  return plan.validationSteps.map((step) => step.command ?? step.text ?? String(step)).join('\n');
+}

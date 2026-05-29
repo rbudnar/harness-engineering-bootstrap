@@ -1,0 +1,10 @@
+{
+  "name": "data-service-fixture",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "check": "node scripts/check.js"
+  }
+}

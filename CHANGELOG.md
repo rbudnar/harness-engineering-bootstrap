@@ -2,6 +2,12 @@
 
 Dates reflect repository history, not formal package releases.
 
+## 2026-05-28
+
+- Added a read-only bootstrap planner CLI with markdown and JSON output, fixture tests, and CI coverage so agents can produce review-ready harness setup plans before writing target-repo files.
+- Added durable plan lifecycle guidance for active plan artifacts, execution preflight, single-agent phase separation, explicit rejection of untriggered modules, and progress-log handoff.
+- Added update-mode planning, template version metadata, rollback guidance, and a `VERSION` fitness check so already-bootstrapped repositories can move between template releases without manual chat relay.
+
 ## 2026-05-25
 
 - Clarified agent-runtime safety guidance: high-impact tool actions should use deterministic pre-action authorization or explicit confirmation outside model judgment, fail closed when policy context is missing, and audit allow/deny decisions.
