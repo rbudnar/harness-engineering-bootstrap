@@ -721,7 +721,7 @@ function buildUpdatePlan({ survey, operation, currentVersion, targetVersion, dat
 
   const status = !currentVersion
     ? 'needs-version-baseline'
-    : currentVersion === targetVersion
+    : normalizeReleaseVersion(currentVersion) === normalizeReleaseVersion(targetVersion)
       ? 'already-current'
       : 'upgrade-available';
 
@@ -2035,6 +2035,13 @@ function packageManagerFromDeclaration(packageJson = null) {
   return null;
 }
 
+function normalizeReleaseVersion(version) {
+  return String(version ?? '')
+    .trim()
+    .replace(/^refs\/tags\//i, '')
+    .replace(/^v(?=\d)/i, '');
+}
+
 function samplePaths(items, limit = 5) {
   return sampleValues(dedupe(items.map((item) => item.path)), limit);
 }
@@ -2220,7 +2227,13 @@ function isSafeValidationCommand(command) {
   const parts = splitShellCommandParts(command);
   if (!parts.length) return false;
 
-  return parts.every(isSafeValidationCommandPart);
+  let hasValidationPart = false;
+  for (const part of parts) {
+    if (workingDirectoryFromCdCommand(part)) continue;
+    if (!isSafeValidationCommandPart(part)) return false;
+    hasValidationPart = true;
+  }
+  return hasValidationPart;
 }
 
 function hasDangerousCommand(command) {

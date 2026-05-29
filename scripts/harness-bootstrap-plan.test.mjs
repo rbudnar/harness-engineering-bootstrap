@@ -885,6 +885,18 @@ test('uses workflow step metadata as runtime-safety evidence', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('keeps cd preamble validation blocks as CI commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workflow-cd-preamble'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'cd backend\npython -m pytest'
+    && run.safe
+  )));
+  assert(survey.commands.some((run) => run.command === 'cd backend\npython -m pytest'));
+  assert(!plan.openQuestions.some((question) => question.includes('exact command')));
+});
+
 test('uses direct release CLIs as runtime-safety evidence', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'semantic-release-ci'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -1111,6 +1123,15 @@ test('treats explicit version metadata as an update signal', () => {
   assert.equal(survey.versionState.installedVersion, '0.1.0');
   assert.equal(plan.operation, 'update');
   assert.equal(plan.updatePlan.status, 'upgrade-available');
+});
+
+test('normalizes v-prefixed target release tags for update comparison', () => {
+  const fixture = resolve(fixturesRoot, 'existing-bootstrapped');
+  const survey = surveyRepository(fixture);
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28', targetVersion: 'v0.1.0' });
+
+  assert.equal(plan.operation, 'update');
+  assert.equal(plan.updatePlan.status, 'already-current');
 });
 
 test('supports explicit update mode for unversioned bootstraps', () => {
