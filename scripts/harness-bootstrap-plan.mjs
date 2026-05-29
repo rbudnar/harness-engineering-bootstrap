@@ -182,13 +182,13 @@ const moduleDefinitions = [
   {
     id: 'pr-workflow-metrics',
     title: 'GitHub/PR workflow metrics',
-    trigger: (survey) => survey.ci.files.some((path) => path.startsWith('.github/')),
-    evidence: (survey) => sampleValues(survey.ci.files.filter((path) => path.startsWith('.github/'))),
+    trigger: (survey) => survey.prWorkflowMetricHints.length > 0,
+    evidence: (survey) => sampleHintEvidence(survey.prWorkflowMetricHints),
     smallerControl:
       'Use local metrics only if the repo has little PR activity or no GitHub review loop.',
     validation:
       'Track a small marker set or scheduled summary only after PR workflow friction is visible.',
-    rejection: 'No GitHub workflow files were detected.',
+    rejection: 'No PR metrics, review-marker capture, or recurring PR-friction signal was detected.',
   },
   {
     id: 'long-running-handoff',
@@ -269,6 +269,7 @@ export function surveyRepository(inputPath, options = {}) {
   const ci = collectCi(root, allFiles, packageManifests, unsafeMakeTargets);
   const scriptFiles = allFiles.filter((path) => path.startsWith('scripts/')).sort();
   const harnessControls = collectHarnessControls(allFiles);
+  const prWorkflowMetricHints = collectPrWorkflowMetricHints(root, allFiles);
   const versionState = collectVersionState(root, allFiles);
   const bootstrapState = collectBootstrapState({
     instructionFiles: detectedInstructionFiles,
@@ -308,6 +309,7 @@ export function surveyRepository(inputPath, options = {}) {
     urlMapHints: collectUrlMapHints(allFiles),
     evidenceHints: collectEvidenceHints(allFiles),
     harnessControls,
+    prWorkflowMetricHints,
   };
 
   return survey;
@@ -1304,6 +1306,48 @@ function collectRuntimeSafetyHints(files, ci = { runCommands: [] }, packageManif
   const packageHints = collectPackageRuntimeSafetyHints(packageManifests);
 
   return dedupeObjects([...fileHints, ...commandHints, ...packageHints], (hint) => `${hint.path}\0${hint.reason}`);
+}
+
+function collectPrWorkflowMetricHints(root, files) {
+  return files
+    .filter(isPrWorkflowMetricCandidatePath)
+    .flatMap((path) => prWorkflowMetricHintsForFile(root, path))
+    .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function isPrWorkflowMetricCandidatePath(path) {
+  const lower = path.toLowerCase();
+  const name = basename(lower);
+  return lower.includes('harness-metrics')
+    || lower.includes('pr-metrics')
+    || lower.includes('pull-request-metrics')
+    || lower.includes('pr-workflow')
+    || name === 'pull_request_template.md'
+    || lower.startsWith('.github/pull_request_template/')
+    || (lower.startsWith('.github/workflows/') && /metrics|harness-audit|harness-health|review/.test(lower));
+}
+
+function prWorkflowMetricHintsForFile(root, path) {
+  const text = readText(root, path);
+  const lower = text.toLowerCase();
+  const hints = [];
+
+  if (/\b(gh\s+pr|reviewthreads|pulls\/|pull_request_review|review comments?|review submissions?)\b/i.test(text)) {
+    hints.push({ path, reason: 'PR review/comment metrics are parsed or queried' });
+  }
+  if (/\b(no harness issue observed|harness issue observed|pr observation|review marker|observation boxes?)\b/i.test(text)) {
+    hints.push({ path, reason: 'PR review markers or observation boxes are captured' });
+  }
+  if (/(harness|pr|pull request).{0,40}(metrics|trend|history|health)/i.test(text)
+    || /(metrics|trend|history|health).{0,40}(harness|pr|pull request)/i.test(text)) {
+    hints.push({ path, reason: 'PR or harness metrics signal is documented' });
+  }
+  if (path.toLowerCase().startsWith('.github/workflows/')
+    && /\b(harness-metrics|pr-metrics|pull-request-metrics|harness-audit|harness-health)\b/.test(lower)) {
+    hints.push({ path, reason: 'workflow runs harness or PR metrics tooling' });
+  }
+
+  return dedupeObjects(hints, (hint) => `${hint.path}\0${hint.reason}`);
 }
 
 function collectPackageRuntimeSafetyHints(packageManifests) {
@@ -2310,6 +2354,12 @@ function makeInvocationFromCommandPart(part, currentDirectory = '') {
       continue;
     }
 
+    const compactDirectoryMatch = word.match(/^-C(.+)$/);
+    if (compactDirectoryMatch) {
+      directory = resolvePackageDirectory(stripYamlQuotes(compactDirectoryMatch[1]), directory);
+      continue;
+    }
+
     const directoryMatch = word.match(/^--directory=(.+)$/);
     if (directoryMatch) {
       directory = resolvePackageDirectory(stripYamlQuotes(directoryMatch[1]), directory);
@@ -2400,6 +2450,7 @@ function isSafeValidationCommand(command) {
   let hasValidationPart = false;
   for (const part of parts) {
     if (workingDirectoryFromCdCommand(part)) continue;
+    if (isHarmlessShellPrelude(part)) continue;
     if (!isSafeValidationCommandPart(part)) return false;
     hasValidationPart = true;
   }
@@ -3059,6 +3110,33 @@ function shellWords(command) {
 
 function hasShellPipeline(command) {
   return /(^|[^|])\|(?!\|)/.test(String(command ?? ''));
+}
+
+function isHarmlessShellPrelude(part) {
+  const words = shellWords(part).map((word) => word.toLowerCase());
+  if (words[0] !== 'set' || words.length < 2) return false;
+
+  let sawSafeOption = false;
+  for (let index = 1; index < words.length; index += 1) {
+    const word = words[index];
+    if (/^-[eux]+$/.test(word)) {
+      sawSafeOption = true;
+      continue;
+    }
+    if (word === '-o' && words[index + 1] === 'pipefail') {
+      sawSafeOption = true;
+      index += 1;
+      continue;
+    }
+    if (/^-[eux]*o$/.test(word) && words[index + 1] === 'pipefail') {
+      sawSafeOption = true;
+      index += 1;
+      continue;
+    }
+    return false;
+  }
+
+  return sawSafeOption;
 }
 
 function isRuntimeSurfacePath(path) {

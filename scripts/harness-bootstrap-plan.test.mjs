@@ -37,6 +37,8 @@ test('surveys a small JavaScript repo and renders the review-ready plan contract
   assert.match(markdown, /status: draft/);
   assert.match(markdown, /supersedes: none/);
   assert.match(markdown, /superseded_by: none/);
+  assert(!plan.triggeredModules.some((module) => module.id === 'pr-workflow-metrics'));
+  assert(plan.rejectedModules.some((module) => module.id === 'pr-workflow-metrics'));
 });
 
 test('triggers contracts and runtime safety only when fixture evidence exists', () => {
@@ -72,6 +74,25 @@ test('keeps unsafe CI run steps inspect-only instead of validation commands', ()
   assert(markdown.includes('CI command may mutate external state'));
   assert(!validationText.includes('Run detected validation candidate from .github/workflows/deploy.yml'));
   assert(validationText.includes('Inspect CI step from .github/workflows/deploy.yml'));
+});
+
+test('keeps harmless shell preludes in validation commands', () => {
+  const fixture = resolve(fixturesRoot, 'ci-harmless-prelude');
+  const survey = surveyRepository(fixture);
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'set -e\npython -m pytest'
+    && run.safe
+  )));
+  assert(survey.commands.some((run) => run.command === 'set -e\npython -m pytest'));
+});
+
+test('triggers PR metrics only from review-marker evidence', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'pr-metrics-evidence'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.prWorkflowMetricHints.some((hint) => hint.path === '.github/PULL_REQUEST_TEMPLATE.md'));
+  assert(plan.triggeredModules.some((module) => module.id === 'pr-workflow-metrics'));
 });
 
 test('uses conservative data heuristics for root schemas, migrations, and source models', () => {
@@ -588,6 +609,18 @@ test('includes safe nested Makefile validation targets', () => {
 
   assert(survey.commands.some((run) => run.command === 'make -C services/api test'));
   assert(!plan.openQuestions.some((question) => question.includes('exact command')));
+});
+
+test('screens compact make directory options before emitting package commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'make-compact-directory-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'services/api/Makefile'
+    && hint.reason === 'make target "test" may mutate external state'
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
 test('parses slash Make targets and ignores commented recipes', () => {
