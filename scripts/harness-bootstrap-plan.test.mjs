@@ -671,6 +671,7 @@ test('screens workspace-wide and equals selector delegated scripts', () => {
   assert(!survey.commands.some((run) => run.command === 'npm run check'));
   assert(!survey.commands.some((run) => run.command === 'npm run lint'));
   assert(!survey.commands.some((run) => run.command === 'npm run quality'));
+  assert(!survey.commands.some((run) => run.command === 'npm run typecheck'));
   assert(!survey.commands.some((run) => run.command === 'npm run validate'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'packages/api/package.json'));
 });

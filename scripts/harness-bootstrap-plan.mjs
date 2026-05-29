@@ -2263,14 +2263,7 @@ function packageManifestForCommand(command, packageManifests, workingDirectory =
 
   const workspace = packageWorkspaceFromCommand(command);
   if (workspace) {
-    const normalizedWorkspace = normalizePackageDirectory(workspace);
-    const workspaceBasename = basename(normalizedWorkspace);
-    const manifest = packageManifests.find((item) => (
-      item.json?.name === workspace
-      || item.directory === normalizedWorkspace
-      || (item.directory && basename(item.directory) === workspace)
-      || (item.directory && basename(item.directory) === workspaceBasename)
-    ));
+    const manifest = packageManifestForWorkspace(workspace, packageManifests);
     if (manifest) return manifest;
   }
 
@@ -2288,6 +2281,25 @@ function normalizePackageDirectory(directory) {
     .replace(/^\.\/+/, '')
     .replace(/\/\.$/, '')
     .replace(/\/$/, '');
+}
+
+function normalizePnpmWorkspaceSelector(selector) {
+  return stripYamlQuotes(selector)
+    .trim()
+    .replace(/^\.\.\.\^?/, '')
+    .replace(/\^?\.\.\.$/, '');
+}
+
+function packageManifestForWorkspace(workspace, packageManifests) {
+  const normalizedWorkspace = normalizePackageDirectory(workspace);
+  const workspaceBasename = basename(normalizedWorkspace);
+  return packageManifests.find((item) => (
+    item.json?.name === workspace
+    || item.json?.name === normalizedWorkspace
+    || item.directory === normalizedWorkspace
+    || (item.directory && basename(item.directory) === workspace)
+    || (item.directory && basename(item.directory) === workspaceBasename)
+  )) ?? null;
 }
 
 function resolvePackageDirectory(directory, baseDirectory = null) {
@@ -2323,14 +2335,18 @@ function packageDirectoryFromCommand(command) {
 
 function packageWorkspaceFromCommand(command) {
   const trimmed = stripPackageCommandPrefix(command);
-  const npmWorkspace = trimmed.match(/^npm\s+(?:--workspace|-w)(?:=|\s+)("[^"]+"|'[^']+'|\S+)/i);
-  if (npmWorkspace) return stripYamlQuotes(npmWorkspace[1].trim());
+  const words = shellWords(trimmed);
+  const manager = words[0]?.toLowerCase();
 
-  const trailingNpmWorkspace = trimmed.match(/^npm\s+(?:run\s+[\w:-]+|test|ci|install)\b.*(?:--workspace|-w)(?:=|\s+)("[^"]+"|'[^']+'|\S+)/i);
-  if (trailingNpmWorkspace) return stripYamlQuotes(trailingNpmWorkspace[1].trim());
+  if (manager === 'npm') {
+    const npmWorkspace = packageOptionValue(words, ['--workspace', '-w']);
+    if (npmWorkspace) return npmWorkspace;
+  }
 
-  const pnpmFilter = trimmed.match(/^pnpm\s+(?:--filter|-F)(?:=|\s+)("[^"]+"|'[^']+'|\S+)/i);
-  if (pnpmFilter) return stripYamlQuotes(pnpmFilter[1].trim());
+  if (manager === 'pnpm') {
+    const pnpmFilter = packageOptionValue(words, ['--filter', '-F']);
+    if (pnpmFilter) return normalizePnpmWorkspaceSelector(pnpmFilter);
+  }
 
   const yarnWorkspace = trimmed.match(/^yarn\s+workspace\s+("[^"]+"|'[^']+'|\S+)/i);
   if (yarnWorkspace) return stripYamlQuotes(yarnWorkspace[1].trim());
@@ -2440,15 +2456,23 @@ function packageScriptManifestsForCommand(command, fallbackManifest, packageMani
     return workspaceManifests.length ? workspaceManifests : [fallbackManifest].filter(Boolean);
   }
 
+  const workspace = packageWorkspaceFromCommand(command);
+  if (workspace) {
+    const targetWorkspaceManifest = packageManifestForWorkspace(workspace, packageManifests);
+    if (targetWorkspaceManifest) return [targetWorkspaceManifest];
+    const workspaceManifests = packageManifests.filter((manifest) => manifest.path !== 'package.json' && manifest.json?.scripts);
+    return workspaceManifests.length ? workspaceManifests : [fallbackManifest].filter(Boolean);
+  }
+
   const targetManifest = packageManifestForCommand(command, packageManifests, workingDirectory) ?? fallbackManifest;
   return [targetManifest].filter(Boolean);
 }
 
 function isAllWorkspacePackageScriptCommand(command, packageManifest, packageManifests) {
   if (!packageManifest || packageManifests.length <= 1) return false;
-  const lower = command.trim().toLowerCase();
-  return /(?:^|\s)--workspaces(?:\s|=|$)/.test(lower)
-    || /^pnpm\s+(?:-r|--recursive)\s+/.test(lower)
+  const words = shellWords(stripPackageCommandPrefix(command));
+  return hasNpmAllWorkspaces(words)
+    || hasPnpmRecursive(words)
     || Boolean(yarnWorkspacesForeachScriptName(command));
 }
 
@@ -2463,6 +2487,18 @@ function isAuthorityPackageScript(name) {
 
 function packageScriptNameFromCommand(command) {
   const trimmed = stripPackageCommandPrefix(command);
+  const words = shellWords(trimmed);
+  const manager = words[0]?.toLowerCase();
+
+  if (manager === 'npm' && hasNpmAllWorkspaces(words)) {
+    const scriptName = scriptNameAfterPackageOptions(words, 1, ['ci', 'install']);
+    if (scriptName) return scriptName;
+  }
+
+  if (manager === 'pnpm' && hasPnpmRecursive(words)) {
+    const scriptName = scriptNameAfterPackageOptions(words, 1, ['add', 'ci', 'install', 'remove']);
+    if (scriptName) return scriptName;
+  }
 
   const npmAllWorkspaceRun = trimmed.match(/^npm\s+--workspaces(?:=(?:true|1))?\s+(?:run\s+)?([\w:-]+)/i);
   if (npmAllWorkspaceRun && !['ci', 'install'].includes(npmAllWorkspaceRun[1].toLowerCase())) {
@@ -2539,6 +2575,72 @@ function packageScriptNameFromCommand(command) {
   if (direct && !['add', 'install', 'remove'].includes(direct[1].toLowerCase())) return direct[1];
 
   return null;
+}
+
+function hasNpmAllWorkspaces(words) {
+  return words[0]?.toLowerCase() === 'npm'
+    && words.some((word) => /^--workspaces(?:=(?:true|1))?$/i.test(word));
+}
+
+function hasPnpmRecursive(words) {
+  return words[0]?.toLowerCase() === 'pnpm'
+    && words.some((word) => ['-r', '--recursive'].includes(word.toLowerCase()));
+}
+
+function packageOptionValue(words, options) {
+  const normalizedOptions = options.map((option) => option.toLowerCase());
+  for (let index = 1; index < words.length; index += 1) {
+    const word = words[index];
+    const lower = word.toLowerCase();
+    const option = normalizedOptions.find((candidate) => lower === candidate || lower.startsWith(`${candidate}=`));
+    if (!option) continue;
+    if (lower.includes('=')) return word.slice(option.length + 1);
+    return words[index + 1] ?? null;
+  }
+  return null;
+}
+
+function scriptNameAfterPackageOptions(words, startIndex, blockedCommands = []) {
+  const blocked = new Set(blockedCommands.map((command) => command.toLowerCase()));
+  for (let index = startIndex; index < words.length; index += 1) {
+    const word = words[index];
+    const lower = word?.toLowerCase();
+    if (!word) continue;
+    if (word === '--') continue;
+    if (lower === 'run') {
+      const scriptName = words[index + 1];
+      return validPackageScriptName(scriptName) ? canonicalPackageScriptName(scriptName) : null;
+    }
+    if (lower === 'test') return 'test';
+    if (word.startsWith('-')) {
+      if (packageOptionConsumesNext(word)) index += 1;
+      continue;
+    }
+    if (blocked.has(lower) || !validPackageScriptName(word)) return null;
+    return canonicalPackageScriptName(word);
+  }
+  return null;
+}
+
+function packageOptionConsumesNext(option) {
+  if (option.includes('=')) return false;
+  return [
+    '-F',
+    '-w',
+    '--cwd',
+    '--dir',
+    '--filter',
+    '--prefix',
+    '--workspace',
+  ].some((candidate) => option.toLowerCase() === candidate.toLowerCase());
+}
+
+function validPackageScriptName(name) {
+  return /^[\w:-]+$/.test(name ?? '');
+}
+
+function canonicalPackageScriptName(name) {
+  return name === 'test' ? 'test' : name;
 }
 
 function stripPackageCommandPrefix(command) {
