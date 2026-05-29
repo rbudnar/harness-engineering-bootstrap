@@ -1521,14 +1521,32 @@ function parseWorkflowWorkingDirectory(line) {
 }
 
 function findWorkflowDefaultWorkingDirectory(lines, runIndex) {
-  const jobStart = findWorkflowJobStart(lines, runIndex);
-  for (let index = runIndex - 1; index >= jobStart; index -= 1) {
+  const jobBounds = findWorkflowJobBounds(lines, runIndex);
+  for (let index = jobBounds.start; index < jobBounds.end; index += 1) {
     const value = parseWorkflowWorkingDirectory(lines[index]);
     if (!value || !isDefaultsRunWorkingDirectory(lines, index)) continue;
     return value;
   }
 
   return findWorkflowTopLevelDefaultWorkingDirectory(lines);
+}
+
+function findWorkflowJobBounds(lines, runIndex) {
+  const start = findWorkflowJobStart(lines, runIndex);
+  const startIndent = indentation(lines[start] ?? '');
+  let end = lines.length;
+
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!line.trim()) continue;
+    const currentIndent = indentation(line);
+    if (currentIndent <= startIndent && !/^jobs:\s*$/.test(line)) {
+      end = index;
+      break;
+    }
+  }
+
+  return { start, end };
 }
 
 function findWorkflowJobStart(lines, runIndex) {
@@ -1840,17 +1858,21 @@ function hasDangerousCommand(command) {
 
 function unsafePackageScriptReason(command, packageManifest, packageManifests = [], options = {}) {
   const packageJson = packageManifest?.json;
-  if (!packageJson || typeof packageJson.scripts !== 'object') return null;
+  if (!packageJson) return null;
 
   for (const part of splitShellCommandParts(command)) {
-    for (const lifecycleScript of installLifecycleScriptNames(part, packageJson.scripts)) {
-      const unsafeLifecycleScript = findUnsafePackageScript(lifecycleScript, packageJson.scripts, [], {
-        manifest: packageManifest,
-        packageManifests,
-        unsafeMakeTargets: options.unsafeMakeTargets,
-      });
-      if (unsafeLifecycleScript) {
-        return `it may run install lifecycle "${lifecycleScript}" whose dependency chain "${unsafeLifecycleScript.chain.join(' -> ')}" may mutate external state`;
+    for (const lifecycleManifest of installLifecycleManifestsForCommand(part, packageManifest, packageManifests)) {
+      const lifecyclePackageJson = lifecycleManifest.json;
+      if (!lifecyclePackageJson || typeof lifecyclePackageJson.scripts !== 'object') continue;
+      for (const lifecycleScript of installLifecycleScriptNames(part, lifecyclePackageJson.scripts)) {
+        const unsafeLifecycleScript = findUnsafePackageScript(lifecycleScript, lifecyclePackageJson.scripts, [], {
+          manifest: lifecycleManifest,
+          packageManifests,
+          unsafeMakeTargets: options.unsafeMakeTargets,
+        });
+        if (unsafeLifecycleScript) {
+          return `it may run install lifecycle "${lifecycleScript}" whose dependency chain "${unsafeLifecycleScript.chain.join(' -> ')}" may mutate external state`;
+        }
       }
     }
 
@@ -1971,6 +1993,21 @@ function installLifecycleScriptNames(command, scripts) {
     'prepare',
     'postprepare',
   ].filter((name) => Object.hasOwn(scripts, name));
+}
+
+function installLifecycleManifestsForCommand(command, packageManifest, packageManifests) {
+  if (!isInstallCommand(command)) return [];
+  if (!isWorkspaceInstallCommand(command, packageManifest, packageManifests)) return [packageManifest].filter(Boolean);
+  return packageManifests.filter((manifest) => manifest.json && typeof manifest.json.scripts === 'object');
+}
+
+function isWorkspaceInstallCommand(command, packageManifest, packageManifests) {
+  if (!packageManifest || packageManifests.length <= 1) return false;
+  const lower = command.trim().toLowerCase();
+  if (packageManifest.path !== 'package.json') return false;
+  return /--workspaces?\b/.test(lower)
+    || /^(pnpm|yarn)\s+install\b/.test(lower)
+    || (/^npm\s+(ci|install)\b/.test(lower) && Boolean(packageManifest.json?.workspaces));
 }
 
 function isInstallCommand(command) {

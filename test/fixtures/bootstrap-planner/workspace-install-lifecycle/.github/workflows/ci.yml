@@ -1,0 +1,12 @@
+name: CI
+
+on:
+  pull_request:
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - run: pnpm install
+      - run: yarn install
+      - run: npm ci --workspaces

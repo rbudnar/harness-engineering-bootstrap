@@ -259,6 +259,21 @@ test('screens trailing workspace commands before emitting CI validation commands
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens workspace install lifecycle hooks before emitting install commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workspace-install-lifecycle'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  for (const command of ['pnpm install', 'yarn install', 'npm ci --workspaces']) {
+    assert(survey.ci.runCommands.some((run) => (
+      run.command === command
+      && !run.safe
+      && run.packageScriptReason.includes('preinstall')
+    )));
+    assert(!survey.commands.some((run) => run.command === command));
+  }
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('keeps piped validation commands inspect-only', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'piped-validation-ci'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -510,6 +525,16 @@ test('honors workflow-level default working-directory', () => {
 
   assert.equal(command.workingDirectory, 'services/api');
   assert.equal(command.safe, false);
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+});
+
+test('honors job default working-directory declared after steps', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workflow-default-after-steps'));
+  const command = survey.ci.runCommands.find((run) => run.command === 'npm test');
+
+  assert.equal(command.workingDirectory, 'services/api');
+  assert.equal(command.safe, false);
+  assert.match(command.packageScriptReason, /pretest/);
   assert(!survey.commands.some((run) => run.command === 'npm test'));
 });
 

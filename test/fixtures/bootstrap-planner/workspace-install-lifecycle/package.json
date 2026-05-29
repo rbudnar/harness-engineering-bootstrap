@@ -1,0 +1,7 @@
+{
+  "name": "workspace-install-lifecycle-fixture",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ]
+}
