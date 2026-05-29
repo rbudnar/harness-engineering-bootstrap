@@ -644,6 +644,18 @@ test('parses Azure shell shortcut steps for runtime-safety evidence', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('parses Azure inlineScript tasks for runtime-safety evidence', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'azure-inline-script-task'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => run.command === 'az deployment group create --resource-group rg --template-file infra/main.bicep' && !run.safe));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'azure-pipelines.yml'
+    && hint.reason.includes('az deployment group create')
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('honors Azure same-step workingDirectory for scripts', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'azure-working-directory'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -685,6 +697,18 @@ test('parses Jenkins Windows and PowerShell shell steps', () => {
 
 test('parses Jenkins triple-quoted shell steps', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'jenkins-triple-shell'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => run.command === 'terraform apply -auto-approve' && !run.safe));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'Jenkinsfile'
+    && hint.reason.includes('terraform apply -auto-approve')
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('parses Jenkins named script wrappers', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'jenkins-named-script-wrapper'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
 
   assert(survey.ci.runCommands.some((run) => run.command === 'terraform apply -auto-approve' && !run.safe));

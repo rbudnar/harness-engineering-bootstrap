@@ -1259,6 +1259,28 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
+    const namedShellBlockMatch = line.match(/^\s*(?:sh|bat|powershell|pwsh)\s*(?:\(|\s).*?\bscript\s*:\s*(['"]{3})\s*$/);
+    if (namedShellBlockMatch) {
+      const blockLines = [];
+      const quote = namedShellBlockMatch[1];
+      for (let nextIndex = index + 1; nextIndex < lines.length; nextIndex += 1) {
+        const nextLine = lines[nextIndex];
+        index = nextIndex;
+        if (nextLine.trim().startsWith(quote)) break;
+        blockLines.push(nextLine);
+      }
+
+      const blockCommand = normalizeRunBlock(blockLines);
+      if (blockCommand) commands.push(classifyCiRunCommand(source, blockCommand, true, packageManifests, { unsafeMakeTargets }));
+      continue;
+    }
+
+    const namedShellInlineMatch = line.match(/^\s*(?:sh|bat|powershell|pwsh)\s*(?:\(|\s).*?\bscript\s*:\s*(['"])(.*?)\1/);
+    if (namedShellInlineMatch) {
+      commands.push(classifyCiRunCommand(source, namedShellInlineMatch[2].trim(), false, packageManifests, { unsafeMakeTargets }));
+      continue;
+    }
+
     const tripleShellMatch = line.match(/^\s*(?:sh|bat|powershell|pwsh)\s+(['"]{3})\s*$/);
     if (tripleShellMatch) {
       const blockLines = [];
@@ -1281,7 +1303,7 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
       continue;
     }
 
-    const keyMatch = line.match(/^\s*(?:-\s*)?(?:run|script|command|bash|powershell|pwsh):\s*(.*)\s*$/);
+    const keyMatch = line.match(/^\s*(?:-\s*)?(?:run|script|inline[-_]?script|command|bash|powershell|pwsh):\s*(.*)\s*$/i);
     if (!keyMatch) continue;
 
     const value = keyMatch[1].trim();
