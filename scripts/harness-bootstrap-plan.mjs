@@ -3158,7 +3158,17 @@ function yarnWorkspacesForeachScriptName(command) {
 function workingDirectoryFromCdCommand(command) {
   const match = command.trim().match(/^cd\s+("[^"]+"|'[^']+'|[^;&|]+)\s*$/i);
   if (!match) return null;
-  return stripYamlQuotes(match[1].trim());
+  const directory = stripYamlQuotes(match[1].trim());
+  return isStaticInRepoDirectory(directory) ? directory : null;
+}
+
+function isStaticInRepoDirectory(directory) {
+  const normalized = normalizePath(directory).trim();
+  return Boolean(normalized)
+    && !normalized.startsWith('../')
+    && normalized !== '..'
+    && !/^(?:[A-Za-z]:|\/|\\\\|~)/.test(normalized)
+    && !/[$%{}*?`]/.test(normalized);
 }
 
 function splitShellCommandParts(command) {

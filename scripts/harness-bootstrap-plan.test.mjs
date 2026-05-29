@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, cpSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -1210,6 +1210,21 @@ test('keeps cd preamble validation blocks as CI commands', () => {
   assert(!plan.openQuestions.some((question) => question.includes('exact command')));
 });
 
+test('keeps unknown cd preamble validation blocks inspect-only', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workflow-unknown-cd-preamble'));
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'cd "$SERVICE_DIR"\nnpm test'
+    && !run.safe
+  )));
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'cd ../service\nnpm test'
+    && !run.safe
+  )));
+  assert(!survey.commands.some((run) => run.command.includes('$SERVICE_DIR')));
+  assert(!survey.commands.some((run) => run.command.includes('../service')));
+});
+
 test('screens cd preamble package scripts in their changed directory', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'workflow-cd-unsafe-package'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -1614,8 +1629,9 @@ test('does not treat generic docs as an existing HEB bootstrap', () => {
 test('the current template repository is a supported survey target', () => {
   const survey = surveyRepository(repoRoot);
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+  const currentVersion = readFileSync(resolve(repoRoot, 'VERSION'), 'utf8').trim();
 
-  assert.equal(survey.versionState.installedVersion, '0.1.0');
+  assert.equal(survey.versionState.installedVersion, currentVersion);
   assert(survey.harnessControls.includes('scripts/template-fitness.mjs'));
   assert(survey.commands.some((command) => command.command === 'node --test scripts/harness-bootstrap-plan.test.mjs'));
   assert(validationStepsText(plan).includes('node scripts/template-fitness.mjs'));
