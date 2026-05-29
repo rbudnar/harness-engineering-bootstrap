@@ -1074,9 +1074,10 @@ function collectPackageScripts(packageManifests, packageManager, fileSet = new S
 
 function collectPackageScriptsFromManifest(manifest, packageManager, packageManifests = [], unsafeMakeTargets = new Set()) {
   const packageJson = manifest.json;
-  if (!packageJson || typeof packageJson.scripts !== 'object') return [];
+  const scripts = packageScriptsObject(packageJson?.scripts);
+  if (!scripts) return [];
 
-  return Object.entries(packageJson.scripts)
+  return Object.entries(scripts)
     .filter(([name]) => isValidationScriptName(name))
     .map(([name]) => {
       const command = packageScriptCommand(packageManager, name, manifest.directory);
@@ -1089,6 +1090,10 @@ function collectPackageScriptsFromManifest(manifest, packageManager, packageMani
     .filter((script) => !script.unsafeReason)
     .filter((script) => isSafeValidationCommand(script.command))
     .map(({ source, command }) => ({ source, command }));
+}
+
+function packageScriptsObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
 }
 
 function isValidationScriptName(name) {
@@ -1388,9 +1393,10 @@ function prWorkflowMetricHintsForFile(root, path) {
 function collectPackageRuntimeSafetyHints(packageManifests, unsafeMakeTargets = new Set()) {
   return packageManifests.flatMap((manifest) => {
     const packageJson = manifest.json;
-    if (!packageJson || typeof packageJson.scripts !== 'object') return [];
+    const scripts = packageScriptsObject(packageJson?.scripts);
+    if (!scripts) return [];
 
-    return Object.entries(packageJson.scripts)
+    return Object.entries(scripts)
       .filter(([name, body]) => (
         isAuthorityPackageScript(name)
         || hasDangerousCommand(body)
@@ -1632,9 +1638,22 @@ function isRuntimeSafetyAction(action) {
 function collectGenericCiRunCommands(text, source, packageManifests = [], unsafeMakeTargets = new Set()) {
   const lines = text.split(/\r?\n/);
   const commands = [];
+  const carriesShellPhaseDirectory = isGitLabCiSource(source);
+  let shellPhaseWorkingDirectory = null;
+  let shellPhaseIndent = null;
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
+    if (
+      carriesShellPhaseDirectory
+      && shellPhaseIndent !== null
+      && line.trim()
+      && indentation(line) < shellPhaseIndent
+    ) {
+      shellPhaseWorkingDirectory = null;
+      shellPhaseIndent = null;
+    }
+
     const namedShellBlockMatch = line.match(/^\s*(?:sh|bat|powershell|pwsh)\s*(?:\(|\s).*?\bscript\s*:\s*(['"]{3})\s*$/);
     if (namedShellBlockMatch) {
       const blockLines = [];
@@ -1679,13 +1698,16 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
       continue;
     }
 
-    const keyMatch = line.match(/^\s*(?:-\s*)?(?:run|script|before_script|after_script|inline[-_]?script|command|bash|powershell|pwsh):\s*(.*)\s*$/i);
+    const keyMatch = line.match(/^\s*(?:-\s*)?(run|script|before_script|after_script|inline[-_]?script|command|bash|powershell|pwsh):\s*(.*)\s*$/i);
     if (!keyMatch) continue;
 
-    const value = keyMatch[1].trim();
+    const keyName = keyMatch[1].toLowerCase();
+    const value = keyMatch[2].trim();
+    const phaseCarriesDirectory = carriesShellPhaseDirectory && ['before_script', 'script'].includes(keyName);
     const contextualWorkingDirectory = findGenericSameStepWorkingDirectory(lines, index)
       ?? findGenericPreviousSameStepWorkingDirectory(lines, index)
-      ?? findGenericWorkingDirectory(lines, index);
+      ?? findGenericWorkingDirectory(lines, index)
+      ?? (phaseCarriesDirectory ? shellPhaseWorkingDirectory : null);
     const inlineCommands = parseInlineCommandArray(value);
     if (inlineCommands) {
       let inlineWorkingDirectory = contextualWorkingDirectory;
@@ -1694,6 +1716,10 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
         const changedDirectory = workingDirectoryFromCdCommand(command);
         if (changedDirectory !== null) {
           inlineWorkingDirectory = changedDirectory;
+          if (phaseCarriesDirectory) {
+            shellPhaseWorkingDirectory = changedDirectory;
+            shellPhaseIndent = indentation(line);
+          }
           commands.push(classifyCiRunCommand(source, command, false, packageManifests, { unsafeMakeTargets }));
         } else {
           commands.push(classifyCiRunCommand(source, command, false, packageManifests, {
@@ -1740,6 +1766,10 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
           const changedDirectory = workingDirectoryFromCdCommand(command);
           if (changedDirectory !== null) {
             blockWorkingDirectory = changedDirectory;
+            if (phaseCarriesDirectory) {
+              shellPhaseWorkingDirectory = changedDirectory;
+              shellPhaseIndent = indentation(line);
+            }
             commands.push(classifyCiRunCommand(source, command, false, packageManifests, { unsafeMakeTargets }));
           } else {
             commands.push(classifyCiRunCommand(source, command, false, packageManifests, {
@@ -1813,6 +1843,10 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
   }
 
   return commands;
+}
+
+function isGitLabCiSource(source) {
+  return /(^|\/)\.?gitlab-ci\.ya?ml$/i.test(normalizePath(source));
 }
 
 function findGenericWorkingDirectory(lines, runIndex) {
@@ -2846,10 +2880,10 @@ function unsafePackageScriptReason(command, packageManifest, packageManifests = 
 
     const partManifest = packageManifestForCommand(part, packageManifests, currentDirectory) ?? packageManifest;
     for (const lifecycleManifest of installLifecycleManifestsForCommand(part, partManifest, packageManifests)) {
-      const lifecyclePackageJson = lifecycleManifest.json;
-      if (!lifecyclePackageJson || typeof lifecyclePackageJson.scripts !== 'object') continue;
-      for (const lifecycleScript of installLifecycleScriptNames(part, lifecyclePackageJson.scripts)) {
-        const unsafeLifecycleScript = findUnsafePackageScript(lifecycleScript, lifecyclePackageJson.scripts, [], {
+      const lifecycleScripts = packageScriptsObject(lifecycleManifest.json?.scripts);
+      if (!lifecycleScripts) continue;
+      for (const lifecycleScript of installLifecycleScriptNames(part, lifecycleScripts)) {
+        const unsafeLifecycleScript = findUnsafePackageScript(lifecycleScript, lifecycleScripts, [], {
           manifest: lifecycleManifest,
           packageManifests,
           unsafeMakeTargets: options.unsafeMakeTargets,
@@ -2863,9 +2897,9 @@ function unsafePackageScriptReason(command, packageManifest, packageManifests = 
     const scriptName = packageScriptNameFromCommand(part);
     if (!scriptName) continue;
     for (const targetManifest of packageScriptManifestsForCommand(part, partManifest, packageManifests, currentDirectory)) {
-      const targetPackageJson = targetManifest?.json;
-      if (!targetPackageJson?.scripts || !Object.hasOwn(targetPackageJson.scripts, scriptName)) continue;
-      const unsafeScript = findUnsafePackageScript(scriptName, targetPackageJson.scripts, [], {
+      const targetScripts = packageScriptsObject(targetManifest?.json?.scripts);
+      if (!targetScripts || !Object.hasOwn(targetScripts, scriptName)) continue;
+      const unsafeScript = findUnsafePackageScript(scriptName, targetScripts, [], {
         manifest: targetManifest,
         packageManifests,
         unsafeMakeTargets: options.unsafeMakeTargets,
@@ -2990,6 +3024,8 @@ function packageWorkspacesFromCommand(command) {
 
 function installLifecycleScriptNames(command, scripts) {
   if (!isInstallCommand(command)) return [];
+  const scriptMap = packageScriptsObject(scripts);
+  if (!scriptMap) return [];
   return [
     'preinstall',
     'install',
@@ -2998,13 +3034,13 @@ function installLifecycleScriptNames(command, scripts) {
     'preprepare',
     'prepare',
     'postprepare',
-  ].filter((name) => Object.hasOwn(scripts, name));
+  ].filter((name) => Object.hasOwn(scriptMap, name));
 }
 
 function installLifecycleManifestsForCommand(command, packageManifest, packageManifests) {
   if (!isInstallCommand(command)) return [];
   if (!isWorkspaceInstallCommand(command, packageManifest, packageManifests)) return [packageManifest].filter(Boolean);
-  return packageManifests.filter((manifest) => manifest.json && typeof manifest.json.scripts === 'object');
+  return packageManifests.filter((manifest) => packageScriptsObject(manifest.json?.scripts));
 }
 
 function isWorkspaceInstallCommand(command, packageManifest, packageManifests) {
@@ -3047,7 +3083,8 @@ function isPackageInstallCommand(command) {
 }
 
 function findUnsafePackageScript(scriptName, scripts, chain = [], context = {}) {
-  if (!Object.hasOwn(scripts, scriptName)) return null;
+  const scriptMap = packageScriptsObject(scripts);
+  if (!scriptMap || !Object.hasOwn(scriptMap, scriptName)) return null;
   const manifestPath = context.manifest?.path ?? 'package.json';
   const visitKey = `${manifestPath}\0${scriptName}`;
   if (context.visited?.has(visitKey)) return null;
@@ -3055,15 +3092,15 @@ function findUnsafePackageScript(scriptName, scripts, chain = [], context = {}) 
   const nextVisited = new Set(context.visited ?? []);
   nextVisited.add(visitKey);
   const nextChain = [...chain, scriptName];
-  for (const lifecycleScript of lifecycleScriptNames(scriptName, scripts)) {
-    const unsafeLifecycleScript = findUnsafePackageScript(lifecycleScript, scripts, nextChain, {
+  for (const lifecycleScript of lifecycleScriptNames(scriptName, scriptMap)) {
+    const unsafeLifecycleScript = findUnsafePackageScript(lifecycleScript, scriptMap, nextChain, {
       ...context,
       visited: nextVisited,
     });
     if (unsafeLifecycleScript) return unsafeLifecycleScript;
   }
 
-  const body = String(scripts[scriptName] ?? '');
+  const body = String(scriptMap[scriptName] ?? '');
   if (isAuthorityPackageScript(scriptName)) return { scriptName, chain: nextChain };
   if (hasDangerousCommand(body)) return { scriptName, chain: nextChain };
   if (unsafeMakeTargetReasonFromDirectory(body, context.unsafeMakeTargets ?? new Set(), context.manifest?.directory)) return { scriptName, chain: nextChain };
@@ -3080,10 +3117,10 @@ function findUnsafePackageScript(scriptName, scripts, chain = [], context = {}) 
 
     const partManifest = packageManifestForCommand(part, context.packageManifests ?? [], currentDirectory) ?? context.manifest;
     for (const lifecycleManifest of installLifecycleManifestsForCommand(part, partManifest, context.packageManifests ?? [])) {
-      const lifecyclePackageJson = lifecycleManifest.json;
-      if (!lifecyclePackageJson || typeof lifecyclePackageJson.scripts !== 'object') continue;
-      for (const lifecycleScript of installLifecycleScriptNames(part, lifecyclePackageJson.scripts)) {
-        const unsafeLifecycleScript = findUnsafePackageScript(lifecycleScript, lifecyclePackageJson.scripts, nextChain, {
+      const lifecycleScripts = packageScriptsObject(lifecycleManifest.json?.scripts);
+      if (!lifecycleScripts) continue;
+      for (const lifecycleScript of installLifecycleScriptNames(part, lifecycleScripts)) {
+        const unsafeLifecycleScript = findUnsafePackageScript(lifecycleScript, lifecycleScripts, nextChain, {
           ...context,
           manifest: lifecycleManifest,
           visited: nextVisited,
@@ -3095,7 +3132,7 @@ function findUnsafePackageScript(scriptName, scripts, chain = [], context = {}) 
     const childScript = packageScriptNameFromCommand(part);
     if (!childScript) continue;
     for (const childManifest of packageScriptManifestsForCommand(part, partManifest ?? context.manifest, context.packageManifests ?? [], currentDirectory)) {
-      const childScripts = childManifest?.json?.scripts ?? scripts;
+      const childScripts = packageScriptsObject(childManifest?.json?.scripts) ?? scriptMap;
       const unsafeScript = findUnsafePackageScript(childScript, childScripts, nextChain, {
         ...context,
         manifest: childManifest,
@@ -3112,7 +3149,7 @@ function packageScriptManifestsForCommand(command, fallbackManifest, packageMani
   if (isAllWorkspacePackageScriptCommand(command, fallbackManifest, packageManifests)) {
     const words = shellWords(stripPackageCommandPrefix(command));
     const rootManifest = packageManifests.find((manifest) => manifest.path === 'package.json') ?? fallbackManifest;
-    const workspaceManifests = packageManifests.filter((manifest) => manifest.path !== 'package.json' && manifest.json?.scripts);
+    const workspaceManifests = packageManifests.filter((manifest) => manifest.path !== 'package.json' && packageScriptsObject(manifest.json?.scripts));
     const manifests = hasNpmIncludeWorkspaceRoot(words)
       ? [rootManifest, ...workspaceManifests]
       : workspaceManifests;
@@ -3128,7 +3165,7 @@ function packageScriptManifestsForCommand(command, fallbackManifest, packageMani
     if (targetWorkspaceManifests.length === workspaces.length) {
       return dedupeObjects(targetWorkspaceManifests, (manifest) => manifest.path);
     }
-    const workspaceManifests = packageManifests.filter((manifest) => manifest.path !== 'package.json' && manifest.json?.scripts);
+    const workspaceManifests = packageManifests.filter((manifest) => manifest.path !== 'package.json' && packageScriptsObject(manifest.json?.scripts));
     return workspaceManifests.length ? workspaceManifests : [fallbackManifest].filter(Boolean);
   }
 
@@ -3145,8 +3182,10 @@ function isAllWorkspacePackageScriptCommand(command, packageManifest, packageMan
 }
 
 function lifecycleScriptNames(scriptName, scripts) {
+  const scriptMap = packageScriptsObject(scripts);
+  if (!scriptMap) return [];
   if (/^(pre|post)/i.test(scriptName)) return [];
-  return [`pre${scriptName}`, `post${scriptName}`].filter((name) => Object.hasOwn(scripts, name));
+  return [`pre${scriptName}`, `post${scriptName}`].filter((name) => Object.hasOwn(scriptMap, name));
 }
 
 function isAuthorityPackageScript(name) {

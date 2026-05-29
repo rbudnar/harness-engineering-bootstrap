@@ -401,6 +401,15 @@ test('parses GitLab before and after scripts for runtime-safety triggers', () =>
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('preserves GitLab before_script directory changes for script commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'gitlab-before-script-cd'));
+  const command = survey.ci.runCommands.find((run) => run.source === '.gitlab-ci.yml' && run.command === 'npm test');
+
+  assert.equal(command.workingDirectory, 'services/api');
+  assert(survey.commands.some((run) => run.command === 'npm --prefix services/api test'));
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+});
+
 test('detects root MCP configs as runtime surfaces', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'root-mcp-config'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -416,6 +425,15 @@ test('surveys nested package manifests for validation commands', () => {
   assert(survey.packageFiles.includes('services/api/package.json'));
   assert(commands.includes('npm --prefix services/api test'));
   assert(commands.includes('npm --prefix services/api run build'));
+});
+
+test('treats null package scripts metadata as absent', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'null-scripts-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.packageFiles.includes('package.json'));
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
 });
 
 test('honors package managers declared by nested manifests', () => {
