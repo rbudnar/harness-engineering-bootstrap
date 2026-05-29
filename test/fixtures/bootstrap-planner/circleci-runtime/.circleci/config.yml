@@ -1,0 +1,6 @@
+version: 2.1
+
+jobs:
+  deploy:
+    steps:
+      - run: terraform apply -auto-approve

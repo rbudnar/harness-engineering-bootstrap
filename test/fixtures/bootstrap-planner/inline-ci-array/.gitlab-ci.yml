@@ -1,2 +1,2 @@
 test:
-  script: ["npm ci", "npm test"]
+  script: [npm ci, npm test]

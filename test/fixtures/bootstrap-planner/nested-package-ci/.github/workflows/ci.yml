@@ -7,4 +7,4 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - run: npm --prefix services/api run build
+      - run: npm --prefix ./services/api run build

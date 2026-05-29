@@ -263,11 +263,11 @@ test('screens nested package scripts before marking CI commands safe', () => {
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
 
   assert(survey.ci.runCommands.some((run) => (
-    run.command === 'npm --prefix services/api run build'
+    run.command === 'npm --prefix ./services/api run build'
     && !run.safe
     && run.packageScriptReason.includes('build')
   )));
-  assert(!survey.commands.some((run) => run.command === 'npm --prefix services/api run build'));
+  assert(!survey.commands.some((run) => run.command === 'npm --prefix ./services/api run build'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
@@ -330,7 +330,36 @@ test('parses inline non-GitHub CI script arrays into individual commands', () =>
 
   assert(commands.includes('npm ci'));
   assert(commands.includes('npm test'));
-  assert(!commands.includes('["npm ci", "npm test"]'));
+  assert(!commands.some((command) => command.includes('[')));
+});
+
+test('parses CircleCI run steps for runtime-safety triggers', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'circleci-runtime'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => run.command === 'terraform apply -auto-approve' && !run.safe));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === '.circleci/config.yml'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('screens root scripts delegated to prefixed package commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'delegated-prefix-package'));
+
+  assert(!survey.commands.some((run) => run.command === 'npm run build'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'services/api/package.json'));
+});
+
+test('keeps workflow default working-directory scoped to its job', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workflow-default-scope'));
+  const rootCommand = survey.ci.runCommands.find((run) => run.command === 'npm test' && !run.workingDirectory);
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'npm test'
+    && run.workingDirectory === 'services/api'
+    && !run.safe
+  )));
+  assert(rootCommand);
+  assert.equal(rootCommand.safe, true);
 });
 
 test('detects existing bootstraps and emits versioned update guidance', () => {

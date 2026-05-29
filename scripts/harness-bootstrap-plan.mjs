@@ -68,6 +68,10 @@ const dangerousCommandPatterns = [
   /\bgit\s+push\b/,
   /\bgh\s+release\b/,
   /\b(npm|pnpm|yarn|bun)\s+(run\s+)?[\w:-]*(deploy|publish|release)[\w:-]*\b/,
+  /\bnpm\s+--prefix\s+\S+\s+(run\s+)?[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
+  /\bpnpm\s+--dir\s+\S+\s+(run\s+)?[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
+  /\byarn\s+--cwd\s+\S+\s+(run\s+)?[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
+  /\bbun\s+--cwd\s+\S+\s+run\s+[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
   /\baz\s+.+\b(create|delete|deploy|update)\b/,
   /\baws\s+.+\b(put|delete|create|deploy|publish|update)\b/,
   /\bgcloud\s+.+\b(deploy|delete|create|update)\b/,
@@ -1222,7 +1226,7 @@ function collectGenericCiRunCommands(text, source, packageManifests = []) {
       continue;
     }
 
-    const keyMatch = line.match(/^\s*(?:-\s*)?(?:script|command):\s*(.*)\s*$/);
+    const keyMatch = line.match(/^\s*(?:-\s*)?(?:run|script|command):\s*(.*)\s*$/);
     if (!keyMatch) continue;
 
     const value = keyMatch[1].trim();
@@ -1273,7 +1277,13 @@ function collectGenericCiRunCommands(text, source, packageManifests = []) {
 function parseInlineCommandArray(value) {
   if (!/^\[.*\]$/.test(value)) return null;
   const commands = [...value.matchAll(/["']([^"']+)["']/g)].map((match) => match[1].trim()).filter(Boolean);
-  return commands.length ? commands : null;
+  if (commands.length) return commands;
+
+  return value
+    .slice(1, -1)
+    .split(',')
+    .map((command) => command.trim())
+    .filter(Boolean);
 }
 
 function findWorkflowWorkingDirectory(lines, runIndex) {
@@ -1356,13 +1366,25 @@ function parseWorkflowWorkingDirectory(line) {
 }
 
 function findWorkflowDefaultWorkingDirectory(lines, runIndex) {
-  for (let index = runIndex - 1; index >= 0; index -= 1) {
+  const jobStart = findWorkflowJobStart(lines, runIndex);
+  for (let index = runIndex - 1; index >= jobStart; index -= 1) {
     const value = parseWorkflowWorkingDirectory(lines[index]);
     if (!value || !isDefaultsRunWorkingDirectory(lines, index)) continue;
     return value;
   }
 
   return null;
+}
+
+function findWorkflowJobStart(lines, runIndex) {
+  for (let index = runIndex - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    if (!line.trim()) continue;
+    if (indentation(line) === 2 && /^\s{2}[\w-]+:\s*$/.test(line)) return index;
+    if (indentation(line) === 0 && /^jobs:\s*$/.test(line)) return index;
+  }
+
+  return 0;
 }
 
 function isDefaultsRunWorkingDirectory(lines, workingDirectoryIndex) {
@@ -1640,12 +1662,19 @@ function unsafePackageScriptReason(command, packageJson) {
 function packageJsonForCommand(command, packageManifests, workingDirectory = null) {
   const directory = workingDirectory || packageDirectoryFromCommand(command);
   if (directory) {
-    const normalizedDirectory = normalizePath(directory).replace(/\/$/, '');
+    const normalizedDirectory = normalizePackageDirectory(directory);
     const manifest = packageManifests.find((item) => item.directory === normalizedDirectory);
     if (manifest) return manifest.json;
   }
 
   return packageManifests.find((item) => item.path === 'package.json')?.json ?? null;
+}
+
+function normalizePackageDirectory(directory) {
+  return normalizePath(directory)
+    .replace(/^\.\/+/, '')
+    .replace(/\/\.$/, '')
+    .replace(/\/$/, '');
 }
 
 function packageDirectoryFromCommand(command) {
