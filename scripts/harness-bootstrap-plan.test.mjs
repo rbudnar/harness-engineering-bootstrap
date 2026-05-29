@@ -121,6 +121,16 @@ test('honors packageManager declarations without lockfiles', () => {
   assert(!commands.some((command) => command.startsWith('npm ')));
 });
 
+test('includes hyphenated validation package scripts after safety screening', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'hyphenated-validation-scripts'));
+  const commands = survey.commands.map((command) => command.command);
+
+  assert(commands.includes('npm run test-ci'));
+  assert(commands.includes('npm run type-check'));
+  assert(!commands.includes('npm run lint-fix'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+});
+
 test('json CLI output is reusable by the future scaffolder surface', () => {
   const fixture = resolve(fixturesRoot, 'basic-js');
   const output = execFileSync(
@@ -706,6 +716,16 @@ test('uses AWS S3 writes as runtime-safety evidence', () => {
     hint.path === '.github/workflows/ci.yml'
     && hint.reason.includes('aws s3 sync dist s3://example-bucket')
   )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('uses mutating commands with boolean global flags as runtime-safety evidence', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'boolean-global-flags-ci'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => run.command === 'kubectl --insecure-skip-tls-verify apply -f k8s/service.yaml' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'aws --no-cli-pager s3 sync dist s3://example-bucket' && !run.safe));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === '.github/workflows/ci.yml'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 

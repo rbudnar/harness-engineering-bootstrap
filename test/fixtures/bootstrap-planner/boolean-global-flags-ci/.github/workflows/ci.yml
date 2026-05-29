@@ -1,0 +1,11 @@
+name: CI
+
+on:
+  pull_request:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: kubectl --insecure-skip-tls-verify apply -f k8s/service.yaml
+      - run: aws --no-cli-pager s3 sync dist s3://example-bucket

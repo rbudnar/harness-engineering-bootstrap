@@ -84,6 +84,35 @@ const dangerousCommandPatterns = [
   /\s--(fix|write)\b/,
 ];
 
+const cliOptionsWithValues = new Set([
+  '-f',
+  '-k',
+  '-l',
+  '-n',
+  '--as',
+  '--as-group',
+  '--as-uid',
+  '--cache-dir',
+  '--certificate-authority',
+  '--client-certificate',
+  '--client-key',
+  '--cluster',
+  '--context',
+  '--endpoint-url',
+  '--field-manager',
+  '--kubeconfig',
+  '--namespace',
+  '--output',
+  '--profile',
+  '--query',
+  '--region',
+  '--request-timeout',
+  '--selector',
+  '--server',
+  '--token',
+  '--user',
+]);
+
 const moduleDefinitions = [
   {
     id: 'data-contracts',
@@ -975,7 +1004,7 @@ function collectPackageScriptsFromManifest(manifest, packageManager, packageMani
   if (!packageJson || typeof packageJson.scripts !== 'object') return [];
 
   return Object.entries(packageJson.scripts)
-    .filter(([name]) => /(^|:)(test|build|lint|typecheck|check|quality|validate|coverage)(:|$)/i.test(name))
+    .filter(([name]) => isValidationScriptName(name))
     .map(([name]) => {
       const command = packageScriptCommand(packageManager, name, manifest.directory);
       return {
@@ -987,6 +1016,10 @@ function collectPackageScriptsFromManifest(manifest, packageManager, packageMani
     .filter((script) => !script.unsafeReason)
     .filter((script) => isSafeValidationCommand(script.command))
     .map(({ source, command }) => ({ source, command }));
+}
+
+function isValidationScriptName(name) {
+  return /(^|[:._-])(test|build|lint|type[:._-]?check|check|quality|validate|coverage)([:._-]|$)/i.test(name);
 }
 
 function packageScriptCommand(packageManager, name, directory = '') {
@@ -2099,11 +2132,20 @@ function stripCliGlobalOptions(args) {
       continue;
     }
 
-    if (!word.includes('=') && args[index + 1] && !args[index + 1].startsWith('-')) {
+    if (word === '--') {
+      result.push(...args.slice(index + 1));
+      break;
+    }
+
+    if (!word.includes('=') && cliOptionConsumesNext(word) && args[index + 1] && !args[index + 1].startsWith('-')) {
       index += 1;
     }
   }
   return result;
+}
+
+function cliOptionConsumesNext(option) {
+  return cliOptionsWithValues.has(option.toLowerCase());
 }
 
 function commandPartReferencesRuntimeSurface(part) {
