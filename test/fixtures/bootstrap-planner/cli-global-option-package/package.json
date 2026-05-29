@@ -2,6 +2,9 @@
   "scripts": {
     "test": "docker --context prod push ghcr.io/example/app",
     "check": "git -C ../other push origin main",
-    "build": "docker --context prod buildx build --push -t ghcr.io/example/app ."
+    "build": "docker --context prod buildx build --push -t ghcr.io/example/app .",
+    "test:docker-host": "docker --host tcp://builder buildx build --push -t ghcr.io/example/app .",
+    "check:aws": "aws --ca-bundle cert.pem s3 cp ./app.tgz s3://example/app.tgz",
+    "validate:pulumi": "pulumi --cwd infra up"
   }
 }

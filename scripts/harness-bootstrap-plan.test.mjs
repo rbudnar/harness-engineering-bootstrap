@@ -490,6 +490,16 @@ test('propagates unsafe nested Make targets through recipes', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens Make targets that delegate to unsafe package scripts', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'make-package-delegation'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'make test'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'Makefile'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('propagates unsafe recursive Make invocations through recipes', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'recursive-make-target'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -696,6 +706,9 @@ test('screens mutating git and docker commands after global options', () => {
   assert(!survey.commands.some((run) => run.command === 'npm test'));
   assert(!survey.commands.some((run) => run.command === 'npm run check'));
   assert(!survey.commands.some((run) => run.command === 'npm run build'));
+  assert(!survey.commands.some((run) => run.command === 'npm run test:docker-host'));
+  assert(!survey.commands.some((run) => run.command === 'npm run check:aws'));
+  assert(!survey.commands.some((run) => run.command === 'npm run validate:pulumi'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });

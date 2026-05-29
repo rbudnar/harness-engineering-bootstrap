@@ -133,14 +133,17 @@ const cliOptionsWithValues = new Set([
   '--as',
   '--as-group',
   '--as-uid',
+  '--ca-bundle',
   '--cache-dir',
   '--certificate-authority',
   '--client-certificate',
   '--client-key',
   '--cluster',
   '--context',
+  '--cwd',
   '--endpoint-url',
   '--field-manager',
+  '--host',
   '--kubeconfig',
   '--namespace',
   '--output',
@@ -283,10 +286,10 @@ export function surveyRepository(inputPath, options = {}) {
   const detectedInstructionFiles = detectInstructionFiles(allFiles, fileSet);
   const docs = collectDocs(allFiles);
   const packageManager = inferPackageManager(fileSet, packageJson);
-  const unsafeMakeTargets = collectUnsafeMakeTargets(root, fileSet);
+  const unsafeMakeTargets = collectUnsafeMakeTargets(root, fileSet, packageManifests);
   const packageScripts = collectPackageScripts(packageManifests, packageManager, fileSet, unsafeMakeTargets);
-  const makeTargets = collectMakeTargets(root, fileSet);
-  const makeRuntimeSafetyHints = collectMakeRuntimeSafetyHints(root, fileSet);
+  const makeTargets = collectMakeTargets(root, fileSet, unsafeMakeTargets);
+  const makeRuntimeSafetyHints = collectMakeRuntimeSafetyHints(root, fileSet, packageManifests);
   const ci = collectCi(root, allFiles, packageManifests, unsafeMakeTargets);
   const scriptFiles = allFiles.filter((path) => path.startsWith('scripts/')).sort();
   const harnessControls = collectHarnessControls(allFiles);
@@ -1102,9 +1105,8 @@ function scopedPackageScriptCommand(packageManager, name, directory) {
   return name === 'test' ? `npm --prefix ${path} test` : `npm --prefix ${path} run ${name}`;
 }
 
-function collectMakeTargets(root, fileSet) {
+function collectMakeTargets(root, fileSet, unsafeTargets = collectUnsafeMakeTargets(root, fileSet)) {
   const targets = collectMakeTargetRecipes(root, fileSet);
-  const unsafeTargets = collectUnsafeMakeTargets(root, fileSet);
   return targets
     .filter((target) => /^(test|build|lint|check|quality|validate|coverage)$/i.test(target.name))
     .filter((target) => !unsafeTargets.has(makeTargetKey(target.directory, target.name)))
@@ -1114,9 +1116,9 @@ function collectMakeTargets(root, fileSet) {
     }));
 }
 
-function collectMakeRuntimeSafetyHints(root, fileSet) {
+function collectMakeRuntimeSafetyHints(root, fileSet, packageManifests = []) {
   const targets = collectMakeTargetRecipes(root, fileSet, { includeIncludedMakefiles: true });
-  const unsafeTargets = unsafeMakeTargetKeys(targets);
+  const unsafeTargets = unsafeMakeTargetKeys(targets, packageManifests);
   return targets
     .filter((target) => unsafeTargets.has(makeTargetKey(target.directory, target.name)))
     .map((target) => ({
@@ -1125,8 +1127,8 @@ function collectMakeRuntimeSafetyHints(root, fileSet) {
     }));
 }
 
-function collectUnsafeMakeTargets(root, fileSet) {
-  return unsafeMakeTargetKeys(collectMakeTargetRecipes(root, fileSet, { includeIncludedMakefiles: true }));
+function collectUnsafeMakeTargets(root, fileSet, packageManifests = []) {
+  return unsafeMakeTargetKeys(collectMakeTargetRecipes(root, fileSet, { includeIncludedMakefiles: true }), packageManifests);
 }
 
 function collectMakeTargetRecipes(root, fileSet, options = {}) {
@@ -1195,7 +1197,7 @@ function splitMakeRuleTail(tail) {
   };
 }
 
-function unsafeMakeTargetKeys(targets) {
+function unsafeMakeTargetKeys(targets, packageManifests = []) {
   const byKey = new Map(targets.map((target) => [makeTargetKey(target.directory, target.name), target]));
   const firstTargetByDirectory = new Map();
   for (const target of targets) {
@@ -1216,6 +1218,12 @@ function unsafeMakeTargetKeys(targets) {
       if (unsafe.has(key)) continue;
       if (
         hasDangerousCommand(target.recipe)
+        || unsafePackageScriptReason(
+          target.recipe,
+          packageManifestForCommand(target.recipe, packageManifests, target.directory),
+          packageManifests,
+          { unsafeMakeTargets: unsafe },
+        )
         || unsafeMakeTargetReasonFromDirectory(target.recipe, unsafe, target.directory)
         || target.prerequisites.some((name) => unsafe.has(makeTargetKey(target.directory, name)) || isUnsafeMakePrerequisite(name, target.directory, byKey))
       ) {
