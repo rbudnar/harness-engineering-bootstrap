@@ -1273,7 +1273,19 @@ function isRuntimeSafetyCommand(command) {
 function isDeploymentScriptPath(path) {
   const name = basename(path);
   const stem = name.replace(/\.[^.]+$/, '');
-  return /^(deploy|release|publish|provision)([-_.].*)?$/i.test(stem);
+  if (!/^(deploy|release|publish|provision)([-_.].*)?$/i.test(stem)) return false;
+  const directory = dirname(path);
+  return directory === '.'
+    || hasPathSegment(path, 'scripts')
+    || hasPathSegment(path, 'bin')
+    || hasPathSegment(path, 'ops')
+    || hasPathSegment(path, 'ci')
+    || hasPathSegment(path, 'deploy')
+    || hasPathSegment(path, 'release')
+    || hasPathSegment(path, 'infra')
+    || hasPathSegment(path, '.github')
+    || hasPathSegment(path, '.gitlab')
+    || hasPathSegment(path, '.circleci');
 }
 
 function collectPlanHints(files) {
@@ -1316,7 +1328,8 @@ function collectWorkflowRunCommands(text, source, packageManifests = [], unsafeM
     const usesMatch = line.match(/^(\s*)-?\s*uses:\s*(.*)\s*$/);
     if (usesMatch) {
       const action = stripYamlQuotes(usesMatch[2].trim());
-      if (isRuntimeSafetyAction(action)) commands.push(classifyWorkflowUsesStep(source, action));
+      const metadataReason = workflowStepMetadataRuntimeSafetyReason(lines, index, action);
+      if (isRuntimeSafetyAction(action) || metadataReason) commands.push(classifyWorkflowUsesStep(source, action, metadataReason));
       continue;
     }
 
@@ -1326,6 +1339,7 @@ function collectWorkflowRunCommands(text, source, packageManifests = [], unsafeM
 
     const command = match[2].trim();
     const workingDirectory = findWorkflowWorkingDirectory(lines, index);
+    const runtimeSafetyReason = workflowStepMetadataRuntimeSafetyReason(lines, index);
     if (/^[|>]/.test(command) || command === '') {
       const blockLines = [];
       const baseIndent = indentation(line);
@@ -1347,17 +1361,37 @@ function collectWorkflowRunCommands(text, source, packageManifests = [], unsafeM
 
       const blockCommand = normalizeRunBlock(blockLines);
       if (blockCommand) {
-        commands.push(classifyCiRunCommand(source, blockCommand, true, packageManifests, { workingDirectory, unsafeMakeTargets }));
+        commands.push(classifyCiRunCommand(source, blockCommand, true, packageManifests, { workingDirectory, runtimeSafetyReason, unsafeMakeTargets }));
       }
     } else {
-      commands.push(classifyCiRunCommand(source, stripYamlQuotes(command), false, packageManifests, { workingDirectory, unsafeMakeTargets }));
+      commands.push(classifyCiRunCommand(source, stripYamlQuotes(command), false, packageManifests, { workingDirectory, runtimeSafetyReason, unsafeMakeTargets }));
     }
   }
 
   return commands;
 }
 
-function classifyWorkflowUsesStep(source, action) {
+function workflowStepMetadataRuntimeSafetyReason(lines, stepIndex, action = '') {
+  const baseIndent = indentation(lines[stepIndex]);
+  const metadata = [];
+  for (let nextIndex = stepIndex + 1; nextIndex < lines.length; nextIndex += 1) {
+    const line = lines[nextIndex];
+    if (!line.trim()) continue;
+    const nextIndent = indentation(line);
+    if (nextIndent <= baseIndent) break;
+    metadata.push(line.trim());
+  }
+
+  const text = metadata.join('\n');
+  if (/\$\{\{\s*secrets\./i.test(text)) return 'GitHub workflow step references secrets';
+  if (/docker\/build-push-action/i.test(action) && /(^|\n)push:\s*true(?:\s|$)/i.test(text)) {
+    return 'GitHub workflow step pushes Docker images';
+  }
+  return null;
+}
+
+function classifyWorkflowUsesStep(source, action, metadataReason = null) {
+  const reason = metadataReason ?? `GitHub Action may mutate external state: ${action}`;
   return {
     source,
     command: `uses: ${action}`,
@@ -1365,8 +1399,8 @@ function classifyWorkflowUsesStep(source, action) {
     workingDirectory: null,
     packageScriptReason: null,
     safe: false,
-    inspectOnlyReason: `GitHub Action may mutate external state: ${action}`,
-    runtimeSafetyReason: `GitHub Action may mutate external state: ${formatInlineValue(action)}`,
+    inspectOnlyReason: reason,
+    runtimeSafetyReason: metadataReason ?? `GitHub Action may mutate external state: ${formatInlineValue(action)}`,
   };
 }
 
@@ -2053,6 +2087,7 @@ function normalizeRunBlock(lines) {
 
 function classifyCiRunCommand(source, command, multiline, packageManifests = [], options = {}) {
   const workingDirectory = options.workingDirectory ?? null;
+  const runtimeSafetyReason = options.runtimeSafetyReason ?? null;
   const unsafeMakeTargets = options.unsafeMakeTargets ?? new Set();
   const workingDirectoryReason = workingDirectory
     ? `it declares working-directory ${formatInlineValue(workingDirectory)}; inspect and run from that directory manually`
@@ -2060,17 +2095,18 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
   const makeTargetReason = unsafeMakeTargetReason(command, unsafeMakeTargets, workingDirectory);
   const packageManifest = packageManifestForCommand(command, packageManifests, workingDirectory);
   const packageScriptReason = unsafePackageScriptReason(command, packageManifest, packageManifests, { unsafeMakeTargets });
-  const safe = !workingDirectoryReason && !makeTargetReason && !packageScriptReason && isSafeValidationCommand(command);
+  const safe = !workingDirectoryReason && !runtimeSafetyReason && !makeTargetReason && !packageScriptReason && isSafeValidationCommand(command);
   return {
     source,
     command,
     multiline,
     workingDirectory,
     packageScriptReason,
+    runtimeSafetyReason,
     safe,
     inspectOnlyReason: safe
       ? null
-      : workingDirectoryReason || makeTargetReason || packageScriptReason || 'it is not a known-safe validation command or it may mutate external state',
+      : workingDirectoryReason || runtimeSafetyReason || makeTargetReason || packageScriptReason || 'it is not a known-safe validation command or it may mutate external state',
   };
 }
 
@@ -2168,7 +2204,7 @@ function hasDangerousCliVerb(part) {
     pulumi: new Set(['up', 'destroy', 'cancel', 'refresh', 'import']),
   };
   if (!mutatingVerbs[command]) return false;
-  const verb = firstCliVerb(args);
+  const verb = firstCliVerb(args, command);
   return Boolean(verb && mutatingVerbs[command].has(verb));
 }
 
@@ -2183,11 +2219,11 @@ function hasDangerousAwsCommand(part) {
   return args.some((word) => ['put', 'delete', 'create', 'deploy', 'publish', 'update'].includes(word));
 }
 
-function firstCliVerb(args) {
-  return stripCliGlobalOptions(args)[0] ?? null;
+function firstCliVerb(args, command = '') {
+  return stripCliGlobalOptions(args, command)[0] ?? null;
 }
 
-function stripCliGlobalOptions(args) {
+function stripCliGlobalOptions(args, command = '') {
   const result = [];
   for (let index = 0; index < args.length; index += 1) {
     const word = args[index];
@@ -2201,15 +2237,17 @@ function stripCliGlobalOptions(args) {
       break;
     }
 
-    if (!word.includes('=') && cliOptionConsumesNext(word) && args[index + 1] && !args[index + 1].startsWith('-')) {
+    if (!word.includes('=') && cliOptionConsumesNext(word, command) && args[index + 1] && !args[index + 1].startsWith('-')) {
       index += 1;
     }
   }
   return result;
 }
 
-function cliOptionConsumesNext(option) {
-  return cliOptionsWithValues.has(option.toLowerCase());
+function cliOptionConsumesNext(option, command = '') {
+  const lower = option.toLowerCase();
+  if (command === 'pulumi' && ['-s', '--stack'].includes(lower)) return true;
+  return cliOptionsWithValues.has(lower);
 }
 
 function commandPartReferencesRuntimeSurface(part) {

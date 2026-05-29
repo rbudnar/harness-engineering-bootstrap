@@ -1,0 +1,8 @@
+name: deploy
+on: [push]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: pulumi --stack prod up --yes
+      - run: pulumi -s prod destroy --yes

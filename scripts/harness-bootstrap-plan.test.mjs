@@ -551,6 +551,14 @@ test('detects deployment-oriented script filenames', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('does not flag ordinary release-named source files as runtime surfaces', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'domain-release-file'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert.equal(survey.runtimeSafetyHints.length, 0);
+  assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('does not treat application task source folders as handoff plans', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'app-task-folder'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -796,6 +804,31 @@ test('uses credential actions as runtime-safety evidence', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('uses workflow step metadata as runtime-safety evidence', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workflow-metadata-runtime'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'uses: docker/build-push-action@v6'
+    && !run.safe
+    && run.runtimeSafetyReason === 'GitHub workflow step pushes Docker images'
+  )));
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'npm test'
+    && !run.safe
+    && run.runtimeSafetyReason === 'GitHub workflow step references secrets'
+  )));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === '.github/workflows/ci.yml'
+    && hint.reason.includes('Docker images')
+  )));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === '.github/workflows/ci.yml'
+    && hint.reason.includes('secrets')
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('uses direct release CLIs as runtime-safety evidence', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'semantic-release-ci'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -981,8 +1014,16 @@ test('keeps Pulumi deployments inspect-only', () => {
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
 
   assert(!survey.commands.some((run) => run.command === 'npm run validate'));
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(survey.ci.runCommands.some((run) => run.command === 'pulumi --stack prod up --yes' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'pulumi -s prod destroy --yes' && !run.safe));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'Pulumi.yaml'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === '.github/workflows/deploy.yml'
+    && hint.reason.includes('pulumi --stack prod up --yes')
+  )));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
   assert(!validationStepsText(plan).includes('Run detected validation candidate from package.json'));
 });
