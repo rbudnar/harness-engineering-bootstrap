@@ -887,7 +887,8 @@ function collectBootstrapState({ instructionFiles, docs, harnessControls, versio
       || versionState.source
       || harnessControls.some((path) => /template-fitness|validate-harness|harness-audit/i.test(path)),
   );
-  const status = hasHebSpecificEvidence && evidence.length >= 3 ? 'bootstrapped' : 'fresh';
+  const hasVersionMetadata = Boolean(versionState.installedVersion || versionState.source);
+  const status = hasVersionMetadata || (hasHebSpecificEvidence && evidence.length >= 3) ? 'bootstrapped' : 'fresh';
   const confidence = versionState.installedVersion
     ? 'high'
     : status === 'bootstrapped' && evidence.length >= 4
@@ -1322,7 +1323,17 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
         const nextIndent = indentation(nextLine);
         if (nextIndent <= baseIndent) break;
         if (blockIndent === null) blockIndent = nextIndent;
-        if (nextIndent < blockIndent) break;
+
+        const siblingWorkingDirectory = parseGenericWorkingDirectory(nextLine);
+        if (nextIndent < blockIndent) {
+          if (siblingWorkingDirectory) {
+            blockWorkingDirectory = siblingWorkingDirectory;
+          } else if (/^\s*(?:displayName|name|when|condition|environment|env|no_output_timeout):\s*/.test(nextLine)) {
+            // Same-step metadata after a block scalar, not shell text.
+          }
+          index = nextIndex;
+          continue;
+        }
 
         const listCommand = nextLine.match(/^\s*-\s+(.+?)\s*$/)?.[1];
         if (listCommand) {
@@ -1337,12 +1348,12 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
               unsafeMakeTargets,
             }));
           }
-        } else if (parseGenericWorkingDirectory(nextLine)) {
+        } else if (siblingWorkingDirectory) {
           const nestedWorkingDirectory = nextLine.match(/^\s*working[-_]directory:\s*(.+?)\s*$/)?.[1];
           if (nestedWorkingDirectory) {
             blockWorkingDirectory = stripYamlQuotes(nestedWorkingDirectory.trim());
           } else {
-            blockWorkingDirectory = parseGenericWorkingDirectory(nextLine);
+            blockWorkingDirectory = siblingWorkingDirectory;
           }
         } else if (/^\s*command:\s*/.test(nextLine)) {
           const nestedCommand = nextLine.match(/^\s*command:\s*(.*?)\s*$/)?.[1]?.trim();

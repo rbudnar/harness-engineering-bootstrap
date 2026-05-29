@@ -1,0 +1,4 @@
+steps:
+  - script: |
+      npm test
+    workingDirectory: services/api

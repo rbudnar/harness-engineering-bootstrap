@@ -656,6 +656,18 @@ test('honors Azure same-step workingDirectory for scripts', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('honors Azure same-step workingDirectory after block scripts', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'azure-block-working-directory'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+  const command = survey.ci.runCommands.find((run) => run.command === 'npm test');
+
+  assert.equal(command.workingDirectory, 'services/api');
+  assert.equal(command.safe, false);
+  assert.match(command.packageScriptReason, /pretest/);
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('parses Jenkins Windows and PowerShell shell steps', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'jenkins-windows-shells'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -746,6 +758,18 @@ test('detects existing bootstraps and emits versioned update guidance', () => {
   assert.match(markdown, /--mode update --target-version 0\.2\.0/);
   assert.match(markdown, /Rollback path/);
   assert.match(markdown, /docs\/harness-version\.json/);
+});
+
+test('treats explicit version metadata as an update signal', () => {
+  const fixture = resolve(fixturesRoot, 'metadata-only-bootstrapped');
+  const survey = surveyRepository(fixture);
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28', targetVersion: '0.2.0' });
+
+  assert.equal(survey.bootstrapState.status, 'bootstrapped');
+  assert.equal(survey.bootstrapState.confidence, 'high');
+  assert.equal(survey.versionState.installedVersion, '0.1.0');
+  assert.equal(plan.operation, 'update');
+  assert.equal(plan.updatePlan.status, 'upgrade-available');
 });
 
 test('supports explicit update mode for unversioned bootstraps', () => {
