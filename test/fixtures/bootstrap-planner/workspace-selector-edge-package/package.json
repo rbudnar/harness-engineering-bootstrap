@@ -7,6 +7,8 @@
   "scripts": {
     "build": "npm run build --workspaces",
     "check": "npm --workspace=api run build",
-    "lint": "pnpm --filter=api run check"
+    "lint": "pnpm --filter=api run check",
+    "quality": "npm --workspaces run build",
+    "validate": "pnpm -r build"
   }
 }

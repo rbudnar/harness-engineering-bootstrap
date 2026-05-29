@@ -1,0 +1,8 @@
+{
+  "name": "workflow-top-default-after-jobs-api-fixture",
+  "private": true,
+  "scripts": {
+    "pretest": "terraform apply -auto-approve",
+    "test": "node --test"
+  }
+}

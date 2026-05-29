@@ -406,6 +406,15 @@ test('screens package scripts that call runtime-surface files', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens package scripts that directly run runtime-surface files', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'direct-runtime-script-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm run build'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens package wrappers that change directories before child scripts', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'package-wrapper-cwd'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -551,6 +560,8 @@ test('screens workspace-wide and equals selector delegated scripts', () => {
   assert(!survey.commands.some((run) => run.command === 'npm run build'));
   assert(!survey.commands.some((run) => run.command === 'npm run check'));
   assert(!survey.commands.some((run) => run.command === 'npm run lint'));
+  assert(!survey.commands.some((run) => run.command === 'npm run quality'));
+  assert(!survey.commands.some((run) => run.command === 'npm run validate'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'packages/api/package.json'));
 });
 
@@ -660,6 +671,18 @@ test('parses Jenkins Windows and PowerShell shell steps', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('parses Jenkins triple-quoted shell steps', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'jenkins-triple-shell'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => run.command === 'terraform apply -auto-approve' && !run.safe));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'Jenkinsfile'
+    && hint.reason.includes('terraform apply -auto-approve')
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('keeps workflow default working-directory scoped to its job', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'workflow-default-scope'));
   const rootCommand = survey.ci.runCommands.find((run) => run.command === 'npm test' && !run.workingDirectory);
@@ -690,6 +713,22 @@ test('honors job default working-directory declared after steps', () => {
   assert.equal(command.safe, false);
   assert.match(command.packageScriptReason, /pretest/);
   assert(!survey.commands.some((run) => run.command === 'npm test'));
+});
+
+test('honors workflow-level default working-directory declared after jobs', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workflow-top-default-after-jobs'));
+  const command = survey.ci.runCommands.find((run) => run.command === 'npm test');
+
+  assert.equal(command.workingDirectory, 'services/api');
+  assert.equal(command.safe, false);
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+});
+
+test('preserves Yarn colon-named validation scripts', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'yarn-colon-script'));
+
+  assert(survey.commands.some((run) => run.command === 'yarn run test:unit'));
+  assert(survey.commands.some((run) => run.command === 'yarn run typecheck:ci'));
 });
 
 test('detects existing bootstraps and emits versioned update guidance', () => {

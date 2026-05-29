@@ -990,7 +990,7 @@ function collectPackageScriptsFromManifest(manifest, packageManager, packageMani
 
 function packageScriptCommand(packageManager, name, directory = '') {
   if (directory) return scopedPackageScriptCommand(packageManager, name, directory);
-  if (packageManager === 'yarn') return `yarn ${name}`;
+  if (packageManager === 'yarn') return name === 'test' || /^[\w-]+$/.test(name) ? `yarn ${name}` : `yarn run ${name}`;
   if (packageManager === 'pnpm') return name === 'test' ? 'pnpm test' : `pnpm run ${name}`;
   if (packageManager === 'bun') return `bun run ${name}`;
   return name === 'test' ? 'npm test' : `npm run ${name}`;
@@ -1258,6 +1258,22 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
+    const tripleShellMatch = line.match(/^\s*(?:sh|bat|powershell|pwsh)\s+(['"]{3})\s*$/);
+    if (tripleShellMatch) {
+      const blockLines = [];
+      const quote = tripleShellMatch[1];
+      for (let nextIndex = index + 1; nextIndex < lines.length; nextIndex += 1) {
+        const nextLine = lines[nextIndex];
+        index = nextIndex;
+        if (nextLine.trim() === quote) break;
+        blockLines.push(nextLine);
+      }
+
+      const blockCommand = normalizeRunBlock(blockLines);
+      if (blockCommand) commands.push(classifyCiRunCommand(source, blockCommand, true, packageManifests, { unsafeMakeTargets }));
+      continue;
+    }
+
     const shellMatch = line.match(/^\s*(?:sh|bat|powershell|pwsh)\s+['"](.+)['"]\s*$/);
     if (shellMatch) {
       commands.push(classifyCiRunCommand(source, shellMatch[1].trim(), false, packageManifests, { unsafeMakeTargets }));
@@ -1600,10 +1616,8 @@ function findWorkflowJobStart(lines, runIndex) {
 }
 
 function findWorkflowTopLevelDefaultWorkingDirectory(lines) {
-  const jobsIndex = lines.findIndex((line) => /^jobs:\s*$/.test(line));
-  const searchEnd = jobsIndex === -1 ? lines.length : jobsIndex;
-
-  for (let index = searchEnd - 1; index >= 0; index -= 1) {
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (indentation(lines[index]) !== 4) continue;
     const value = parseWorkflowWorkingDirectory(lines[index]);
     if (!value || !isDefaultsRunWorkingDirectory(lines, index)) continue;
     return value;
@@ -1907,7 +1921,18 @@ function isSafeValidationCommand(command) {
 
 function hasDangerousCommand(command) {
   return splitShellCommandParts(String(command ?? ''))
-    .some((part) => dangerousCommandPatterns.some((pattern) => pattern.test(part.toLowerCase())));
+    .some((part) => (
+      dangerousCommandPatterns.some((pattern) => pattern.test(part.toLowerCase()))
+      || commandPartReferencesRuntimeSurface(part)
+    ));
+}
+
+function commandPartReferencesRuntimeSurface(part) {
+  return part
+    .split(/\s+/)
+    .map((token) => stripYamlQuotes(token.trim()).replace(/^\.?[\\/]+/, ''))
+    .filter(Boolean)
+    .some((token) => isRuntimeSurfacePath(normalizePath(token)));
 }
 
 function unsafePackageScriptReason(command, packageManifest, packageManifests = [], options = {}) {
@@ -2162,6 +2187,16 @@ function isAuthorityPackageScript(name) {
 
 function packageScriptNameFromCommand(command) {
   const trimmed = command.trim();
+
+  const npmAllWorkspaceRun = trimmed.match(/^npm\s+--workspaces(?:=(?:true|1))?\s+(?:run\s+)?([\w:-]+)/i);
+  if (npmAllWorkspaceRun && !['ci', 'install'].includes(npmAllWorkspaceRun[1].toLowerCase())) {
+    return npmAllWorkspaceRun[1] === 'test' ? 'test' : npmAllWorkspaceRun[1];
+  }
+
+  const pnpmRecursiveRun = trimmed.match(/^pnpm\s+(?:-r|--recursive)\s+(?:run\s+)?([\w:-]+)/i);
+  if (pnpmRecursiveRun && !['add', 'install', 'remove'].includes(pnpmRecursiveRun[1].toLowerCase())) {
+    return pnpmRecursiveRun[1] === 'test' ? 'test' : pnpmRecursiveRun[1];
+  }
 
   const trailingNpmWorkspaceRun = trimmed.match(/^npm\s+run\s+([\w:-]+)\b.*(?:--workspace|-w)(?:=|\s+)\S+/i);
   if (trailingNpmWorkspaceRun) return trailingNpmWorkspaceRun[1];
