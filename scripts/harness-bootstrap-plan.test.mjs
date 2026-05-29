@@ -199,6 +199,10 @@ test('uses package-only deploy authority as runtime-safety evidence', () => {
     hint.path === 'package.json'
     && hint.reason === 'package script "deploy" may mutate external state'
   )));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'package.json'
+    && hint.reason === 'package script "deploy-prod" may mutate external state'
+  )));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
@@ -347,6 +351,19 @@ test('parses CircleCI run steps for runtime-safety triggers', () => {
   assert(survey.commands.some((run) => run.command === 'pytest'));
   assert(survey.ci.runCommands.some((run) => run.command === 'terraform apply -auto-approve' && !run.safe));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === '.circleci/config.yml'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('keeps generic CI mapping working-directory commands inspect-only', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'circleci-working-directory'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+  const command = survey.ci.runCommands.find((run) => run.command === 'npm test');
+
+  assert.equal(command.workingDirectory, 'services/api');
+  assert.equal(command.safe, false);
+  assert.match(command.packageScriptReason, /package script "test"/);
+  assert.match(command.packageScriptReason, /pretest/);
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 

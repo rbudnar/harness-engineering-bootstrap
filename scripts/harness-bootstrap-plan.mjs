@@ -1249,6 +1249,8 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
 
     if (/^[|>]/.test(value) || value === '') {
       const blockLines = [];
+      const nestedCommands = [];
+      let blockWorkingDirectory = null;
       const baseIndent = indentation(line);
       let blockIndent = null;
 
@@ -1267,15 +1269,23 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
         const listCommand = nextLine.match(/^\s*-\s+(.+?)\s*$/)?.[1];
         if (listCommand) {
           commands.push(classifyCiRunCommand(source, stripYamlQuotes(listCommand.trim()), false, packageManifests, { unsafeMakeTargets }));
+        } else if (/^\s*working_directory:\s*/.test(nextLine) || /^\s*working-directory:\s*/.test(nextLine)) {
+          const nestedWorkingDirectory = nextLine.match(/^\s*working[-_]directory:\s*(.+?)\s*$/)?.[1];
+          if (nestedWorkingDirectory) blockWorkingDirectory = stripYamlQuotes(nestedWorkingDirectory.trim());
         } else if (/^\s*command:\s*/.test(nextLine)) {
           const nestedCommand = nextLine.match(/^\s*command:\s*(.+?)\s*$/)?.[1];
-          if (nestedCommand) {
-            commands.push(classifyCiRunCommand(source, stripYamlQuotes(nestedCommand.trim()), false, packageManifests, { unsafeMakeTargets }));
-          }
+          if (nestedCommand) nestedCommands.push(stripYamlQuotes(nestedCommand.trim()));
         } else {
           blockLines.push(nextLine);
         }
         index = nextIndex;
+      }
+
+      for (const nestedCommand of nestedCommands) {
+        commands.push(classifyCiRunCommand(source, nestedCommand, false, packageManifests, {
+          workingDirectory: blockWorkingDirectory,
+          unsafeMakeTargets,
+        }));
       }
 
       const blockCommand = normalizeRunBlock(blockLines);
@@ -1771,7 +1781,7 @@ function lifecycleScriptNames(scriptName, scripts) {
 }
 
 function isAuthorityPackageScript(name) {
-  return /(^|:)(deploy|release|publish|provision)(:|$)/i.test(name);
+  return /(^|[:._-])(deploy|release|publish|provision)([:._-]|$)/i.test(name);
 }
 
 function packageScriptNameFromCommand(command) {

@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "deploy": "gh release create v1.0.0",
+    "deploy-prod": "node scripts/publish-prod.js",
     "test": "node --test"
   }
 }
