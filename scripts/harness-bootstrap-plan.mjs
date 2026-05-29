@@ -2610,13 +2610,12 @@ function normalizePnpmWorkspaceSelector(selector) {
 function packageManifestForWorkspace(workspace, packageManifests) {
   const normalizedWorkspace = normalizePackageDirectory(workspace);
   const workspaceBasename = basename(normalizedWorkspace);
-  return packageManifests.find((item) => (
-    item.json?.name === workspace
-    || item.json?.name === normalizedWorkspace
-    || item.directory === normalizedWorkspace
-    || (item.directory && basename(item.directory) === workspace)
-    || (item.directory && basename(item.directory) === workspaceBasename)
-  )) ?? null;
+  return packageManifests.find((item) => item.json?.name === workspace)
+    ?? packageManifests.find((item) => item.json?.name === normalizedWorkspace)
+    ?? packageManifests.find((item) => item.directory === normalizedWorkspace)
+    ?? packageManifests.find((item) => item.directory && basename(item.directory) === workspace)
+    ?? packageManifests.find((item) => item.directory && basename(item.directory) === workspaceBasename)
+    ?? null;
 }
 
 function resolvePackageDirectory(directory, baseDirectory = null) {

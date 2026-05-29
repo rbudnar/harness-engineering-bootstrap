@@ -838,6 +838,20 @@ test('screens workspace-wide and equals selector delegated scripts', () => {
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'packages/api/package.json'));
 });
 
+test('prefers exact workspace package names over directory basenames', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'ambiguous-workspace-selector'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'npm run build --workspace api'
+    && !run.safe
+    && run.packageScriptReason.includes('package script "build"')
+  )));
+  assert(!survey.commands.some((run) => run.command === 'npm run build --workspace api'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'services/backend/package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens npm all-workspace alias delegated package scripts', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'workspace-alias-package'));
 

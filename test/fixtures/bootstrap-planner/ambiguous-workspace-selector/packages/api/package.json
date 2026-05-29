@@ -1,0 +1,6 @@
+{
+  "name": "not-api",
+  "scripts": {
+    "build": "node --test"
+  }
+}
