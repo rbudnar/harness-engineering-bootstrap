@@ -626,6 +626,18 @@ test('screens make -f package wrappers through included makefiles', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens compact make -f package wrappers through included makefiles', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'make-compact-file-option-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'ops/deploy.mk'
+    && hint.reason === 'make target "test" may mutate external state'
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens env-prefixed package make targets', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'package-env-make-target'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -813,6 +825,7 @@ test('screens mutating gh commands after global options', () => {
   assert(!survey.commands.some((run) => run.command === 'npm run lint'));
   assert(!survey.commands.some((run) => run.command === 'npm run build:pr'));
   assert(!survey.commands.some((run) => run.command === 'npm run check:comment'));
+  assert(!survey.commands.some((run) => run.command === 'npm run coverage'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });

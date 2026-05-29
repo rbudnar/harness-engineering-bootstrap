@@ -2462,6 +2462,14 @@ function makeInvocationFromCommandPart(part, currentDirectory = '') {
       continue;
     }
 
+    const compactMakefileOptionMatch = word.match(/^-f(.+)$/);
+    if (compactMakefileOptionMatch) {
+      const inspectedMakefile = inspectMakefileOption(compactMakefileOptionMatch[1], directory);
+      if (inspectedMakefile.unsafeReason) return { directory, targets, unsafeReason: inspectedMakefile.unsafeReason };
+      directory = inspectedMakefile.directory;
+      continue;
+    }
+
     const makefileMatch = word.match(/^(?:--file|--makefile)=(.+)$/);
     if (makefileMatch) {
       const inspectedMakefile = inspectMakefileOption(makefileMatch[1], directory);
@@ -2742,7 +2750,7 @@ function hasDangerousGhApiCommand(args) {
 
   for (let index = 0; index < args.length; index += 1) {
     const word = args[index];
-    if (word === '--method' || word === '-X') {
+    if (word === '--method' || word === '-x') {
       method = args[index + 1] ?? method;
       index += 1;
       continue;
@@ -2751,7 +2759,7 @@ function hasDangerousGhApiCommand(args) {
       method = word.slice('--method='.length);
       continue;
     }
-    if (word.startsWith('-X') && word.length > 2) {
+    if (word.startsWith('-x') && word.length > 2) {
       method = word.slice(2);
       continue;
     }

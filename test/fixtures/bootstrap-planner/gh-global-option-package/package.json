@@ -7,6 +7,7 @@
     "quality": "gh issue create --title \"Found\" --body \"Body\"",
     "lint": "gh api repos/owner/repo/issues --method POST -f title=Found",
     "build:pr": "gh pr create --fill",
-    "check:comment": "gh issue comment 123 --body \"Fixed\""
+    "check:comment": "gh issue comment 123 --body \"Fixed\"",
+    "coverage": "gh api -X POST repos/owner/repo/actions/workflows/ci.yml/dispatches"
   }
 }
