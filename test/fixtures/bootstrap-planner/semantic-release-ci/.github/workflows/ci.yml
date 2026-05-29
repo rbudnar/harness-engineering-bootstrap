@@ -9,3 +9,5 @@ jobs:
     steps:
       - run: npx semantic-release
       - run: npm exec release-it
+      - run: pnpm exec semantic-release
+      - run: semantic-release

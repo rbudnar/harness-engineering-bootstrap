@@ -69,8 +69,9 @@ const dangerousCommandPatterns = [
   /\bdocker\s+buildx\s+build\b.*\s--push(?:\s|=|$)/,
   /\bgit\s+push\b/,
   /\bgh\s+release\b/,
-  /\b(npx|npm\s+exec|pnpm\s+dlx|yarn\s+dlx|bunx)\s+(semantic-release|release-it)\b/,
-  /\b(npx|npm\s+exec|pnpm\s+dlx|yarn\s+dlx|bunx)\s+changeset\s+publish\b/,
+  /\b(npx|npm\s+exec|pnpm\s+(?:exec|dlx)|yarn\s+(?:exec|dlx)|bunx)\s+(semantic-release|release-it)\b/,
+  /\b(npx|npm\s+exec|pnpm\s+(?:exec|dlx)|yarn\s+(?:exec|dlx)|bunx)\s+changeset\s+publish\b/,
+  /(^|\s)(semantic-release|release-it)(\s|$)/,
   /\b(node|tsx?|python3?|bash|sh|pwsh|powershell)\s+\S*(deploy|release|publish|provision)[\w./\\-]*/i,
   /\b(npm|pnpm|yarn|bun)\s+(run\s+)?[\w:-]*(deploy|publish|release)[\w:-]*\b/,
   /\bnpm\s+--prefix\s+\S+\s+(run\s+)?[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
@@ -2299,7 +2300,7 @@ function resolvePackageDirectory(directory, baseDirectory = null) {
 }
 
 function packageDirectoryFromCommand(command) {
-  const trimmed = command.trim();
+  const trimmed = stripPackageCommandPrefix(command);
   const beforeCommand = trimmed.match(/^(?:npm\s+--prefix|pnpm\s+--dir|yarn\s+--cwd|bun\s+--cwd)(?:=|\s+)("[^"]+"|'[^']+'|\S+)/i);
   if (beforeCommand) return stripYamlQuotes(beforeCommand[1].trim());
 
@@ -2310,7 +2311,7 @@ function packageDirectoryFromCommand(command) {
 }
 
 function packageWorkspaceFromCommand(command) {
-  const trimmed = command.trim();
+  const trimmed = stripPackageCommandPrefix(command);
   const npmWorkspace = trimmed.match(/^npm\s+(?:--workspace|-w)(?:=|\s+)("[^"]+"|'[^']+'|\S+)/i);
   if (npmWorkspace) return stripYamlQuotes(npmWorkspace[1].trim());
 
@@ -2355,7 +2356,7 @@ function isWorkspaceInstallCommand(command, packageManifest, packageManifests) {
 }
 
 function isInstallCommand(command) {
-  const trimmed = command.trim().toLowerCase();
+  const trimmed = stripPackageCommandPrefix(command).toLowerCase();
   return /^(npm\s+ci|npm\s+install|pnpm\s+install|yarn\s+install|bun\s+install)\b/.test(trimmed)
     || /^npm\s+(?:(?:--prefix|--workspace|-w)(?:=|\s+)\S+|--workspaces?)\s+(ci|install)\b/.test(trimmed)
     || /^pnpm\s+(?:(?:--dir|--filter|-F)(?:=|\s+)\S+)\s+install\b/.test(trimmed)
@@ -2450,7 +2451,7 @@ function isAuthorityPackageScript(name) {
 }
 
 function packageScriptNameFromCommand(command) {
-  const trimmed = command.trim();
+  const trimmed = stripPackageCommandPrefix(command);
 
   const npmAllWorkspaceRun = trimmed.match(/^npm\s+--workspaces(?:=(?:true|1))?\s+(?:run\s+)?([\w:-]+)/i);
   if (npmAllWorkspaceRun && !['ci', 'install'].includes(npmAllWorkspaceRun[1].toLowerCase())) {
@@ -2527,6 +2528,19 @@ function packageScriptNameFromCommand(command) {
   if (direct && !['add', 'install', 'remove'].includes(direct[1].toLowerCase())) return direct[1];
 
   return null;
+}
+
+function stripPackageCommandPrefix(command) {
+  const words = shellWords(command);
+  let index = 0;
+  if (['cross-env', 'cross-env-shell', 'env'].includes(words[index]?.toLowerCase())) index += 1;
+  while (isEnvironmentAssignment(words[index])) index += 1;
+  if (words[index] === '--') index += 1;
+  return index > 0 ? words.slice(index).join(' ') : String(command ?? '').trim();
+}
+
+function isEnvironmentAssignment(word) {
+  return /^[A-Za-z_][A-Za-z0-9_]*=.*/.test(word ?? '');
 }
 
 function yarnWorkspacesForeachScriptName(command) {

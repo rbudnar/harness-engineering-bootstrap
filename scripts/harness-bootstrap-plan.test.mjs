@@ -632,6 +632,14 @@ test('screens root scripts delegated to prefixed package commands', () => {
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'services/api/package.json'));
 });
 
+test('screens env-prefixed delegated package scripts', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'env-prefixed-delegated-package'));
+
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+});
+
 test('screens workspace delegated package scripts', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'workspace-delegated-package'));
 
@@ -771,6 +779,8 @@ test('uses direct release CLIs as runtime-safety evidence', () => {
 
   assert(survey.ci.runCommands.some((run) => run.command === 'npx semantic-release' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'npm exec release-it' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'pnpm exec semantic-release' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'semantic-release' && !run.safe));
   assert(survey.runtimeSafetyHints.some((hint) => (
     hint.path === '.github/workflows/ci.yml'
     && hint.reason.includes('semantic-release')
