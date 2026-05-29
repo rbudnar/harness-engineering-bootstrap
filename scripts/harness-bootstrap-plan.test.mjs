@@ -1277,6 +1277,30 @@ test('keeps unknown cd preamble validation blocks inspect-only', () => {
   assert(!survey.commands.some((run) => run.command.includes('../service')));
 });
 
+test('screens package scripts that cd outside the surveyed repo', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'package-escaping-cd'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('keeps escaping scoped package commands inspect-only', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workflow-escaping-scoped-package'));
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'npm --prefix ../sibling test'
+    && !run.safe
+  )));
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'pnpm --dir $TARGET run check'
+    && !run.safe
+  )));
+  assert(!survey.commands.some((run) => run.command.includes('../sibling')));
+  assert(!survey.commands.some((run) => run.command.includes('$TARGET')));
+});
+
 test('screens cd preamble package scripts in their changed directory', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'workflow-cd-unsafe-package'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -1664,6 +1688,31 @@ test('copied planner helpers do not trust application VERSION files', () => {
 
     assert.equal(defaultPlan.plannerVersion, '0.0.0');
     assert.equal(defaultPlan.targetVersion, '0.0.0');
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('detects VERSION in separate template checkouts', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-template-checkout-'));
+  try {
+    mkdirSync(resolve(tempRoot, 'templates'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'scripts'), { recursive: true });
+    copyFileSync(resolve(repoRoot, 'VERSION'), resolve(tempRoot, 'VERSION'));
+    copyFileSync(
+      resolve(repoRoot, 'templates', 'Harness Engineering Bootstrap.md'),
+      resolve(tempRoot, 'templates', 'Harness Engineering Bootstrap.md'),
+    );
+    copyFileSync(resolve(repoRoot, 'scripts', 'template-fitness.mjs'), resolve(tempRoot, 'scripts', 'template-fitness.mjs'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28', targetVersion: '0.2.0' });
+    const currentVersion = readFileSync(resolve(repoRoot, 'VERSION'), 'utf8').trim();
+
+    assert.equal(survey.versionState.installedVersion, currentVersion);
+    assert.equal(survey.versionState.source, 'VERSION');
+    assert.equal(plan.operation, 'update');
+    assert.equal(plan.updatePlan.status, 'upgrade-available');
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }

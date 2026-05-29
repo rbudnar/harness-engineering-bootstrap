@@ -327,7 +327,7 @@ export function surveyRepository(inputPath, options = {}) {
     internalDataStoreHints: collectInternalDataStoreHints(allFiles),
     repoDependencyHints: collectRepoDependencyHints(allFiles, packageJson),
     runtimeSafetyHints: dedupeObjects(
-      [...collectRuntimeSafetyHints(allFiles, ci, packageManifests), ...makeRuntimeSafetyHints],
+      [...collectRuntimeSafetyHints(allFiles, ci, packageManifests, unsafeMakeTargets), ...makeRuntimeSafetyHints],
       (hint) => `${hint.path}\0${hint.reason}`,
     ),
     planHints: collectPlanHints(allFiles),
@@ -909,7 +909,7 @@ function collectVersionState(root, files) {
     };
   }
 
-  if (resolve(root) === repoRoot && files.includes('VERSION') && isTemplateRepository(files)) {
+  if (files.includes('VERSION') && isTemplateRepository(files)) {
     const installedVersion = readText(root, 'VERSION').split(/\r?\n/)[0]?.trim() || null;
     return {
       installedVersion,
@@ -1321,7 +1321,7 @@ function collectRepoDependencyHints(files, packageJson) {
   return dedupeObjects(hints, (item) => item.path);
 }
 
-function collectRuntimeSafetyHints(files, ci = { runCommands: [] }, packageManifests = []) {
+function collectRuntimeSafetyHints(files, ci = { runCommands: [] }, packageManifests = [], unsafeMakeTargets = new Set()) {
   const fileHints = files
     .filter(isRuntimeSurfacePath)
     .map((path) => ({ path, reason: 'deploy, credential, production, or tool-runtime surface' }));
@@ -1333,7 +1333,7 @@ function collectRuntimeSafetyHints(files, ci = { runCommands: [] }, packageManif
       reason: command.runtimeSafetyReason ?? `CI command may mutate external state: ${formatInlineValue(command.command)}`,
     }));
 
-  const packageHints = collectPackageRuntimeSafetyHints(packageManifests);
+  const packageHints = collectPackageRuntimeSafetyHints(packageManifests, unsafeMakeTargets);
 
   return dedupeObjects([...fileHints, ...commandHints, ...packageHints], (hint) => `${hint.path}\0${hint.reason}`);
 }
@@ -1380,13 +1380,22 @@ function prWorkflowMetricHintsForFile(root, path) {
   return dedupeObjects(hints, (hint) => `${hint.path}\0${hint.reason}`);
 }
 
-function collectPackageRuntimeSafetyHints(packageManifests) {
+function collectPackageRuntimeSafetyHints(packageManifests, unsafeMakeTargets = new Set()) {
   return packageManifests.flatMap((manifest) => {
     const packageJson = manifest.json;
     if (!packageJson || typeof packageJson.scripts !== 'object') return [];
 
     return Object.entries(packageJson.scripts)
-      .filter(([name, body]) => isAuthorityPackageScript(name) || hasDangerousCommand(body))
+      .filter(([name, body]) => (
+        isAuthorityPackageScript(name)
+        || hasDangerousCommand(body)
+        || unsafePackageScriptReason(
+          packageScriptCommand('npm', name, manifest.directory),
+          manifest,
+          packageManifests,
+          { unsafeMakeTargets },
+        )
+      ))
       .map(([name]) => ({
         path: manifest.path,
         reason: `package script "${name}" may mutate external state`,
@@ -2362,9 +2371,10 @@ function unsafeMakeTargetReason(command, unsafeMakeTargets, baseDirectory = '') 
 function unsafeMakeTargetReasonFromDirectory(command, unsafeMakeTargets, baseDirectory = '') {
   let currentDirectory = normalizePackageDirectory(baseDirectory || '');
   for (const part of splitShellCommandParts(command)) {
-    const changedDirectory = resolvedWorkingDirectoryFromCdCommand(part, currentDirectory);
-    if (changedDirectory !== null) {
-      currentDirectory = changedDirectory;
+    const cdCommand = inspectCdCommand(part, currentDirectory);
+    if (cdCommand.isCd) {
+      if (cdCommand.unsafeReason) return cdCommand.unsafeReason;
+      currentDirectory = cdCommand.directory;
       continue;
     }
 
@@ -2658,11 +2668,14 @@ function unsafePackageScriptReason(command, packageManifest, packageManifests = 
 
   let currentDirectory = packageManifest.directory ?? null;
   for (const part of splitShellCommandParts(command)) {
-    const changedDirectory = resolvedWorkingDirectoryFromCdCommand(part, currentDirectory);
-    if (changedDirectory !== null) {
-      currentDirectory = changedDirectory;
+    const cdCommand = inspectCdCommand(part, currentDirectory);
+    if (cdCommand.isCd) {
+      if (cdCommand.unsafeReason) return cdCommand.unsafeReason;
+      currentDirectory = cdCommand.directory;
       continue;
     }
+    const scopedDirectoryReason = unsafeScopedPackageDirectoryReason(part);
+    if (scopedDirectoryReason) return scopedDirectoryReason;
 
     const partManifest = packageManifestForCommand(part, packageManifests, currentDirectory) ?? packageManifest;
     for (const lifecycleManifest of installLifecycleManifestsForCommand(part, partManifest, packageManifests)) {
@@ -2869,11 +2882,13 @@ function findUnsafePackageScript(scriptName, scripts, chain = [], context = {}) 
 
   let currentDirectory = context.manifest?.directory ?? null;
   for (const part of splitShellCommandParts(body)) {
-    const changedDirectory = resolvedWorkingDirectoryFromCdCommand(part, currentDirectory);
-    if (changedDirectory !== null) {
-      currentDirectory = changedDirectory;
+    const cdCommand = inspectCdCommand(part, currentDirectory);
+    if (cdCommand.isCd) {
+      if (cdCommand.unsafeReason) return { scriptName, chain: nextChain };
+      currentDirectory = cdCommand.directory;
       continue;
     }
+    if (unsafeScopedPackageDirectoryReason(part)) return { scriptName, chain: nextChain };
 
     const partManifest = packageManifestForCommand(part, context.packageManifests ?? [], currentDirectory) ?? context.manifest;
     for (const lifecycleManifest of installLifecycleManifestsForCommand(part, partManifest, context.packageManifests ?? [])) {
@@ -3228,11 +3243,33 @@ function workingDirectoryFromCdCommand(command) {
 }
 
 function resolvedWorkingDirectoryFromCdCommand(command, currentDirectory = '') {
+  const result = inspectCdCommand(command, currentDirectory);
+  return result.isCd && !result.unsafeReason ? result.directory : null;
+}
+
+function inspectCdCommand(command, currentDirectory = '') {
   const match = command.trim().match(/^cd\s+("[^"]+"|'[^']+'|[^;&|]+)\s*$/i);
-  if (!match) return null;
+  if (!match) return { isCd: false, directory: null, unsafeReason: null };
   const directory = stripYamlQuotes(match[1].trim());
-  if (!isStaticRelativeDirectory(directory) || cdTargetEscapesRepo(directory, currentDirectory)) return null;
-  return resolvePackageDirectory(directory, currentDirectory);
+  if (!isStaticRelativeDirectory(directory)) {
+    return {
+      isCd: true,
+      directory: null,
+      unsafeReason: 'it changes directory through a dynamic or non-relative path',
+    };
+  }
+  if (cdTargetEscapesRepo(directory, currentDirectory)) {
+    return {
+      isCd: true,
+      directory: null,
+      unsafeReason: 'it changes directory outside the surveyed repository',
+    };
+  }
+  return {
+    isCd: true,
+    directory: resolvePackageDirectory(directory, currentDirectory),
+    unsafeReason: null,
+  };
 }
 
 function isStaticRelativeDirectory(directory) {
@@ -3336,6 +3373,7 @@ function isSafeValidationCommandPart(part) {
   const lower = part.toLowerCase();
   if (dangerousCommandPatterns.some((pattern) => pattern.test(lower))) return false;
   if (/(^|[^&])&(?!&)/.test(lower)) return false;
+  if (unsafeScopedPackageDirectoryReason(part)) return false;
 
   const validationPatterns = [
     /^node\s+--test(?:\s+.*)?$/,
@@ -3357,6 +3395,29 @@ function isSafeValidationCommandPart(part) {
   ];
 
   return validationPatterns.some((pattern) => pattern.test(lower));
+}
+
+function unsafeScopedPackageDirectoryReason(command) {
+  const directories = scopedPackageDirectoryValues(command);
+  if (!directories.length) return null;
+  const unsafeDirectory = directories.find((directory) => (
+    !isStaticRelativeDirectory(directory) || cdTargetEscapesRepo(directory, '')
+  ));
+  if (!unsafeDirectory) return null;
+  return 'it uses a dynamic or out-of-repo package directory option';
+}
+
+function scopedPackageDirectoryValues(command) {
+  const words = shellWords(stripPackageCommandPrefix(command));
+  const manager = words[0]?.toLowerCase();
+  const scopedOptions = {
+    npm: ['--prefix'],
+    pnpm: ['--dir'],
+    yarn: ['--cwd'],
+    bun: ['--cwd'],
+  }[manager] ?? [];
+
+  return packageOptionValues(words, scopedOptions).map((value) => stripYamlQuotes(value));
 }
 
 function hasPathSegment(path, segment) {
