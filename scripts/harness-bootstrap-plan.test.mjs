@@ -432,6 +432,18 @@ test('propagates unsafe nested Make targets through recipes', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens bare make invocations through the default target', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'bare-make-default'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'Makefile'
+    && hint.reason === 'make target "test" may mutate external state'
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens nested Makefiles before emitting package validation commands', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'nested-unsafe-make'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -609,6 +621,13 @@ test('screens workspace-wide and equals selector delegated scripts', () => {
   assert(!survey.commands.some((run) => run.command === 'npm run lint'));
   assert(!survey.commands.some((run) => run.command === 'npm run quality'));
   assert(!survey.commands.some((run) => run.command === 'npm run validate'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'packages/api/package.json'));
+});
+
+test('screens Yarn foreach workspace delegated package scripts', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'yarn-foreach-workspace-package'));
+
+  assert(!survey.commands.some((run) => run.command === 'yarn build'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'packages/api/package.json'));
 });
 

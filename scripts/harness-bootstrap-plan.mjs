@@ -1067,6 +1067,11 @@ function parseMakeTargetRecipes(text, path) {
 
 function unsafeMakeTargetKeys(targets) {
   const byKey = new Map(targets.map((target) => [makeTargetKey(target.directory, target.name), target]));
+  const firstTargetByDirectory = new Map();
+  for (const target of targets) {
+    const directory = normalizePackageDirectory(target.directory || '');
+    if (!firstTargetByDirectory.has(directory)) firstTargetByDirectory.set(directory, target.name);
+  }
   const unsafe = new Set();
   let changed = true;
 
@@ -1081,6 +1086,15 @@ function unsafeMakeTargetKeys(targets) {
         || target.prerequisites.some((name) => unsafe.has(makeTargetKey(target.directory, name)) || isUnsafeMakePrerequisite(name, target.directory, byKey))
       ) {
         unsafe.add(key);
+        changed = true;
+      }
+    }
+
+    for (const [directory, targetName] of firstTargetByDirectory) {
+      const targetKey = makeTargetKey(directory, targetName);
+      const defaultKey = makeDefaultTargetKey(directory);
+      if (unsafe.has(targetKey) && !unsafe.has(defaultKey)) {
+        unsafe.add(defaultKey);
         changed = true;
       }
     }
@@ -1100,6 +1114,10 @@ function isUnsafeMakePrerequisite(name, directory, byKey, seen = new Set()) {
 
 function makeTargetKey(directory, target) {
   return `${normalizePackageDirectory(directory || '')}\0${target}`;
+}
+
+function makeDefaultTargetKey(directory) {
+  return `${normalizePackageDirectory(directory || '')}\0`;
 }
 
 function collectSourceRoots(files) {
@@ -1975,6 +1993,10 @@ function unsafeMakeTargetReasonFromDirectory(command, unsafeMakeTargets, baseDir
 
     const invocation = makeInvocationFromCommandPart(part, currentDirectory);
     if (!invocation) continue;
+    if (!invocation.targets.length && unsafeMakeTargets.has(makeDefaultTargetKey(invocation.directory))) {
+      const location = invocation.directory ? ` in ${formatInlineValue(invocation.directory)}` : '';
+      return `it calls the default make target${location} whose recipe may mutate external state`;
+    }
     const target = invocation.targets.find((candidate) => unsafeMakeTargets.has(makeTargetKey(invocation.directory, candidate)));
     if (target) {
       const location = invocation.directory ? ` in ${formatInlineValue(invocation.directory)}` : '';
@@ -2330,7 +2352,8 @@ function isAllWorkspacePackageScriptCommand(command, packageManifest, packageMan
   if (!packageManifest || packageManifests.length <= 1) return false;
   const lower = command.trim().toLowerCase();
   return /(?:^|\s)--workspaces(?:\s|=|$)/.test(lower)
-    || /^pnpm\s+(?:-r|--recursive)\s+/.test(lower);
+    || /^pnpm\s+(?:-r|--recursive)\s+/.test(lower)
+    || Boolean(yarnWorkspacesForeachScriptName(command));
 }
 
 function lifecycleScriptNames(scriptName, scripts) {
@@ -2354,6 +2377,9 @@ function packageScriptNameFromCommand(command) {
   if (pnpmRecursiveRun && !['add', 'install', 'remove'].includes(pnpmRecursiveRun[1].toLowerCase())) {
     return pnpmRecursiveRun[1] === 'test' ? 'test' : pnpmRecursiveRun[1];
   }
+
+  const yarnForeachRun = yarnWorkspacesForeachScriptName(command);
+  if (yarnForeachRun) return yarnForeachRun;
 
   const trailingNpmWorkspaceRun = trimmed.match(/^npm\s+run\s+([\w:-]+)\b.*(?:--workspace|-w)(?:=|\s+)\S+/i);
   if (trailingNpmWorkspaceRun) return trailingNpmWorkspaceRun[1];
@@ -2417,6 +2443,20 @@ function packageScriptNameFromCommand(command) {
   if (direct && !['add', 'install', 'remove'].includes(direct[1].toLowerCase())) return direct[1];
 
   return null;
+}
+
+function yarnWorkspacesForeachScriptName(command) {
+  const words = shellWords(command);
+  const lower = words.map((word) => word.toLowerCase());
+  if (lower[0] !== 'yarn' || lower[1] !== 'workspaces' || lower[2] !== 'foreach') return null;
+
+  const runIndex = lower.indexOf('run', 3);
+  if (runIndex < 0) return null;
+
+  const scriptName = words[runIndex + 1];
+  if (!scriptName || !/^[\w:-]+$/.test(scriptName)) return null;
+  if (['add', 'install', 'remove'].includes(scriptName.toLowerCase())) return null;
+  return scriptName === 'test' ? 'test' : scriptName;
 }
 
 function workingDirectoryFromCdCommand(command) {
