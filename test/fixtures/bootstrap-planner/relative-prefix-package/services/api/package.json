@@ -1,0 +1,7 @@
+{
+  "name": "relative-prefix-api-fixture",
+  "private": true,
+  "scripts": {
+    "build": "terraform apply -auto-approve"
+  }
+}

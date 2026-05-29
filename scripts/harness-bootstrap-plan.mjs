@@ -990,15 +990,19 @@ function scopedPackageScriptCommand(packageManager, name, directory) {
 }
 
 function collectMakeTargets(root, fileSet) {
-  return collectMakeTargetRecipes(root, fileSet)
+  const targets = collectMakeTargetRecipes(root, fileSet);
+  const unsafeTargets = unsafeMakeTargetNames(targets);
+  return targets
     .filter((target) => /^(test|build|lint|check|quality|validate|coverage)$/i.test(target.name))
-    .filter((target) => !hasDangerousCommand(target.recipe))
+    .filter((target) => !unsafeTargets.has(target.name))
     .map((target) => ({ source: 'Makefile', command: `make ${target.name}` }));
 }
 
 function collectMakeRuntimeSafetyHints(root, fileSet) {
-  return collectMakeTargetRecipes(root, fileSet)
-    .filter((target) => hasDangerousCommand(target.recipe))
+  const targets = collectMakeTargetRecipes(root, fileSet);
+  const unsafeTargets = unsafeMakeTargetNames(targets);
+  return targets
+    .filter((target) => unsafeTargets.has(target.name))
     .map((target) => ({
       path: 'Makefile',
       reason: `make target "${target.name}" may mutate external state`,
@@ -1006,11 +1010,7 @@ function collectMakeRuntimeSafetyHints(root, fileSet) {
 }
 
 function collectUnsafeMakeTargets(root, fileSet) {
-  return new Set(
-    collectMakeTargetRecipes(root, fileSet)
-      .filter((target) => hasDangerousCommand(target.recipe))
-      .map((target) => target.name),
-  );
+  return unsafeMakeTargetNames(collectMakeTargetRecipes(root, fileSet));
 }
 
 function collectMakeTargetRecipes(root, fileSet) {
@@ -1020,9 +1020,13 @@ function collectMakeTargetRecipes(root, fileSet) {
   let currentTarget = null;
 
   for (const line of text.split(/\r?\n/)) {
-    const match = line.match(/^([A-Za-z0-9_.-]+):(?!=)/);
+    const match = line.match(/^([A-Za-z0-9_.-]+)\s*:(?!=)\s*(.*)$/);
     if (match) {
-      currentTarget = { name: match[1], recipe: '' };
+      currentTarget = {
+        name: match[1],
+        prerequisites: match[2].split(/\s+/).map((value) => value.trim()).filter(Boolean),
+        recipe: '',
+      };
       targets.push(currentTarget);
       continue;
     }
@@ -1035,6 +1039,33 @@ function collectMakeTargetRecipes(root, fileSet) {
   }
 
   return targets;
+}
+
+function unsafeMakeTargetNames(targets) {
+  const byName = new Map(targets.map((target) => [target.name, target]));
+  const unsafe = new Set();
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+    for (const target of targets) {
+      if (unsafe.has(target.name)) continue;
+      if (hasDangerousCommand(target.recipe) || target.prerequisites.some((name) => unsafe.has(name) || isUnsafeMakePrerequisite(name, byName))) {
+        unsafe.add(target.name);
+        changed = true;
+      }
+    }
+  }
+
+  return unsafe;
+}
+
+function isUnsafeMakePrerequisite(name, byName, seen = new Set()) {
+  const target = byName.get(name);
+  if (!target || seen.has(name)) return false;
+  seen.add(name);
+  return hasDangerousCommand(target.recipe)
+    || target.prerequisites.some((prerequisite) => isUnsafeMakePrerequisite(prerequisite, byName, seen));
 }
 
 function collectSourceRoots(files) {
@@ -1239,9 +1270,10 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
     if (!keyMatch) continue;
 
     const value = keyMatch[1].trim();
+    const contextualWorkingDirectory = findGenericWorkingDirectory(lines, index);
     const inlineCommands = parseInlineCommandArray(value);
     if (inlineCommands) {
-      let inlineWorkingDirectory = null;
+      let inlineWorkingDirectory = contextualWorkingDirectory;
       for (const inlineCommand of inlineCommands) {
         const command = stripYamlQuotes(inlineCommand);
         const changedDirectory = workingDirectoryFromCdCommand(command);
@@ -1261,7 +1293,7 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
     if (/^[|>]/.test(value) || value === '') {
       const blockLines = [];
       const nestedCommands = [];
-      let blockWorkingDirectory = null;
+      let blockWorkingDirectory = contextualWorkingDirectory;
       const baseIndent = indentation(line);
       let blockIndent = null;
 
@@ -1339,11 +1371,37 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
       const blockCommand = normalizeRunBlock(blockLines);
       if (blockCommand) commands.push(classifyCiRunCommand(source, blockCommand, true, packageManifests, { unsafeMakeTargets }));
     } else {
-      commands.push(classifyCiRunCommand(source, stripYamlQuotes(value), false, packageManifests, { unsafeMakeTargets }));
+      commands.push(classifyCiRunCommand(source, stripYamlQuotes(value), false, packageManifests, {
+        workingDirectory: contextualWorkingDirectory,
+        unsafeMakeTargets,
+      }));
     }
   }
 
   return commands;
+}
+
+function findGenericWorkingDirectory(lines, runIndex) {
+  const runIndent = indentation(lines[runIndex]);
+  for (let index = runIndex - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    if (!line.trim()) continue;
+    const currentIndent = indentation(line);
+    if (currentIndent >= runIndent) continue;
+
+    const workingDirectory = parseGenericWorkingDirectory(line);
+    if (workingDirectory) return workingDirectory;
+    if (currentIndent === 2 && /^\s{2}[\w-]+:\s*$/.test(line)) break;
+    if (currentIndent === 0 || /^jobs:\s*$/.test(line)) break;
+  }
+
+  return null;
+}
+
+function parseGenericWorkingDirectory(line) {
+  const match = line.match(/^\s*(?:-\s*)?working[-_]directory:\s*(.+?)\s*$/);
+  if (!match) return null;
+  return stripYamlQuotes(match[1].trim());
 }
 
 function parseInlineCommandArray(value) {
@@ -1827,9 +1885,24 @@ function packageJsonForCommand(command, packageManifests, workingDirectory = nul
 }
 
 function packageManifestForCommand(command, packageManifests, workingDirectory = null) {
-  const directory = workingDirectory || packageDirectoryFromCommand(command);
-  if (directory) {
-    const normalizedDirectory = normalizePackageDirectory(directory);
+  const explicitDirectory = packageDirectoryFromCommand(command);
+  if (explicitDirectory) {
+    const normalizedDirectory = resolvePackageDirectory(explicitDirectory, workingDirectory);
+    const manifest = packageManifests.find((item) => item.directory === normalizedDirectory);
+    if (manifest) return manifest;
+  }
+
+  const workspace = packageWorkspaceFromCommand(command);
+  if (workspace) {
+    const manifest = packageManifests.find((item) => (
+      item.json?.name === workspace
+      || (item.directory && basename(item.directory) === workspace)
+    ));
+    if (manifest) return manifest;
+  }
+
+  if (workingDirectory) {
+    const normalizedDirectory = normalizePackageDirectory(workingDirectory);
     const manifest = packageManifests.find((item) => item.directory === normalizedDirectory);
     if (manifest) return manifest;
   }
@@ -1844,9 +1917,36 @@ function normalizePackageDirectory(directory) {
     .replace(/\/$/, '');
 }
 
+function resolvePackageDirectory(directory, baseDirectory = null) {
+  const normalizedDirectory = normalizePackageDirectory(directory);
+  if (!baseDirectory || !/^\.{1,2}(\/|$)/.test(normalizedDirectory)) return normalizedDirectory;
+
+  const parts = [
+    ...normalizePackageDirectory(baseDirectory).split('/').filter(Boolean),
+    ...normalizedDirectory.split('/').filter(Boolean),
+  ];
+  const resolved = [];
+  for (const part of parts) {
+    if (part === '.') continue;
+    if (part === '..') {
+      resolved.pop();
+      continue;
+    }
+    resolved.push(part);
+  }
+  return resolved.join('/');
+}
+
 function packageDirectoryFromCommand(command) {
   const trimmed = command.trim();
   const match = trimmed.match(/^(?:npm\s+--prefix|pnpm\s+--dir|yarn\s+--cwd|bun\s+--cwd)\s+("[^"]+"|'[^']+'|\S+)/i);
+  if (!match) return null;
+  return stripYamlQuotes(match[1].trim());
+}
+
+function packageWorkspaceFromCommand(command) {
+  const trimmed = command.trim();
+  const match = trimmed.match(/^npm\s+(?:--workspace|-w)\s+("[^"]+"|'[^']+'|\S+)/i);
   if (!match) return null;
   return stripYamlQuotes(match[1].trim());
 }
@@ -1916,6 +2016,12 @@ function isAuthorityPackageScript(name) {
 
 function packageScriptNameFromCommand(command) {
   const trimmed = command.trim();
+
+  const npmWorkspaceRun = trimmed.match(/^npm\s+(?:--workspace|-w)\s+\S+\s+run\s+([\w:-]+)/i);
+  if (npmWorkspaceRun) return npmWorkspaceRun[1];
+
+  const npmWorkspaceTest = trimmed.match(/^npm\s+(?:--workspace|-w)\s+\S+\s+test\b/i);
+  if (npmWorkspaceTest) return 'test';
 
   const npmPrefixRun = trimmed.match(/^npm\s+--prefix\s+\S+\s+run\s+([\w:-]+)/i);
   if (npmPrefixRun) return npmPrefixRun[1];

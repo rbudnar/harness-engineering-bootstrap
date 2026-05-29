@@ -1,5 +1,8 @@
 build:
 	terraform apply -auto-approve
 
-test:
+deploy:
+	terraform apply -auto-approve
+
+test: deploy
 	node --test

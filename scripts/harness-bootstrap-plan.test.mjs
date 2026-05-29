@@ -319,6 +319,12 @@ test('keeps unsafe Makefile recipes out of validation commands', () => {
     && !run.safe
     && run.inspectOnlyReason.includes('make target "build"')
   )));
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'make test'
+    && !run.safe
+    && run.inspectOnlyReason.includes('make target "test"')
+  )));
+  assert(!survey.commands.some((run) => run.command === 'make test'));
   assert(survey.runtimeSafetyHints.some((hint) => (
     hint.path === 'Makefile'
     && hint.reason === 'make target "build" may mutate external state'
@@ -395,10 +401,36 @@ test('keeps generic CI mapping working-directory commands inspect-only', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('keeps generic CI job working-directory commands inspect-only', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'circleci-job-working-directory'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+  const command = survey.ci.runCommands.find((run) => run.command === 'npm test');
+
+  assert.equal(command.workingDirectory, 'services/api');
+  assert.equal(command.safe, false);
+  assert.match(command.packageScriptReason, /pretest/);
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens root scripts delegated to prefixed package commands', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'delegated-prefix-package'));
 
   assert(!survey.commands.some((run) => run.command === 'npm run build'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'services/api/package.json'));
+});
+
+test('screens workspace delegated package scripts', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workspace-delegated-package'));
+
+  assert(!survey.commands.some((run) => run.command === 'npm run build'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'packages/api/package.json'));
+});
+
+test('resolves explicit package prefixes relative to the caller package', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'relative-prefix-package'));
+
+  assert(!survey.commands.some((run) => run.command === 'npm --prefix services/web run build'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'services/api/package.json'));
 });
 
