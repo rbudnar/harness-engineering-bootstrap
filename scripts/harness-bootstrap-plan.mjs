@@ -1072,9 +1072,17 @@ function collectMakeTargetRecipes(root, fileSet) {
 function parseMakeTargetRecipes(text, path) {
   const targets = [];
   let currentTarget = null;
+  let explicitDefaultTarget = null;
   const directory = dirname(path) === '.' ? '' : normalizePath(dirname(path));
 
   for (const line of text.split(/\r?\n/)) {
+    const defaultGoalMatch = line.match(/^\.DEFAULT_GOAL\s*(?::=|\?=|\+=|=)\s*([A-Za-z0-9_.-]+)/);
+    if (defaultGoalMatch) {
+      explicitDefaultTarget = defaultGoalMatch[1];
+      currentTarget = null;
+      continue;
+    }
+
     const match = line.match(/^([A-Za-z0-9_.-]+)\s*:(?!=)\s*(.*)$/);
     if (match) {
       currentTarget = {
@@ -1095,7 +1103,7 @@ function parseMakeTargetRecipes(text, path) {
     }
   }
 
-  return targets;
+  return targets.map((target) => ({ ...target, explicitDefaultTarget }));
 }
 
 function unsafeMakeTargetKeys(targets) {
@@ -1103,7 +1111,11 @@ function unsafeMakeTargetKeys(targets) {
   const firstTargetByDirectory = new Map();
   for (const target of targets) {
     const directory = normalizePackageDirectory(target.directory || '');
-    if (!firstTargetByDirectory.has(directory)) firstTargetByDirectory.set(directory, target.name);
+    if (target.explicitDefaultTarget) {
+      firstTargetByDirectory.set(directory, target.explicitDefaultTarget);
+      continue;
+    }
+    if (!firstTargetByDirectory.has(directory) && !isSpecialMakeTarget(target.name)) firstTargetByDirectory.set(directory, target.name);
   }
   const unsafe = new Set();
   let changed = true;
@@ -1151,6 +1163,10 @@ function makeTargetKey(directory, target) {
 
 function makeDefaultTargetKey(directory) {
   return `${normalizePackageDirectory(directory || '')}\0`;
+}
+
+function isSpecialMakeTarget(name) {
+  return name.startsWith('.');
 }
 
 function collectSourceRoots(files) {
@@ -2539,6 +2555,8 @@ function isRuntimeSurfacePath(path) {
     || name.startsWith('.env.')
     || lower.endsWith('.env')
     || hasPathSegment(lower, 'mcp')
+    || name === '.mcp.json'
+    || name === 'mcp.json'
     || lower === '.mcp.json'
     || lower === 'mcp.json'
     || hasPathSegment(lower, 'secrets');

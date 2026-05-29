@@ -401,6 +401,14 @@ test('detects top-level MCP directories as runtime surfaces', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('detects nested MCP config files as runtime surfaces', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'nested-mcp-config'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === '.cursor/mcp.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('keeps unsafe Makefile recipes out of validation commands', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'unsafe-make'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -452,6 +460,22 @@ test('screens bare make invocations through the default target', () => {
     && hint.reason === 'make target "test" may mutate external state'
   )));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('screens bare make invocations through special and explicit defaults', () => {
+  const special = surveyRepository(resolve(fixturesRoot, 'make-special-default'));
+  const explicit = surveyRepository(resolve(fixturesRoot, 'make-explicit-default'));
+
+  assert(!special.commands.some((run) => run.command === 'npm test'));
+  assert(special.runtimeSafetyHints.some((hint) => (
+    hint.path === 'Makefile'
+    && hint.reason === 'make target "deploy" may mutate external state'
+  )));
+  assert(!explicit.commands.some((run) => run.command === 'npm test'));
+  assert(explicit.runtimeSafetyHints.some((hint) => (
+    hint.path === 'Makefile'
+    && hint.reason === 'make target "deploy" may mutate external state'
+  )));
 });
 
 test('screens nested Makefiles before emitting package validation commands', () => {
