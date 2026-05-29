@@ -240,6 +240,15 @@ test('does not fold workflow sibling keys into block run commands', () => {
   assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('ignores action inputs named run', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workflow-action-input-run'));
+
+  assert(survey.ci.runCommands.some((run) => run.command === 'node --test'));
+  assert(survey.commands.some((run) => run.command === 'node --test'));
+  assert(!survey.ci.runCommands.some((run) => run.command === 'npm test'));
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+});
+
 test('keeps unknown setup steps out of runtime-safety triggers', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'unknown-setup-ci'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -770,6 +779,8 @@ test('screens mutating git and docker commands after global options', () => {
   assert(!survey.commands.some((run) => run.command === 'npm run check:aws'));
   assert(!survey.commands.some((run) => run.command === 'npm run validate:pulumi'));
   assert(!survey.commands.some((run) => run.command === 'npm run build:config'));
+  assert(!survey.commands.some((run) => run.command === 'npm run check:terraform'));
+  assert(!survey.commands.some((run) => run.command === 'npm run quality:helm'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });

@@ -1474,6 +1474,7 @@ function collectWorkflowRunCommands(text, source, packageManifests = [], unsafeM
     const match = line.match(/^(\s*)-?\s*run:\s*(.*)\s*$/);
     if (!match) continue;
     if (isWorkflowDefaultsRunKey(lines, index)) continue;
+    if (isWorkflowActionInputRunKey(lines, index)) continue;
 
     const command = match[2].trim();
     const workingDirectory = findWorkflowWorkingDirectory(lines, index);
@@ -1946,6 +1947,21 @@ function isWorkflowDefaultsRunKey(lines, runIndex) {
     const currentIndent = indentation(line);
     if (currentIndent < runIndent && /^\s*defaults:\s*$/.test(line)) return true;
     if (currentIndent < runIndent) return false;
+  }
+
+  return false;
+}
+
+function isWorkflowActionInputRunKey(lines, runIndex) {
+  const runIndent = indentation(lines[runIndex]);
+
+  for (let index = runIndex - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    if (!line.trim()) continue;
+
+    const currentIndent = indentation(line);
+    if (currentIndent >= runIndent) continue;
+    return /^\s*with:\s*$/.test(line);
   }
 
   return false;
@@ -2592,6 +2608,7 @@ function hasDangerousCliVerb(part) {
     kubectl: new Set(['apply', 'create', 'delete', 'replace', 'rollout', 'scale', 'patch', 'set', 'annotate', 'label', 'drain', 'taint', 'expose', 'autoscale']),
     helm: new Set(['upgrade', 'install', 'uninstall', 'delete', 'rollback']),
     pulumi: new Set(['up', 'destroy', 'cancel', 'refresh', 'import']),
+    terraform: new Set(['apply', 'destroy', 'import', 'taint', 'untaint', 'force-unlock']),
   };
   if (!mutatingVerbs[command]) return false;
   const verb = firstCliVerb(args, command);
@@ -2760,6 +2777,11 @@ function cliOptionConsumesNext(option, command = '') {
   const lower = option.toLowerCase();
   if (command === 'pulumi' && ['-s', '--stack'].includes(lower)) return true;
   if (command === 'git' && lower === '-c') return true;
+  if (command === 'helm'
+    && ['--kube-context', '--registry-config', '--repository-cache', '--repository-config'].includes(lower)) {
+    return true;
+  }
+  if (command === 'terraform' && lower === '-chdir') return true;
   if (command === 'gh'
     && ['-R', '--repo', '--hostname'].some((candidate) => lower === candidate.toLowerCase())) {
     return true;
