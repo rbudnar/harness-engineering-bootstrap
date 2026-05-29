@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "scripts": {
+    "test": "make -C $TARGET test",
+    "check": "make -C ../ops test"
+  }
+}

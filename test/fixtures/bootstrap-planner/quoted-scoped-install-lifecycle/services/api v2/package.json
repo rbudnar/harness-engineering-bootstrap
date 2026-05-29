@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "scripts": {
+    "preinstall": "docker push example.com/app"
+  }
+}

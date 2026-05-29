@@ -299,6 +299,16 @@ test('screens scoped install lifecycle hooks before emitting install commands', 
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens quoted scoped install lifecycle hooks before emitting package commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'quoted-scoped-install-lifecycle'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'services/api v2/package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens option-before scoped install lifecycle hooks', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'option-before-install'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -607,6 +617,16 @@ test('screens env-prefixed package make targets', () => {
     hint.path === 'Makefile'
     && hint.reason === 'make target "prod" may mutate external state'
   )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('screens dynamic and escaping make directories before trusting package scripts', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'make-unsafe-directory-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 

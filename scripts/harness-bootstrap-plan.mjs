@@ -2381,6 +2381,7 @@ function unsafeMakeTargetReasonFromDirectory(command, unsafeMakeTargets, baseDir
 
     const invocation = makeInvocationFromCommandPart(part, currentDirectory);
     if (!invocation) continue;
+    if (invocation.unsafeReason) return invocation.unsafeReason;
     if (!invocation.targets.length && unsafeMakeTargets.has(makeDefaultTargetKey(invocation.directory))) {
       const location = invocation.directory ? ` in ${formatInlineValue(invocation.directory)}` : '';
       return `it calls the default make target${location} whose recipe may mutate external state`;
@@ -2406,7 +2407,9 @@ function makeInvocationFromCommandPart(part, currentDirectory = '') {
     if (word === '-C' || word === '--directory') {
       const next = words[index + 1];
       if (next) {
-        directory = resolvePackageDirectory(next, directory);
+        const inspectedDirectory = inspectMakeDirectoryOption(next, directory);
+        if (inspectedDirectory.unsafeReason) return { directory, targets, unsafeReason: inspectedDirectory.unsafeReason };
+        directory = inspectedDirectory.directory;
         index += 1;
       }
       continue;
@@ -2414,13 +2417,17 @@ function makeInvocationFromCommandPart(part, currentDirectory = '') {
 
     const compactDirectoryMatch = word.match(/^-C(.+)$/);
     if (compactDirectoryMatch) {
-      directory = resolvePackageDirectory(stripYamlQuotes(compactDirectoryMatch[1]), directory);
+      const inspectedDirectory = inspectMakeDirectoryOption(compactDirectoryMatch[1], directory);
+      if (inspectedDirectory.unsafeReason) return { directory, targets, unsafeReason: inspectedDirectory.unsafeReason };
+      directory = inspectedDirectory.directory;
       continue;
     }
 
     const directoryMatch = word.match(/^--directory=(.+)$/);
     if (directoryMatch) {
-      directory = resolvePackageDirectory(stripYamlQuotes(directoryMatch[1]), directory);
+      const inspectedDirectory = inspectMakeDirectoryOption(directoryMatch[1], directory);
+      if (inspectedDirectory.unsafeReason) return { directory, targets, unsafeReason: inspectedDirectory.unsafeReason };
+      directory = inspectedDirectory.directory;
       continue;
     }
 
@@ -2451,6 +2458,26 @@ function makeInvocationFromCommandPart(part, currentDirectory = '') {
   }
 
   return { directory, targets };
+}
+
+function inspectMakeDirectoryOption(value, currentDirectory) {
+  const directory = stripYamlQuotes(String(value ?? '').trim());
+  if (!isStaticRelativeDirectory(directory)) {
+    return {
+      directory: normalizePackageDirectory(currentDirectory || ''),
+      unsafeReason: 'it changes make directory through a dynamic or non-relative path',
+    };
+  }
+  if (cdTargetEscapesRepo(directory, currentDirectory)) {
+    return {
+      directory: normalizePackageDirectory(currentDirectory || ''),
+      unsafeReason: 'it changes make directory outside the surveyed repository',
+    };
+  }
+  return {
+    directory: resolvePackageDirectory(directory, currentDirectory),
+    unsafeReason: null,
+  };
 }
 
 function makefileDirectoryForOption(value, currentDirectory) {
@@ -2908,11 +2935,32 @@ function isWorkspaceInstallCommand(command, packageManifest, packageManifests) {
 
 function isInstallCommand(command) {
   const trimmed = stripPackageCommandPrefix(command).toLowerCase();
-  return /^(npm\s+ci|npm\s+install|pnpm\s+install|yarn\s+install|bun\s+install)\b/.test(trimmed)
+  return isPackageInstallCommand(trimmed)
+    || /^(npm\s+ci|npm\s+install|pnpm\s+install|yarn\s+install|bun\s+install)\b/.test(trimmed)
     || /^npm\s+(?:(?:--prefix|--workspace|-w)(?:=|\s+)\S+|--workspaces?)\s+(ci|install)\b/.test(trimmed)
     || /^pnpm\s+(?:(?:--dir|--filter|-F)(?:=|\s+)\S+)\s+install\b/.test(trimmed)
     || /^yarn\s+--cwd(?:=|\s+)\S+\s+install\b/.test(trimmed)
     || /^bun\s+--cwd(?:=|\s+)\S+\s+install\b/.test(trimmed);
+}
+
+function isPackageInstallCommand(command) {
+  const words = shellWords(command);
+  const manager = words[0]?.toLowerCase();
+  if (!['npm', 'pnpm', 'yarn', 'bun'].includes(manager)) return false;
+
+  for (let index = 1; index < words.length; index += 1) {
+    const word = words[index];
+    const lower = word?.toLowerCase();
+    if (!word || word === '--') continue;
+    if (packageOptionConsumesNext(word)) {
+      index += 1;
+      continue;
+    }
+    if (word.startsWith('-')) continue;
+    if (manager === 'npm') return lower === 'ci' || lower === 'install';
+    return lower === 'install';
+  }
+  return false;
 }
 
 function findUnsafePackageScript(scriptName, scripts, chain = [], context = {}) {

@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "scripts": {
+    "test": "npm --prefix \"services/api v2\" ci",
+    "check": "pnpm --dir \"services/api v2\" install"
+  }
+}
