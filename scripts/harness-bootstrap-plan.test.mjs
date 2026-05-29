@@ -150,7 +150,8 @@ test('renders reusable commands for Windows paths and quoted CI arguments', () =
   );
 
   assert.match(plan.planArtifact.validationCommand, /--repo "C:\\Users\\Example Repo\\project"/);
-  assert.match(plan.planArtifact.validationCommand, /node ".*scripts\\harness-bootstrap-plan\.mjs"/);
+  assert.match(plan.planArtifact.validationCommand, /node /);
+  assert.match(plan.planArtifact.validationCommand, /scripts[\\/]harness-bootstrap-plan\.mjs/);
 });
 
 test('keeps workflow working-directory steps inspect-only', () => {
@@ -262,6 +263,14 @@ test('surveys nested package manifests for validation commands', () => {
   assert(commands.includes('npm --prefix services/api run build'));
 });
 
+test('honors package managers declared by nested manifests', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'nested-package-manager'));
+  const commands = survey.commands.map((run) => run.command);
+
+  assert(commands.includes('pnpm --dir services/api test'));
+  assert(!commands.includes('npm --prefix services/api test'));
+});
+
 test('screens nested package scripts before marking CI commands safe', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'nested-package-ci'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -339,6 +348,9 @@ test('parses inline non-GitHub CI script arrays into individual commands', () =>
 
   assert(commands.includes('npm ci'));
   assert(commands.includes('npm test'));
+  assert(commands.includes('npm run test -- --grep "foo"'));
+  assert(commands.includes('terraform apply -auto-approve'));
+  assert(survey.ci.runCommands.some((run) => run.command === 'terraform apply -auto-approve' && !run.safe));
   assert(!commands.some((command) => command.includes('[')));
 });
 
@@ -348,8 +360,12 @@ test('parses CircleCI run steps for runtime-safety triggers', () => {
   const commands = survey.ci.runCommands.map((run) => run.command);
 
   assert(commands.includes('pytest'));
+  assert(commands.includes('python -m pytest'));
   assert(survey.commands.some((run) => run.command === 'pytest'));
+  assert(survey.commands.some((run) => run.command === 'python -m pytest'));
   assert(survey.ci.runCommands.some((run) => run.command === 'terraform apply -auto-approve' && !run.safe));
+  assert(!commands.includes('|'));
+  assert(!commands.some((command) => command.includes('name:')));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === '.circleci/config.yml'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });

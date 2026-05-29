@@ -208,7 +208,7 @@ export function surveyRepository(inputPath, options = {}) {
   const detectedInstructionFiles = instructionFiles.filter((path) => fileSet.has(path));
   const docs = collectDocs(allFiles);
   const packageManager = inferPackageManager(fileSet, packageJson);
-  const packageScripts = collectPackageScripts(packageManifests, packageManager);
+  const packageScripts = collectPackageScripts(packageManifests, packageManager, fileSet);
   const unsafeMakeTargets = collectUnsafeMakeTargets(root, fileSet);
   const makeTargets = collectMakeTargets(root, fileSet);
   const makeRuntimeSafetyHints = collectMakeRuntimeSafetyHints(root, fileSet);
@@ -948,9 +948,9 @@ function collectPackageFiles(files) {
     .sort();
 }
 
-function collectPackageScripts(packageManifests, packageManager) {
+function collectPackageScripts(packageManifests, packageManager, fileSet = new Set()) {
   return packageManifests.flatMap((manifest) => (
-    collectPackageScriptsFromManifest(manifest, packageManager)
+    collectPackageScriptsFromManifest(manifest, packageManagerForManifest(fileSet, manifest, packageManager))
   ));
 }
 
@@ -1273,8 +1273,35 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
           const nestedWorkingDirectory = nextLine.match(/^\s*working[-_]directory:\s*(.+?)\s*$/)?.[1];
           if (nestedWorkingDirectory) blockWorkingDirectory = stripYamlQuotes(nestedWorkingDirectory.trim());
         } else if (/^\s*command:\s*/.test(nextLine)) {
-          const nestedCommand = nextLine.match(/^\s*command:\s*(.+?)\s*$/)?.[1];
-          if (nestedCommand) nestedCommands.push(stripYamlQuotes(nestedCommand.trim()));
+          const nestedCommand = nextLine.match(/^\s*command:\s*(.*?)\s*$/)?.[1]?.trim();
+          if (/^[|>]/.test(nestedCommand) || nestedCommand === '') {
+            const commandBlockLines = [];
+            const commandIndent = indentation(nextLine);
+            let commandBlockIndent = null;
+
+            for (let commandIndex = nextIndex + 1; commandIndex < lines.length; commandIndex += 1) {
+              const commandLine = lines[commandIndex];
+              if (!commandLine.trim()) {
+                if (commandBlockLines.length) commandBlockLines.push('');
+                continue;
+              }
+
+              const commandLineIndent = indentation(commandLine);
+              if (commandLineIndent <= commandIndent) break;
+              if (commandBlockIndent === null) commandBlockIndent = commandLineIndent;
+              if (commandLineIndent < commandBlockIndent) break;
+              commandBlockLines.push(commandLine);
+              index = commandIndex;
+              nextIndex = commandIndex;
+            }
+
+            const blockCommand = normalizeRunBlock(commandBlockLines);
+            if (blockCommand) nestedCommands.push({ command: blockCommand, multiline: true });
+          } else if (nestedCommand) {
+            nestedCommands.push({ command: stripYamlQuotes(nestedCommand), multiline: false });
+          }
+        } else if (/^\s*(?:name|when|environment|no_output_timeout):\s*/.test(nextLine)) {
+          // CI mapping metadata, not shell text.
         } else {
           blockLines.push(nextLine);
         }
@@ -1282,7 +1309,7 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
       }
 
       for (const nestedCommand of nestedCommands) {
-        commands.push(classifyCiRunCommand(source, nestedCommand, false, packageManifests, {
+        commands.push(classifyCiRunCommand(source, nestedCommand.command, nestedCommand.multiline, packageManifests, {
           workingDirectory: blockWorkingDirectory,
           unsafeMakeTargets,
         }));
@@ -1300,14 +1327,50 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
 
 function parseInlineCommandArray(value) {
   if (!/^\[.*\]$/.test(value)) return null;
-  const commands = [...value.matchAll(/["']([^"']+)["']/g)].map((match) => match[1].trim()).filter(Boolean);
-  if (commands.length) return commands;
+  const commands = [];
+  let current = '';
+  let quote = null;
+  let escaped = false;
 
-  return value
-    .slice(1, -1)
-    .split(',')
-    .map((command) => command.trim())
-    .filter(Boolean);
+  for (const character of value.slice(1, -1)) {
+    if (escaped) {
+      current += character;
+      escaped = false;
+      continue;
+    }
+
+    if (character === '\\' && quote) {
+      escaped = true;
+      continue;
+    }
+
+    if (quote) {
+      if (character === quote) {
+        quote = null;
+      } else {
+        current += character;
+      }
+      continue;
+    }
+
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+
+    if (character === ',') {
+      const command = current.trim();
+      if (command) commands.push(command);
+      current = '';
+      continue;
+    }
+
+    current += character;
+  }
+
+  const command = current.trim();
+  if (command) commands.push(command);
+  return commands;
 }
 
 function findWorkflowWorkingDirectory(lines, runIndex) {
@@ -1537,6 +1600,30 @@ function readTemplateVersion() {
 }
 
 function inferPackageManager(fileSet, packageJson = null) {
+  const declaredPackageManager = packageManagerFromDeclaration(packageJson);
+  if (declaredPackageManager) return declaredPackageManager;
+
+  if (fileSet.has('pnpm-lock.yaml')) return 'pnpm';
+  if (fileSet.has('yarn.lock')) return 'yarn';
+  if (fileSet.has('bun.lock') || fileSet.has('bun.lockb')) return 'bun';
+  return 'npm';
+}
+
+function packageManagerForManifest(fileSet, manifest, fallback) {
+  const declaredPackageManager = packageManagerFromDeclaration(manifest.json);
+  if (declaredPackageManager) return declaredPackageManager;
+
+  const directory = manifest.directory;
+  if (directory) {
+    if (fileSet.has(`${directory}/pnpm-lock.yaml`)) return 'pnpm';
+    if (fileSet.has(`${directory}/yarn.lock`)) return 'yarn';
+    if (fileSet.has(`${directory}/bun.lock`) || fileSet.has(`${directory}/bun.lockb`)) return 'bun';
+  }
+
+  return fallback;
+}
+
+function packageManagerFromDeclaration(packageJson = null) {
   const declaredPackageManager = typeof packageJson?.packageManager === 'string'
     ? packageJson.packageManager.toLowerCase()
     : '';
@@ -1545,11 +1632,7 @@ function inferPackageManager(fileSet, packageJson = null) {
   if (declaredPackageManager.startsWith('yarn@')) return 'yarn';
   if (declaredPackageManager.startsWith('bun@')) return 'bun';
   if (declaredPackageManager.startsWith('npm@')) return 'npm';
-
-  if (fileSet.has('pnpm-lock.yaml')) return 'pnpm';
-  if (fileSet.has('yarn.lock')) return 'yarn';
-  if (fileSet.has('bun.lock') || fileSet.has('bun.lockb')) return 'bun';
-  return 'npm';
+  return null;
 }
 
 function samplePaths(items, limit = 5) {

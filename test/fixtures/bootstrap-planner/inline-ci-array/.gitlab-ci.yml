@@ -1,2 +1,2 @@
 test:
-  script: [npm ci, npm test]
+  script: [npm ci, npm test, 'npm run test -- --grep "foo"', 'terraform apply -auto-approve']

@@ -6,6 +6,10 @@ jobs:
       - run:
           name: Test
           command: pytest
+      - run:
+          name: Test block
+          command: |
+            python -m pytest
   deploy:
     steps:
       - run: terraform apply -auto-approve
