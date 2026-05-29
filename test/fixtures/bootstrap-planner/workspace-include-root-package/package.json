@@ -1,0 +1,11 @@
+{
+  "name": "workspace-include-root-package-fixture",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "gh release create v1.0.0",
+    "check": "npm --workspaces --include-workspace-root test"
+  }
+}

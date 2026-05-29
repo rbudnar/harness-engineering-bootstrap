@@ -691,6 +691,16 @@ test('screens mutating git and docker commands after global options', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens mutating gh commands after global options', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'gh-global-option-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(!survey.commands.some((run) => run.command === 'npm run validate'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens write-by-default formatter package scripts', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'formatter-write-default-package'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -952,6 +962,18 @@ test('screens npm all-workspace alias delegated package scripts', () => {
     hint.path === 'packages/api/package.json'
     && hint.reason === 'package script "test" may mutate external state'
   )));
+});
+
+test('screens npm all-workspace scripts that include the root workspace', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workspace-include-root-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'package.json'
+    && hint.reason === 'package script "test" may mutate external state'
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
 test('screens Yarn foreach workspace delegated package scripts', () => {

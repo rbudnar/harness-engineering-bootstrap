@@ -1,0 +1,8 @@
+{
+  "name": "gh-global-option-package-fixture",
+  "private": true,
+  "scripts": {
+    "check": "gh --repo owner/repo pr merge 123 --merge",
+    "validate": "gh --hostname github.com release create v1.0.0"
+  }
+}

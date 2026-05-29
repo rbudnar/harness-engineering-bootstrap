@@ -2468,6 +2468,7 @@ function hasDangerousCommand(command) {
           || hasDangerousAwsCommand(inspectedPart)
           || hasDangerousDockerCommand(inspectedPart)
           || hasDangerousGitCommand(inspectedPart)
+          || hasDangerousGhCommand(inspectedPart)
           || hasDangerousTaskTarget(inspectedPart)
           || dangerousCommandPatterns.some((pattern) => pattern.test(inspectedPart.toLowerCase()))
           || commandPartReferencesRuntimeSurface(inspectedPart)
@@ -2550,6 +2551,15 @@ function hasDangerousGitCommand(part) {
   return args[0] === 'push';
 }
 
+function hasDangerousGhCommand(part) {
+  const words = shellWords(part).map((word) => word.toLowerCase());
+  if (words[0] !== 'gh') return false;
+  const args = stripCliGlobalOptions(words.slice(1), 'gh');
+  if (args[0] === 'auth' && args[1] === 'login') return true;
+  if (args[0] === 'pr' && args[1] === 'merge') return true;
+  return args[0] === 'release';
+}
+
 function firstCliVerb(args, command = '') {
   return stripCliGlobalOptions(args, command)[0] ?? null;
 }
@@ -2579,6 +2589,10 @@ function cliOptionConsumesNext(option, command = '') {
   const lower = option.toLowerCase();
   if (command === 'pulumi' && ['-s', '--stack'].includes(lower)) return true;
   if (command === 'git' && lower === '-c') return true;
+  if (command === 'gh'
+    && ['-R', '--repo', '--hostname'].some((candidate) => lower === candidate.toLowerCase())) {
+    return true;
+  }
   return cliOptionsWithValues.has(lower);
 }
 
@@ -2840,8 +2854,14 @@ function findUnsafePackageScript(scriptName, scripts, chain = [], context = {}) 
 
 function packageScriptManifestsForCommand(command, fallbackManifest, packageManifests = [], workingDirectory = null) {
   if (isAllWorkspacePackageScriptCommand(command, fallbackManifest, packageManifests)) {
+    const words = shellWords(stripPackageCommandPrefix(command));
+    const rootManifest = packageManifests.find((manifest) => manifest.path === 'package.json') ?? fallbackManifest;
     const workspaceManifests = packageManifests.filter((manifest) => manifest.path !== 'package.json' && manifest.json?.scripts);
-    return workspaceManifests.length ? workspaceManifests : [fallbackManifest].filter(Boolean);
+    const manifests = hasNpmIncludeWorkspaceRoot(words)
+      ? [rootManifest, ...workspaceManifests]
+      : workspaceManifests;
+    const uniqueManifests = dedupeObjects(manifests.filter(Boolean), (manifest) => manifest.path);
+    return uniqueManifests.length ? uniqueManifests : [fallbackManifest].filter(Boolean);
   }
 
   const workspace = packageWorkspaceFromCommand(command);
@@ -3030,6 +3050,16 @@ function packageOptionMatches(word, options) {
 function hasNpmAllWorkspaces(words) {
   return words[0]?.toLowerCase() === 'npm'
     && words.some((word) => isNpmAllWorkspacesOption(word));
+}
+
+function hasNpmIncludeWorkspaceRoot(words) {
+  if (words[0]?.toLowerCase() !== 'npm') return false;
+  return words.some((word) => {
+    const lower = String(word ?? '').toLowerCase();
+    if (lower === '--include-workspace-root') return true;
+    if (!lower.startsWith('--include-workspace-root=')) return false;
+    return !['false', '0', 'no', 'off'].includes(lower.slice('--include-workspace-root='.length));
+  });
 }
 
 function isNpmAllWorkspacesOption(word) {
