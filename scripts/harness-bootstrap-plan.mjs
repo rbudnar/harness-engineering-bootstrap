@@ -59,6 +59,10 @@ const packageFiles = [
 const dangerousCommandPatterns = [
   /\bterraform\s+apply\b/,
   /\bterraform\s+destroy\b/,
+  /\bpulumi\s+(up|destroy|cancel|refresh|import)\b/,
+  /\bpulumi\s+config\s+(set|rm)\b/,
+  /\bpulumi\s+state\s+(delete|rename|repair)\b/,
+  /\bpulumi\s+stack\s+(init|rm)\b/,
   /\bkubectl\s+(apply|create|delete|replace|rollout|scale|patch|set|annotate|label|drain|taint|expose|autoscale)\b/,
   /\bhelm\s+(upgrade|install|uninstall|delete|rollback)\b/,
   /\bnpm\s+publish\b/,
@@ -865,7 +869,7 @@ function collectVersionState(root, files) {
     };
   }
 
-  if (resolve(root) === repoRoot && files.includes('VERSION')) {
+  if (resolve(root) === repoRoot && files.includes('VERSION') && isTemplateRepository(files)) {
     const installedVersion = readText(root, 'VERSION').split(/\r?\n/)[0]?.trim() || null;
     return {
       installedVersion,
@@ -884,6 +888,11 @@ function collectVersionState(root, files) {
     status: 'unversioned',
     raw: null,
   };
+}
+
+function isTemplateRepository(files) {
+  return files.includes('templates/Harness Engineering Bootstrap.md')
+    && files.includes('scripts/template-fitness.mjs');
 }
 
 function findVersionMarker(root, files) {
@@ -2156,6 +2165,7 @@ function hasDangerousCliVerb(part) {
   const mutatingVerbs = {
     kubectl: new Set(['apply', 'create', 'delete', 'replace', 'rollout', 'scale', 'patch', 'set', 'annotate', 'label', 'drain', 'taint', 'expose', 'autoscale']),
     helm: new Set(['upgrade', 'install', 'uninstall', 'delete', 'rollback']),
+    pulumi: new Set(['up', 'destroy', 'cancel', 'refresh', 'import']),
   };
   if (!mutatingVerbs[command]) return false;
   const verb = firstCliVerb(args);
@@ -2699,6 +2709,8 @@ function isRuntimeSurfacePath(path) {
     || lower.includes('docker-compose')
     || lower.endsWith('.tf')
     || hasPathSegment(lower, 'terraform')
+    || name === 'pulumi.yaml'
+    || /^pulumi\..+\.ya?ml$/.test(name)
     || hasPathSegment(lower, 'k8s')
     || hasPathSegment(lower, 'helm')
     || hasPathSegment(lower, 'deploy')

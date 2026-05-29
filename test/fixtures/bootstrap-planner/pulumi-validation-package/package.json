@@ -1,0 +1,5 @@
+{
+  "scripts": {
+    "validate": "pulumi up --yes"
+  }
+}

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { copyFileSync, cpSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -974,6 +976,17 @@ test('keeps safe Terraform package wrappers as validation commands', () => {
   assert(!survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
 });
 
+test('keeps Pulumi deployments inspect-only', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'pulumi-validation-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm run validate'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'Pulumi.yaml'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  assert(!validationStepsText(plan).includes('Run detected validation candidate from package.json'));
+});
+
 test('detects existing bootstraps and emits versioned update guidance', () => {
   const fixture = resolve(fixturesRoot, 'existing-bootstrapped');
   const survey = surveyRepository(fixture);
@@ -1039,6 +1052,39 @@ test('does not mistake an application VERSION file for HEB metadata', () => {
   assert.equal(survey.versionState.source, null);
   assert.equal(plan.operation, 'update');
   assert.equal(plan.updatePlan.status, 'needs-version-baseline');
+});
+
+test('copied planner helpers do not trust application VERSION files', () => {
+  const source = resolve(fixturesRoot, 'app-version');
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-copied-planner-'));
+  try {
+    cpSync(source, tempRoot, { recursive: true });
+    mkdirSync(resolve(tempRoot, 'scripts'), { recursive: true });
+    copyFileSync(resolve(repoRoot, 'scripts', 'harness-bootstrap-plan.mjs'), resolve(tempRoot, 'scripts', 'harness-bootstrap-plan.mjs'));
+
+    const output = execFileSync(
+      process.execPath,
+      [
+        resolve(tempRoot, 'scripts', 'harness-bootstrap-plan.mjs'),
+        '--repo',
+        tempRoot,
+        '--json',
+        '--target-version',
+        '0.2.0',
+        '--date',
+        '2026-05-28',
+      ],
+      { cwd: tempRoot, encoding: 'utf8' },
+    );
+    const plan = JSON.parse(output);
+
+    assert.equal(plan.survey.versionState.installedVersion, null);
+    assert.equal(plan.survey.versionState.source, null);
+    assert.equal(plan.operation, 'update');
+    assert.equal(plan.updatePlan.status, 'needs-version-baseline');
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test('does not treat generic docs as an existing HEB bootstrap', () => {
