@@ -2445,7 +2445,7 @@ function inferPackageManager(fileSet, packageJson = null) {
   const declaredPackageManager = packageManagerFromDeclaration(packageJson);
   if (declaredPackageManager) return declaredPackageManager;
 
-  if (fileSet.has('pnpm-lock.yaml')) return 'pnpm';
+  if (fileSet.has('pnpm-lock.yaml') || fileSet.has('pnpm-workspace.yaml')) return 'pnpm';
   if (fileSet.has('yarn.lock')) return 'yarn';
   if (fileSet.has('bun.lock') || fileSet.has('bun.lockb')) return 'bun';
   return 'npm';
@@ -2876,7 +2876,7 @@ function hasDangerousCliVerb(part) {
   const command = words[commandIndex];
   const args = words.slice(commandIndex + 1);
   const mutatingVerbs = {
-    kubectl: new Set(['apply', 'create', 'delete', 'replace', 'rollout', 'scale', 'patch', 'set', 'annotate', 'label', 'drain', 'taint', 'expose', 'autoscale']),
+    kubectl: new Set(['apply', 'create', 'delete', 'replace', 'rollout', 'scale', 'patch', 'set', 'annotate', 'label', 'drain', 'taint', 'expose', 'autoscale', 'exec']),
     helm: new Set(['upgrade', 'install', 'uninstall', 'delete', 'rollback']),
     pulumi: new Set(['up', 'destroy', 'cancel', 'refresh', 'import']),
     terraform: new Set(['apply', 'destroy', 'import', 'taint', 'untaint', 'force-unlock']),
@@ -3170,20 +3170,25 @@ function hasDangerousDockerCommand(part) {
   const words = shellWords(part).map((word) => word.toLowerCase());
   if (words[0] === 'docker-compose') {
     const args = stripCliGlobalOptions(words.slice(1), 'docker');
-    return hasDangerousComposeCommand(args);
+    return hasDangerousComposeCommand(args, words);
   }
   if (words[0] !== 'docker') return false;
   const args = stripCliGlobalOptions(words.slice(1), 'docker');
   if (['push', 'login'].includes(args[0])) return true;
-  if (args[0] === 'compose' && hasDangerousComposeCommand(args.slice(1))) return true;
+  if (args[0] === 'compose' && hasDangerousComposeCommand(args.slice(1), words)) return true;
   return args[0] === 'buildx'
-    && args[1] === 'build'
-    && words.some((word) => word === '--push' || word.startsWith('--push='));
+    && ['build', 'bake'].includes(args[1])
+    && words.some(isDockerPushOption);
 }
 
-function hasDangerousComposeCommand(args) {
+function hasDangerousComposeCommand(args, words = args) {
   const command = firstComposeCommand(args);
-  return ['push', 'up'].includes(command);
+  return ['push', 'up'].includes(command)
+    || (command === 'build' && words.some(isDockerPushOption));
+}
+
+function isDockerPushOption(word) {
+  return word === '--push' || word.startsWith('--push=');
 }
 
 function firstComposeCommand(args) {

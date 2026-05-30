@@ -176,6 +176,29 @@ test('honors packageManager declarations without lockfiles', () => {
   assert(!commands.some((command) => command.startsWith('npm ')));
 });
 
+test('infers pnpm from workspace metadata before defaulting to npm', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-pnpm-workspace-manager-'));
+  try {
+    mkdirSync(resolve(tempRoot, 'packages', 'api'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({ private: true }));
+    writeFileSync(resolve(tempRoot, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n');
+    writeFileSync(resolve(tempRoot, 'packages', 'api', 'package.json'), JSON.stringify({
+      scripts: {
+        test: 'node --test',
+      },
+    }));
+
+    const survey = surveyRepository(tempRoot);
+    const commands = survey.commands.map((command) => command.command);
+
+    assert.equal(survey.packageManager, 'pnpm');
+    assert(commands.includes('pnpm --dir packages/api test'));
+    assert(!commands.includes('npm --prefix packages/api test'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('includes hyphenated validation package scripts after safety screening', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'hyphenated-validation-scripts'));
   const commands = survey.commands.map((command) => command.command);
@@ -1467,6 +1490,35 @@ test('treats Docker Compose pushes as inspect-only commands', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens Docker build push variants in package scripts', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-docker-build-push-package-'));
+  try {
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        test: 'docker buildx bake --push',
+        build: 'docker compose build --push',
+      },
+    }));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(!survey.commands.some((run) => run.command === 'npm test'));
+    assert(!survey.commands.some((run) => run.command === 'npm run build'));
+    assert(survey.runtimeSafetyHints.some((hint) => (
+      hint.path === 'package.json'
+      && hint.reason === 'package script "test" may mutate external state'
+    )));
+    assert(survey.runtimeSafetyHints.some((hint) => (
+      hint.path === 'package.json'
+      && hint.reason === 'package script "build" may mutate external state'
+    )));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('screens package manager publish commands after global options', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'package-manager-option-publish'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -1527,6 +1579,29 @@ test('uses mutating kubectl commands with global flags as runtime-safety evidenc
     && hint.reason.includes('kubectl -n prod delete namespace preview')
   )));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('keeps kubectl exec package scripts inspect-only', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-kubectl-exec-package-'));
+  try {
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        test: "kubectl exec api-pod -- sh -c 'touch /tmp/agent'",
+      },
+    }));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(!survey.commands.some((run) => run.command === 'npm test'));
+    assert(survey.runtimeSafetyHints.some((hint) => (
+      hint.path === 'package.json'
+      && hint.reason === 'package script "test" may mutate external state'
+    )));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test('uses AWS S3 writes as runtime-safety evidence', () => {
