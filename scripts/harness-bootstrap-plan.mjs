@@ -3028,6 +3028,7 @@ function hasDangerousCommand(command) {
           || hasDangerousReleaseToolCommand(inspectedPart)
           || hasDangerousForwardedPackageScriptArgs(inspectedPart)
           || hasDangerousAwsCommand(inspectedPart)
+          || hasDangerousCloudCommand(inspectedPart)
           || hasDangerousDockerCommand(inspectedPart)
           || hasDangerousGitCommand(inspectedPart)
           || hasDangerousGhCommand(inspectedPart)
@@ -3357,6 +3358,62 @@ function hasDangerousAwsCommand(part) {
   return args.some((word) => ['put', 'delete', 'create', 'deploy', 'publish', 'update'].includes(word));
 }
 
+function hasDangerousCloudCommand(part) {
+  const words = shellWords(part).map((word) => stripYamlQuotes(word).toLowerCase());
+  const command = words[0];
+  const args = stripCliGlobalOptions(words.slice(1), command);
+
+  if (command === 'az') return hasDangerousAzureCommand(args);
+  if (command === 'gcloud') return hasDangerousGcloudCommand(args);
+  if (command === 'gsutil') return hasDangerousGsutilCommand(args);
+  if (command === 'supabase') return hasDangerousSupabaseCommand(args);
+  return false;
+}
+
+function hasDangerousAzureCommand(args) {
+  if (args.some((word) => [
+    'build',
+    'config-zip',
+    'create',
+    'delete',
+    'deploy',
+    'import',
+    'purge',
+    'restore',
+    'restart',
+    'scale',
+    'set',
+    'start',
+    'stop',
+    'update',
+    'upload',
+    'up',
+  ].includes(word))) {
+    return true;
+  }
+
+  return (['webapp', 'functionapp'].includes(args[0]) && args[1] === 'deployment')
+    || (args[0] === 'acr' && args[1] === 'build')
+    || (args[0] === 'containerapp' && args[1] === 'up');
+}
+
+function hasDangerousGcloudCommand(args) {
+  if (args[0] === 'builds' && args[1] === 'submit') return true;
+  if (args[0] === 'storage' && ['cp', 'mv', 'rm', 'rsync'].includes(args[1])) return true;
+  return args.some((word) => ['create', 'delete', 'deploy', 'submit', 'update'].includes(word));
+}
+
+function hasDangerousGsutilCommand(args) {
+  return ['acl', 'cors', 'cp', 'iam', 'lifecycle', 'mb', 'mv', 'notification', 'rb', 'rm', 'rsync', 'setmeta']
+    .includes(args[0]);
+}
+
+function hasDangerousSupabaseCommand(args) {
+  return (args[0] === 'db' && args[1] === 'push')
+    || (args[0] === 'functions' && args[1] === 'deploy')
+    || (args[0] === 'secrets' && ['set', 'unset'].includes(args[1]));
+}
+
 function hasDangerousDockerCommand(part) {
   const words = shellWords(part).map((word) => word.toLowerCase());
   if (words[0] === 'docker-compose') {
@@ -3369,6 +3426,7 @@ function hasDangerousDockerCommand(part) {
   if (args[0] === 'image' && args[1] === 'push') return true;
   if (args[0] === 'manifest' && args[1] === 'push') return true;
   if (args[0] === 'compose' && hasDangerousComposeCommand(args.slice(1), words)) return true;
+  if (args[0] === 'build') return words.some(isDockerPushOption) || hasDockerPublishingOutput(words);
   if (args[0] !== 'buildx') return false;
   if (args[1] === 'imagetools' && args[2] === 'create') return true;
   return ['build', 'bake'].includes(args[1])

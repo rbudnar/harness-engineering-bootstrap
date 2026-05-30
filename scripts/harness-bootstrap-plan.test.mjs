@@ -2277,6 +2277,39 @@ test('uses AWS S3 writes as runtime-safety evidence', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens cloud deploy and storage package scripts', () => {
+  const dangerousCommands = [
+    'az webapp deployment source config-zip --src app.zip',
+    'az functionapp deployment source config-zip --src app.zip',
+    'az acr build --registry registry --image app:latest .',
+    'gcloud storage cp app.zip gs://example-bucket/app.zip',
+    'gsutil cp app.zip gs://example-bucket/app.zip',
+    'supabase functions deploy api',
+    'docker build --push -t example/app:latest .',
+  ];
+
+  for (const command of dangerousCommands) {
+    const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-cloud-write-package-'));
+    try {
+      writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+        scripts: {
+          check: command,
+        },
+      }));
+
+      const survey = surveyRepository(tempRoot);
+
+      assert(!survey.commands.some((run) => run.command === 'npm run check'), command);
+      assert(survey.runtimeSafetyHints.some((hint) => (
+        hint.path === 'package.json'
+        && hint.reason === 'package script "check" may mutate external state'
+      )), command);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  }
+});
+
 test('uses mutating commands with boolean global flags as runtime-safety evidence', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'boolean-global-flags-ci'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
