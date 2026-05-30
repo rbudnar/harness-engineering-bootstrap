@@ -1021,6 +1021,9 @@ test('screens variable-dispatched validation scripts before emitting package com
         coverage: 'npm exec $TOOL',
         lint: 'pnpm dlx $TOOL',
         build: 'turbo run $TARGET',
+        typecheck: 'npm run $(echo deploy) -- --foo',
+        'test:ci': 'make `echo deploy`',
+        'test:e2e': 'npm run $1',
         validate: 'npm run unit -- --grep $TEST_NAME',
         unit: 'node --test',
       },
@@ -1035,8 +1038,11 @@ test('screens variable-dispatched validation scripts before emitting package com
     assert(!survey.commands.some((run) => run.command === 'npm run coverage'));
     assert(!survey.commands.some((run) => run.command === 'npm run lint'));
     assert(!survey.commands.some((run) => run.command === 'npm run build'));
+    assert(!survey.commands.some((run) => run.command === 'npm run typecheck'));
+    assert(!survey.commands.some((run) => run.command === 'npm run test:ci'));
+    assert(!survey.commands.some((run) => run.command === 'npm run test:e2e'));
     assert(survey.commands.some((run) => run.command === 'npm run validate'));
-    for (const scriptName of ['test', 'check', 'quality', 'coverage', 'lint', 'build']) {
+    for (const scriptName of ['test', 'check', 'quality', 'coverage', 'lint', 'build', 'typecheck', 'test:ci', 'test:e2e']) {
       assert(survey.runtimeSafetyHints.some((hint) => (
         hint.path === 'package.json'
         && hint.reason === `package script "${scriptName}" may mutate external state`

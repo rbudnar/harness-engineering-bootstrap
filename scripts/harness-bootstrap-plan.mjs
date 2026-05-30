@@ -1568,6 +1568,8 @@ function hasUnresolvedDynamicDispatchCommand(command) {
 }
 
 function hasUnresolvedDynamicDispatchPart(part) {
+  if (hasCommandSubstitution(part)) return true;
+
   const rawWords = shellWords(part);
   if (hasEnvChdirOption(rawWords) || hasUnsupportedSubshellSyntax(part)) return true;
 
@@ -1652,7 +1654,11 @@ function hasDynamicNpxCommand(words) {
 }
 
 function hasShellVariable(value) {
-  return /(^|[^\\])(?:\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[^}]+\}|\([^)]+\))|%[A-Za-z_][A-Za-z0-9_]*%)/.test(String(value ?? ''));
+  return /(^|[^\\])(?:\$(?:[A-Za-z_][A-Za-z0-9_]*|\d+|[#@*?$!-]|\{[^}]+\}|\([^)]+\))|%[A-Za-z_][A-Za-z0-9_]*%)/.test(String(value ?? ''));
+}
+
+function hasCommandSubstitution(value) {
+  return /(^|[^\\])(?:`|\$\()/.test(String(value ?? ''));
 }
 
 function isLocalWorktreeWriteCommand(part) {
