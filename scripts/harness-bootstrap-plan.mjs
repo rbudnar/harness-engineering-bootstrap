@@ -1135,6 +1135,7 @@ function collectPackageScriptsFromManifest(manifest, packageManager, packageMani
         unsafeReason: unsafePackageScriptReason(command, manifest, packageManifests, {
           unsafeMakeTargets,
           incompleteScan: options.incompleteScan,
+          currentDirectory: '',
         }),
       };
     })
@@ -1335,13 +1336,13 @@ function unsafeMakeTargetKeys(targets, packageManifests = []) {
           target.recipe,
           packageManifestForCommand(target.recipe, packageManifests, target.directory),
           packageManifests,
-          { unsafeMakeTargets: unsafe },
+          { unsafeMakeTargets: unsafe, currentDirectory: target.directory },
         )
         || (target.directory && unsafePackageScriptReason(
           target.recipe,
           packageManifestForCommand(target.recipe, packageManifests, ''),
           packageManifests,
-          { unsafeMakeTargets: unsafe },
+          { unsafeMakeTargets: unsafe, currentDirectory: '' },
         ))
         || unsafeMakeTargetReasonFromDirectory(target.recipe, unsafe, target.directory)
         || (target.directory && unsafeMakeTargetReasonFromDirectory(target.recipe, unsafe, ''))
@@ -1518,7 +1519,7 @@ function collectPackageRuntimeSafetyHints(packageManifests, unsafeMakeTargets = 
           packageScriptCommand('npm', name, manifest.directory),
           manifest,
           packageManifests,
-          { unsafeMakeTargets, incompleteScan: options.incompleteScan, runtimeSafety: true },
+          { unsafeMakeTargets, incompleteScan: options.incompleteScan, runtimeSafety: true, currentDirectory: '' },
         )
       ))
       .map(([name]) => ({
@@ -1543,7 +1544,8 @@ function hasRuntimeSafetyDangerousCommand(command) {
 
 function isLocalWorktreeWriteCommand(part) {
   const lower = String(part ?? '').toLowerCase();
-  return localWorktreeWritePatterns.some((pattern) => pattern.test(lower));
+  return localWorktreeWritePatterns.some((pattern) => pattern.test(lower))
+    || hasTerraformFmtWriteCommand(part);
 }
 
 function isDeploymentScriptPath(path) {
@@ -2583,6 +2585,7 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
   const packageScriptReason = unsafePackageScriptReason(command, packageManifest, packageManifests, {
     unsafeMakeTargets,
     incompleteScan: options.incompleteScan,
+    currentDirectory: workingDirectory ?? '',
   });
   const incompleteScanReason = options.incompleteScan && commandNeedsCompleteScan(command)
     ? 'it depends on package, workspace, or make targets that may be omitted by the truncated repository scan'
@@ -2854,6 +2857,8 @@ function hasDangerousCommand(command) {
           || hasDangerousGitCommand(inspectedPart)
           || hasDangerousGhCommand(inspectedPart)
           || hasDangerousHttpCommand(inspectedPart)
+          || hasDangerousRmCommand(inspectedPart)
+          || hasTerraformFmtWriteCommand(inspectedPart)
           || hasDangerousForwardedTarget(inspectedPart)
           || hasDangerousTaskTarget(inspectedPart)
           || dangerousCommandPatterns.some((pattern) => pattern.test(inspectedPart.toLowerCase()))
@@ -3324,6 +3329,67 @@ function hasDangerousWgetCommand(args) {
   return false;
 }
 
+function hasDangerousRmCommand(part) {
+  const words = shellWords(part).map((word) => word.toLowerCase());
+  if (words[0] !== 'rm') return false;
+
+  let recursive = false;
+  let force = false;
+  for (const word of words.slice(1)) {
+    if (word === '--') break;
+    if (word === '--recursive') recursive = true;
+    if (word === '--force') force = true;
+    if (/^-[^-]/.test(word)) {
+      const flags = word.slice(1);
+      recursive ||= /[rR]/.test(flags);
+      force ||= flags.includes('f');
+    }
+  }
+  return recursive && force;
+}
+
+function hasTerraformFmtWriteCommand(part) {
+  const words = shellWords(part).map((word) => word.toLowerCase());
+  if (words[0] !== 'terraform') return false;
+  const commandIndex = terraformSubcommandIndex(words);
+  if (words[commandIndex] !== 'fmt') return false;
+
+  let checkMode = null;
+  let writeMode = null;
+  for (const arg of words.slice(commandIndex + 1)) {
+    if (arg === '-check' || arg === '--check') checkMode = true;
+    if (arg.startsWith('-check=') || arg.startsWith('--check=')) {
+      checkMode = parseTerraformBoolean(arg.split('=')[1]);
+    }
+    if (arg.startsWith('-write=') || arg.startsWith('--write=')) {
+      writeMode = parseTerraformBoolean(arg.split('=')[1]);
+    }
+  }
+
+  return checkMode !== true && writeMode !== false;
+}
+
+function terraformSubcommandIndex(words) {
+  for (let index = 1; index < words.length; index += 1) {
+    const word = words[index];
+    if (!word || word === '--') return index;
+    if (word.startsWith('-')) {
+      if (!word.includes('=') && cliOptionConsumesNext(word, 'terraform') && words[index + 1] && !words[index + 1].startsWith('-')) {
+        index += 1;
+      }
+      continue;
+    }
+    return index;
+  }
+  return words.length;
+}
+
+function parseTerraformBoolean(value) {
+  if (['true', '1', 'yes'].includes(value)) return true;
+  if (['false', '0', 'no'].includes(value)) return false;
+  return null;
+}
+
 function isHttpWriteMethod(value) {
   return ['post', 'put', 'patch', 'delete'].includes(String(value ?? '').toLowerCase());
 }
@@ -3380,7 +3446,7 @@ function commandPartReferencesRuntimeSurface(part) {
 }
 
 function unsafePackageScriptReason(command, packageManifest, packageManifests = [], options = {}) {
-  let currentDirectory = packageManifest?.directory ?? null;
+  let currentDirectory = options.currentDirectory ?? packageManifest?.directory ?? null;
   for (const part of splitShellCommandParts(command)) {
     const cdCommand = inspectCdCommand(part, currentDirectory);
     if (cdCommand.isCd) {
@@ -4448,6 +4514,7 @@ function isSafeValidationCommandPart(part) {
   const normalizedPart = stripPackageCommandPrefix(part);
   const lower = normalizedPart.toLowerCase();
   if (dangerousCommandPatterns.some((pattern) => pattern.test(lower))) return false;
+  if (hasDangerousRmCommand(normalizedPart) || hasTerraformFmtWriteCommand(normalizedPart)) return false;
   if (hasPackageValidationWriteFlags(normalizedPart)) return false;
   if (hasDangerousForwardedTarget(normalizedPart)) return false;
   if (hasDangerousForwardedPackageScriptArgs(normalizedPart)) return false;

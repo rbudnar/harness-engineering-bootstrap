@@ -502,6 +502,36 @@ test('surveys nested package manifests for validation commands', () => {
   assert(commands.includes('npm --prefix services/api run build'));
 });
 
+test('screens generated package commands from the repo root', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-generated-prefix-root-'));
+  try {
+    mkdirSync(resolve(tempRoot, 'services', 'api', 'services', 'api'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'services', 'api', 'package.json'), JSON.stringify({
+      scripts: {
+        test: 'npm publish',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, 'services', 'api', 'services', 'api', 'package.json'), JSON.stringify({
+      scripts: {
+        test: 'node --test',
+      },
+    }));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(!survey.commands.some((run) => run.command === 'npm --prefix services/api test'));
+    assert(survey.commands.some((run) => run.command === 'npm --prefix services/api/services/api test'));
+    assert(survey.runtimeSafetyHints.some((hint) => (
+      hint.path === 'services/api/package.json'
+      && hint.reason === 'package script "test" may mutate external state'
+    )));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('treats null package scripts metadata as absent', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'null-scripts-package'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -1555,6 +1585,50 @@ test('keeps Terraform fmt writes inspect-only', () => {
   assert(!survey.commands.some((run) => run.command === 'npm run check'));
   assert(!survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
   assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('keeps destructive rm flag variants inspect-only', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-rm-flag-variants-'));
+  try {
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        test: 'rm -fr dist',
+        check: 'rm -r -f dist',
+        quality: 'rm -rfv dist',
+      },
+    }));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(!survey.commands.some((run) => run.command === 'npm test'));
+    assert(!survey.commands.some((run) => run.command === 'npm run check'));
+    assert(!survey.commands.some((run) => run.command === 'npm run quality'));
+    assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('treats terraform fmt check=false as a local write', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-terraform-fmt-check-false-'));
+  try {
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        check: 'terraform fmt -check=false',
+      },
+    }));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(!survey.commands.some((run) => run.command === 'npm run check'));
+    assert(!survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+    assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test('uses mutating kubectl commands as runtime-safety evidence', () => {
