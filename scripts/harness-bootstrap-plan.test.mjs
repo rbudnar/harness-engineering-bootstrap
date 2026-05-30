@@ -2031,6 +2031,29 @@ test('detects workspace-scoped publish commands', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens npm force publish package scripts', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-npm-force-publish-'));
+  try {
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        build: 'npm -f publish',
+      },
+    }));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(!survey.commands.some((run) => run.command === 'npm run build'));
+    assert(survey.runtimeSafetyHints.some((hint) => (
+      hint.path === 'package.json'
+      && hint.reason === 'package script "build" may mutate external state'
+    )));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('detects scoped package deploy commands without manifests', () => {
   const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-scoped-deploy-no-manifest-'));
   try {
@@ -3388,6 +3411,34 @@ test('scans root metadata before truncating large repository walks', () => {
   assert.equal(survey.versionState.installedVersion, '0.1.0');
   assert(survey.packageFiles.includes('package.json'));
   assert(survey.commands.some((run) => run.command === 'npm test'));
+});
+
+test('ignores committed Yarn caches before truncating large repository walks', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-yarn-cache-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.yarn', 'cache'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'packages', 'api'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      workspaces: ['packages/*'],
+    }));
+    writeFileSync(resolve(tempRoot, 'packages', 'api', 'package.json'), JSON.stringify({
+      name: 'api',
+      scripts: {
+        test: 'node --test',
+      },
+    }));
+    for (let index = 0; index < 5005; index += 1) {
+      writeFileSync(resolve(tempRoot, '.yarn', 'cache', `pkg-${index}.zip`), '');
+    }
+
+    const survey = surveyRepository(tempRoot);
+
+    assert.equal(survey.files.truncated, false);
+    assert(survey.packageFiles.includes('packages/api/package.json'));
+    assert(survey.commands.some((run) => run.command === 'npm --prefix packages/api test'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test('keeps delegated commands inspect-only when large repository walks truncate', () => {

@@ -19,6 +19,7 @@ const ignoredDirectories = new Set([
   '.git',
   '.hg',
   '.svn',
+  '.yarn',
   'node_modules',
   'dist',
   'build',
@@ -3160,10 +3161,9 @@ function packageManagerOptionConsumesNext(option, manager = '') {
   const lower = option.toLowerCase();
   if (lower.includes('=')) return false;
   if (manager === 'pnpm' && lower === '-w') return false;
+  if (['-c', '-f'].includes(lower)) return manager === 'pnpm';
   if (lower.startsWith('--config.')) return true;
   return [
-    '-c',
-    '-f',
     '-w',
     '--access',
     '--cache',
