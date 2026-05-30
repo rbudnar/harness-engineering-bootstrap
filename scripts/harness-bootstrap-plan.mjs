@@ -145,6 +145,17 @@ const dangerousCommandPatterns = [
   /\s--(fix|write)\b/,
 ];
 
+const validationScriptCommandNames = new Set([
+  'build',
+  'check',
+  'coverage',
+  'lint',
+  'quality',
+  'test',
+  'typecheck',
+  'validate',
+]);
+
 const cliOptionsWithValues = new Set([
   '-f',
   '-k',
@@ -2753,6 +2764,7 @@ function hasDangerousCommand(command) {
           || hasDangerousPackageManagerCommand(inspectedPart)
           || hasDangerousPackageExecutorPayload(inspectedPart)
           || hasDangerousReleaseToolCommand(inspectedPart)
+          || hasDangerousForwardedPackageScriptArgs(inspectedPart)
           || hasDangerousAwsCommand(inspectedPart)
           || hasDangerousDockerCommand(inspectedPart)
           || hasDangerousGitCommand(inspectedPart)
@@ -2996,6 +3008,29 @@ function releaseToolCommandIndex(words) {
   if (execCommandIndex != null) return execCommandIndex;
   if (['pnpm', 'yarn', 'bun'].includes(manager) && words[1] === 'changeset') return 1;
   return 0;
+}
+
+function hasDangerousForwardedPackageScriptArgs(part) {
+  const args = forwardedPackageScriptArgs(part);
+  if (!args.length) return false;
+  const text = args.join(' ');
+  return /(?:^|\s)--push(?:=|\s|$)/i.test(text)
+    || hasDangerousForwardedTarget(text)
+    || dangerousCommandPatterns.some((pattern) => pattern.test(text.toLowerCase()));
+}
+
+function forwardedPackageScriptArgs(part) {
+  const words = shellWords(stripPackageCommandPrefix(part));
+  const separatorIndex = words.indexOf('--');
+  if (separatorIndex < 0 || separatorIndex >= words.length - 1) return [];
+  const lower = words.slice(0, separatorIndex).map((word) => word.toLowerCase());
+  const manager = lower[0];
+  if (!['npm', 'pnpm', 'yarn', 'bun'].includes(manager)) return [];
+  if (lower.some((word) => ['exec', 'dlx'].includes(word))) return [];
+  if (lower.includes('run') || lower.includes('run-script')) return words.slice(separatorIndex + 1);
+  return lower.some((word) => validationScriptCommandNames.has(word))
+    ? words.slice(separatorIndex + 1)
+    : [];
 }
 
 function hasDangerousAwsCommand(part) {
@@ -4281,6 +4316,7 @@ function isSafeValidationCommandPart(part) {
   const lower = normalizedPart.toLowerCase();
   if (dangerousCommandPatterns.some((pattern) => pattern.test(lower))) return false;
   if (hasDangerousForwardedTarget(normalizedPart)) return false;
+  if (hasDangerousForwardedPackageScriptArgs(normalizedPart)) return false;
   if (commandPartReferencesRuntimeSurface(normalizedPart)) return false;
   if (/(^|[^&])&(?!&)/.test(lower)) return false;
   if (unsafeScopedPackageDirectoryReason(normalizedPart)) return false;

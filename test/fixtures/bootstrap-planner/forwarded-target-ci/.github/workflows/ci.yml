@@ -3,3 +3,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: npm run build -- --target deploy
+      - run: npm run build -- --push

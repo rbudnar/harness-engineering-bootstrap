@@ -1,6 +1,6 @@
 {
   "private": true,
   "scripts": {
-    "build": "nx build app"
+    "build": "docker buildx build ."
   }
 }

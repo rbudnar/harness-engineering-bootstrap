@@ -1822,7 +1822,12 @@ test('keeps forwarded deploy targets inspect-only', () => {
     run.command === 'npm run build -- --target deploy'
     && !run.safe
   )));
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'npm run build -- --push'
+    && !run.safe
+  )));
   assert(!survey.commands.some((run) => run.command === 'npm run build -- --target deploy'));
+  assert(!survey.commands.some((run) => run.command === 'npm run build -- --push'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
