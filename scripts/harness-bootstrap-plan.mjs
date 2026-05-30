@@ -2689,6 +2689,7 @@ function hasDangerousCommand(command) {
           || hasDangerousDockerCommand(inspectedPart)
           || hasDangerousGitCommand(inspectedPart)
           || hasDangerousGhCommand(inspectedPart)
+          || hasDangerousHttpCommand(inspectedPart)
           || hasDangerousForwardedTarget(inspectedPart)
           || hasDangerousTaskTarget(inspectedPart)
           || dangerousCommandPatterns.some((pattern) => pattern.test(inspectedPart.toLowerCase()))
@@ -2731,7 +2732,12 @@ function hasDangerousCliVerb(part) {
   };
   if (!mutatingVerbs[command]) return false;
   const verb = firstCliVerb(args, command);
+  if (command === 'vercel' && !verb) return !isCliInfoOnly(args);
   return Boolean(verb && mutatingVerbs[command].has(verb));
+}
+
+function isCliInfoOnly(args) {
+  return args.length > 0 && args.every((arg) => ['-h', '--help', '-v', '--version'].includes(String(arg ?? '').toLowerCase()));
 }
 
 function hasDangerousPackageManagerCommand(part) {
@@ -2957,6 +2963,57 @@ function hasDangerousGhApiCommand(args) {
 
   const normalizedMethod = method?.toLowerCase();
   return ['post', 'put', 'patch', 'delete'].includes(normalizedMethod) || (!normalizedMethod && hasFieldWrite);
+}
+
+function hasDangerousHttpCommand(part) {
+  const words = shellWords(part);
+  const command = words[0]?.toLowerCase();
+  if (command === 'curl') return hasDangerousCurlCommand(words.slice(1));
+  if (command === 'wget') return hasDangerousWgetCommand(words.slice(1));
+  return false;
+}
+
+function hasDangerousCurlCommand(args) {
+  for (let index = 0; index < args.length; index += 1) {
+    const word = args[index];
+    const lower = word.toLowerCase();
+    if (['-x', '--request'].includes(lower)) {
+      if (isHttpWriteMethod(args[index + 1])) return true;
+      index += 1;
+      continue;
+    }
+    if (lower.startsWith('-x') && lower.length > 2 && isHttpWriteMethod(lower.slice(2))) return true;
+    if (lower.startsWith('--request=') && isHttpWriteMethod(lower.slice('--request='.length))) return true;
+    if ([
+      '-d', '--data', '--data-raw', '--data-binary', '--data-urlencode',
+      '--form', '--form-string', '--upload-file',
+    ].includes(lower) || ['-F', '-T'].includes(word)) return true;
+    if (/^-(?:d|F|T).+/.test(word)) return true;
+    if (/^--(?:data|data-raw|data-binary|data-urlencode|form|form-string|upload-file)=/.test(lower)) return true;
+  }
+  return false;
+}
+
+function hasDangerousWgetCommand(args) {
+  for (let index = 0; index < args.length; index += 1) {
+    const word = args[index];
+    const lower = word.toLowerCase();
+    if (lower === '--method') {
+      if (isHttpWriteMethod(args[index + 1])) return true;
+      index += 1;
+      continue;
+    }
+    if (lower.startsWith('--method=') && isHttpWriteMethod(lower.slice('--method='.length))) return true;
+    if ([
+      '--post-data', '--post-file', '--body-data', '--body-file',
+    ].includes(lower)) return true;
+    if (/^--(?:post-data|post-file|body-data|body-file)=/.test(lower)) return true;
+  }
+  return false;
+}
+
+function isHttpWriteMethod(value) {
+  return ['post', 'put', 'patch', 'delete'].includes(String(value ?? '').toLowerCase());
 }
 
 function firstCliVerb(args, command = '') {

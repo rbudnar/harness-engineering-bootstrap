@@ -1638,6 +1638,8 @@ test('uses direct deploy CLIs as runtime-safety evidence', () => {
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
 
   assert(survey.ci.runCommands.some((run) => run.command === 'vercel deploy --prod' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'vercel --prod' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'npx vercel --prod' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'fly deploy' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'npx wrangler deploy' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'pnpm dlx firebase deploy' && !run.safe));
@@ -1651,6 +1653,22 @@ test('uses direct deploy CLIs as runtime-safety evidence', () => {
   assert(survey.ci.runCommands.some((run) => run.command === 'supabase db push' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'az webapp up' && !run.safe));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === '.github/workflows/ci.yml'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('uses HTTP write hooks as runtime-safety evidence', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'http-write-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  for (const command of [
+    'npm run build',
+    'npm run check',
+    'npm run lint',
+    'npm run validate',
+  ]) {
+    assert(!survey.commands.some((run) => run.command === command));
+  }
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 

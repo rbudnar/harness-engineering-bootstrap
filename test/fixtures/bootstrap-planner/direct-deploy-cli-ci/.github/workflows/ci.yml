@@ -3,6 +3,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: vercel deploy --prod
+      - run: vercel --prod
+      - run: npx vercel --prod
       - run: fly deploy
       - run: npx wrangler deploy
       - run: pnpm dlx firebase deploy

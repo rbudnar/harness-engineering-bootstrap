@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "build": "curl -X POST https://example.com/hook",
+    "check": "curl --data '{\"status\":\"ok\"}' https://example.com/hook",
+    "lint": "wget --method=PATCH https://example.com/hook",
+    "validate": "wget --post-data status=ok https://example.com/hook"
+  }
+}
