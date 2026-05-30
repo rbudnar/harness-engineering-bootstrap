@@ -140,6 +140,17 @@ const dangerousCommandPatterns = [
   /\bcargo\s+fmt\b(?![^&|;]*\s--check\b)/,
   /\bblack\b(?![^&|;]*\s--check\b)/,
   /\bruff\s+format\b(?![^&|;]*\s--check\b)/,
+  /\bruff\s+check\b.*\s--fix\b/,
+  /\b(?:eslint|stylelint|prettier|biome|dprint)\b.*\s--(?:fix|write)\b/,
+  /\b(?:prettier|gofmt|dprint|terraform\s+fmt)\b.*\s-w(?:\s|$)/,
+  /\bterraform\s+fmt\b(?![^&|;]*\s-check\b)/,
+];
+
+const localWorktreeWritePatterns = [
+  /\bgo\s+fmt\b/,
+  /\bcargo\s+fmt\b(?![^&|;]*\s--check\b)/,
+  /\bblack\b(?![^&|;]*\s--check\b)/,
+  /\bruff\s+format\b(?![^&|;]*\s--check\b)/,
   /\b(prettier|gofmt|dprint|terraform\s+fmt)\b.*\s-w(?:\s|$)/,
   /\bterraform\s+fmt\b(?![^&|;]*\s-check\b)/,
   /\s--(fix|write)\b/,
@@ -1451,12 +1462,12 @@ function collectPackageRuntimeSafetyHints(packageManifests, unsafeMakeTargets = 
     return Object.entries(scripts)
       .filter(([name, body]) => (
         isAuthorityPackageScript(name)
-        || hasDangerousCommand(body)
+        || hasRuntimeSafetyDangerousCommand(body)
         || unsafePackageScriptReason(
           packageScriptCommand('npm', name, manifest.directory),
           manifest,
           packageManifests,
-          { unsafeMakeTargets, incompleteScan: options.incompleteScan },
+          { unsafeMakeTargets, incompleteScan: options.incompleteScan, runtimeSafety: true },
         )
       ))
       .map(([name]) => ({
@@ -1467,7 +1478,21 @@ function collectPackageRuntimeSafetyHints(packageManifests, unsafeMakeTargets = 
 }
 
 function isRuntimeSafetyCommand(command) {
-  return hasDangerousCommand(command.command) || Boolean(command.packageScriptReason) || Boolean(command.runtimeSafetyReason);
+  return hasRuntimeSafetyDangerousCommand(command.command) || Boolean(command.packageScriptReason) || Boolean(command.runtimeSafetyReason);
+}
+
+function hasRuntimeSafetyDangerousCommand(command) {
+  return splitShellCommandParts(String(command ?? ''))
+    .flatMap(splitShellPipelineParts)
+    .some((part) => {
+      const inspectedPart = stripPackageCommandPrefix(part);
+      return hasDangerousCommand(inspectedPart) && !isLocalWorktreeWriteCommand(inspectedPart);
+    });
+}
+
+function isLocalWorktreeWriteCommand(part) {
+  const lower = String(part ?? '').toLowerCase();
+  return localWorktreeWritePatterns.some((pattern) => pattern.test(lower));
 }
 
 function isDeploymentScriptPath(path) {
@@ -3291,6 +3316,7 @@ function unsafePackageScriptReason(command, packageManifest, packageManifests = 
           packageManifests,
           unsafeMakeTargets: options.unsafeMakeTargets,
           incompleteScan: options.incompleteScan,
+          runtimeSafety: options.runtimeSafety,
         });
         if (unsafeLifecycleScript) {
           return `it may run install lifecycle "${lifecycleScript}" whose dependency chain "${unsafeLifecycleScript.chain.join(' -> ')}" may mutate external state`;
@@ -3308,6 +3334,7 @@ function unsafePackageScriptReason(command, packageManifest, packageManifests = 
         packageManifests,
         unsafeMakeTargets: options.unsafeMakeTargets,
         incompleteScan: options.incompleteScan,
+        runtimeSafety: options.runtimeSafety,
       });
       if (unsafeScript) {
         return `it calls package script "${scriptName}" whose dependency chain "${unsafeScript.chain.join(' -> ')}" may mutate external state`;
@@ -3530,7 +3557,7 @@ function findUnsafePackageScript(scriptName, scripts, chain = [], context = {}) 
 
   const body = String(scriptMap[scriptName] ?? '');
   if (isAuthorityPackageScript(scriptName)) return { scriptName, chain: nextChain };
-  if (hasDangerousCommand(body)) return { scriptName, chain: nextChain };
+  if (context.runtimeSafety ? hasRuntimeSafetyDangerousCommand(body) : hasDangerousCommand(body)) return { scriptName, chain: nextChain };
   if (context.incompleteScan && commandNeedsCompleteScan(body)) return { scriptName, chain: nextChain };
   if (unsafeMakeTargetReasonFromDirectory(body, context.unsafeMakeTargets ?? new Set(), context.manifest?.directory)) return { scriptName, chain: nextChain };
 

@@ -167,7 +167,7 @@ test('includes hyphenated validation package scripts after safety screening', ()
   assert(commands.includes('npm run test-ci'));
   assert(commands.includes('npm run type-check'));
   assert(!commands.includes('npm run lint-fix'));
-  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(!survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
 });
 
 test('json CLI output is reusable by the future scaffolder surface', () => {
@@ -913,8 +913,8 @@ test('screens write-by-default formatter package scripts', () => {
   assert(!survey.commands.some((run) => run.command === 'npm run quality'));
   assert(!survey.commands.some((run) => run.command === 'npm run validate'));
   assert(!survey.commands.some((run) => run.command === 'npm run coverage'));
-  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
-  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  assert(!survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
 });
 
 test('screens quoted npm prefix package wrappers', () => {
@@ -1348,8 +1348,8 @@ test('keeps formatter short write flags inspect-only', () => {
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
 
   assert(!survey.commands.some((run) => run.command === 'npm run check'));
-  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
-  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  assert(!survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
 });
 
 test('keeps Terraform fmt writes inspect-only', () => {
@@ -1357,8 +1357,8 @@ test('keeps Terraform fmt writes inspect-only', () => {
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
 
   assert(!survey.commands.some((run) => run.command === 'npm run check'));
-  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
-  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  assert(!survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
 });
 
 test('uses mutating kubectl commands as runtime-safety evidence', () => {
