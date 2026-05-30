@@ -2132,6 +2132,28 @@ test('keeps formatter short write flags inspect-only', () => {
   assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('keeps snapshot update package scripts inspect-only', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-snapshot-update-package-'));
+  try {
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        test: 'jest --updateSnapshot',
+        check: 'vitest -u',
+      },
+    }));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(!survey.commands.some((run) => run.command === 'npm test'));
+    assert(!survey.commands.some((run) => run.command === 'npm run check'));
+    assert(!survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+    assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('keeps Terraform fmt writes inspect-only', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'terraform-fmt-write-package'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -2442,6 +2464,36 @@ test('uses reusable workflow inherited secrets as runtime-safety evidence', () =
     && hint.reason.includes('secrets')
   )));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('uses reusable workflow secrets before uses as runtime-safety evidence', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-reusable-secrets-before-uses-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'ci.yml'), [
+      'name: CI',
+      'on:',
+      '  pull_request:',
+      'jobs:',
+      '  delegated:',
+      '    secrets: inherit',
+      '    uses: org/repo/.github/workflows/bootstrap.yml@v1',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(survey.ci.runCommands.some((run) => (
+      run.command === 'uses: org/repo/.github/workflows/bootstrap.yml@v1'
+      && !run.safe
+      && run.runtimeSafetyReason === 'GitHub workflow step inherits secrets'
+    )));
+    assert(survey.runtimeSafetyHints.some((hint) => hint.path === '.github/workflows/ci.yml'));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test('uses post-steps inherited workflow secrets as runtime-safety evidence', () => {
@@ -2913,6 +2965,8 @@ test('keeps forwarded package write flags inspect-only', () => {
       '      - run: npm run lint -- --fix',
       '      - run: yarn lint --fix',
       '      - run: npm run format -- --write',
+      '      - run: npm test -- --updateSnapshot',
+      '      - run: npm test -- -u',
       '',
     ].join('\n'));
 
@@ -2922,6 +2976,8 @@ test('keeps forwarded package write flags inspect-only', () => {
       'npm run lint -- --fix',
       'yarn lint --fix',
       'npm run format -- --write',
+      'npm test -- --updateSnapshot',
+      'npm test -- -u',
     ]) {
       assert(survey.ci.runCommands.some((run) => run.command === command && !run.safe));
       assert(!survey.commands.some((run) => run.command === command));
@@ -3318,6 +3374,7 @@ test('the current template repository is a supported survey target', () => {
   assert(survey.harnessControls.includes('scripts/template-fitness.mjs'));
   assert(survey.commands.some((command) => command.command === 'node --test scripts/harness-bootstrap-plan.test.mjs'));
   assert(validationStepsText(plan).includes('node scripts/template-fitness.mjs'));
+  assert(validationStepsText(plan).includes('--date 2026-05-28'));
   assert.equal(plan.requiredCore.find((item) => item.id === 'quality-gate').status, 'present');
   assert(plan.requiredCore.some((item) => item.id === 'harness-validation' && item.status === 'present'));
 });

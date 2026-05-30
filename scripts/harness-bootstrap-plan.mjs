@@ -145,6 +145,7 @@ const dangerousCommandPatterns = [
   /\bruff\s+check\b.*\s--fix\b/,
   /\b(?:eslint|stylelint|prettier|biome|dprint)\b.*\s--(?:fix|write)\b/,
   /\b(?:prettier|gofmt|dprint|terraform\s+fmt)\b.*\s-w(?:\s|$)/,
+  /\b(?:jest|vitest)\b.*(?:^|\s)(?:-u|--update(?:snapshot|s|-snapshot|-snapshots)?)(?:=|\s|$)/,
   /\bterraform\s+fmt\b(?![^&|;]*\s-check\b)/,
 ];
 
@@ -156,6 +157,7 @@ const localWorktreeWritePatterns = [
   /\bruff\s+check\b.*\s--fix(?:=|\s|$)/,
   /\b(?:eslint|stylelint|prettier|biome|dprint)\b.*\s--(?:fix|write)(?:=|\s|$)/,
   /\b(prettier|gofmt|dprint|terraform\s+fmt)\b.*\s-w(?:\s|$)/,
+  /\b(?:jest|vitest)\b.*(?:^|\s)(?:-u|--update(?:snapshot|s|-snapshot|-snapshots)?)(?:=|\s|$)/,
   /\bterraform\s+fmt\b(?![^&|;]*\s-check\b)/,
 ];
 
@@ -424,6 +426,7 @@ export function buildBootstrapPlan(survey, options = {}) {
     operation,
     targetVersion,
     currentVersionOverride,
+    date,
   });
   const openQuestions = buildOpenQuestions(survey, requiredCore, modules);
   const updatePlan = buildUpdatePlan({
@@ -1830,10 +1833,12 @@ function scopeBlockSecretText(lines, start, end, blockIndent) {
     if (!line.trim()) continue;
     if (indentation(line) !== blockIndent) continue;
     const envMatch = line.match(/^\s*env:\s*(.*)$/);
-    if (!envMatch) continue;
-    const inlineEnv = envMatch[1].trim();
-    if (/\$\{\{\s*secrets\./i.test(inlineEnv)) return inlineEnv;
-    if (inlineEnv) continue;
+    const secretsMatch = line.match(/^\s*secrets:\s*(.*)$/);
+    if (!envMatch && !secretsMatch) continue;
+    const inlineValue = (envMatch?.[1] ?? secretsMatch?.[1] ?? '').trim();
+    if (/\$\{\{\s*secrets\./i.test(inlineValue)) return inlineValue;
+    if (secretsMatch && inlineValue && !['{}', '[]'].includes(inlineValue)) return inlineValue;
+    if (inlineValue) continue;
 
     const blockLines = [];
     for (let blockIndex = index + 1; blockIndex < end; blockIndex += 1) {
@@ -1842,8 +1847,10 @@ function scopeBlockSecretText(lines, start, end, blockIndent) {
       if (indentation(blockLine) <= blockIndent) break;
       blockLines.push(blockLine);
     }
-    const match = blockLines.join('\n').match(/\$\{\{\s*secrets\./i);
+    const blockText = blockLines.join('\n');
+    const match = blockText.match(/\$\{\{\s*secrets\./i);
     if (match) return match[0];
+    if (secretsMatch && blockText.trim()) return blockText.trim();
   }
   return null;
 }
@@ -5043,9 +5050,18 @@ function hasWriteModeFlag(args) {
   return args.some((arg) => {
     const lower = String(arg ?? '').toLowerCase();
     return lower === '-w'
+      || lower === '-u'
       || lower === '--fix'
+      || lower === '--update'
+      || lower === '--updatesnapshot'
+      || lower === '--update-snapshot'
+      || lower === '--update-snapshots'
       || lower === '--write'
       || lower.startsWith('--fix=')
+      || lower.startsWith('--update=')
+      || lower.startsWith('--updatesnapshot=')
+      || lower.startsWith('--update-snapshot=')
+      || lower.startsWith('--update-snapshots=')
       || lower.startsWith('--write=');
   });
 }
