@@ -2,6 +2,10 @@
 
 Dates reflect repository history, not formal package releases.
 
+## 2026-05-30
+
+- Updated the MCP specification reference to the current dated version (2025-11-25).
+
 ## 2026-05-25
 
 - Clarified agent-runtime safety guidance: high-impact tool actions should use deterministic pre-action authorization or explicit confirmation outside model judgment, fail closed when policy context is missing, and audit allow/deny decisions.
