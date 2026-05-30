@@ -260,6 +260,7 @@ test('renders reusable commands for Windows paths and quoted CI arguments', () =
   assert.match(plan.planArtifact.validationCommand, /--repo "C:\\Users\\Example Repo\\project"/);
   assert.match(plan.planArtifact.validationCommand, /node /);
   assert.match(plan.planArtifact.validationCommand, /scripts[\\/]harness-bootstrap-plan\.mjs/);
+  assert.match(plan.planArtifact.validationCommand, /--date 2026-05-28/);
 });
 
 test('recognizes Gradle and Maven wrapper validation commands', () => {
@@ -1366,6 +1367,37 @@ test('screens cross-env-shell mutating package scripts', () => {
   assert(!survey.commands.some((run) => run.command === 'npm run check'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('screens shell and env wrapped package script chains', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-shell-wrapped-package-'));
+  try {
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        check: 'sh -c "npm test"',
+        lint: 'env -u FOO npm test',
+        test: 'npm run deploy',
+        deploy: 'firebase deploy',
+      },
+    }));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(!survey.commands.some((run) => run.command === 'npm run check'));
+    assert(!survey.commands.some((run) => run.command === 'npm run lint'));
+    assert(survey.runtimeSafetyHints.some((hint) => (
+      hint.path === 'package.json'
+      && hint.reason === 'package script "check" may mutate external state'
+    )));
+    assert(survey.runtimeSafetyHints.some((hint) => (
+      hint.path === 'package.json'
+      && hint.reason === 'package script "lint" may mutate external state'
+    )));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test('screens workspace delegated package scripts', () => {
@@ -2709,6 +2741,7 @@ test('supports explicit update mode for unversioned bootstraps', () => {
   assert.equal(plan.updatePlan.status, 'needs-version-baseline');
   assert.equal(plan.updatePlan.versionMetadata.path, 'docs/harness-version.json');
   assert.match(plan.planArtifact.validationCommand, /--mode update --target-version 0\.2\.0/);
+  assert.match(plan.planArtifact.validationCommand, /--date 2026-05-28/);
 });
 
 test('does not mistake an application VERSION file for HEB metadata', () => {

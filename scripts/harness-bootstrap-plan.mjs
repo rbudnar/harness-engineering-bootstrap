@@ -453,6 +453,7 @@ export function buildBootstrapPlan(survey, options = {}) {
         operation,
         targetVersion,
         currentVersionOverride,
+        date,
       }),
       stopCondition: 'Stop if repo drift changes the survey inputs, the plan is rejected, or implementation completes and records a baseline.',
       supersedes: null,
@@ -2570,6 +2571,7 @@ function buildPlannerCommand(repoPath, options = {}) {
   }
 
   if (options.json) parts.push('--json');
+  if (options.date) parts.push('--date', options.date);
 
   return parts.join(' ');
 }
@@ -3757,6 +3759,20 @@ function findUnsafePackageScript(scriptName, scripts, chain = [], context = {}) 
     if (unsafeScopedPackageDirectoryReason(part, currentDirectory)) return { scriptName, chain: nextChain };
 
     const partManifest = packageManifestForCommand(part, context.packageManifests ?? [], currentDirectory) ?? context.manifest;
+    const wrapperPayload = shellWrapperPayload(part);
+    if (wrapperPayload !== null) {
+      if (!isStaticShellWrapperPayload(wrapperPayload)) return { scriptName, chain: nextChain };
+      const unsafeWrappedCommand = unsafePackageScriptReason(wrapperPayload, partManifest, context.packageManifests ?? [], {
+        unsafeMakeTargets: context.unsafeMakeTargets,
+        incompleteScan: context.incompleteScan,
+        currentDirectory,
+        runtimeSafety: context.runtimeSafety,
+      });
+      if (unsafeWrappedCommand) return { scriptName, chain: nextChain };
+      if (context.incompleteScan && commandNeedsCompleteScan(wrapperPayload)) return { scriptName, chain: nextChain };
+      continue;
+    }
+
     for (const lifecycleManifest of installLifecycleManifestsForCommand(part, partManifest, context.packageManifests ?? [])) {
       const lifecycleScripts = packageScriptsObject(lifecycleManifest.json?.scripts);
       if (!lifecycleScripts) continue;
@@ -4402,14 +4418,73 @@ function stripPackageCommandPrefix(command) {
   if (words[index]?.toLowerCase() === 'cross-env-shell') {
     return stripPackageCommandPrefix(words.slice(index + 1).join(' '));
   }
-  if (['cross-env', 'env'].includes(words[index]?.toLowerCase())) index += 1;
+  if (words[index]?.toLowerCase() === 'cross-env') {
+    index += 1;
+    while (isEnvironmentAssignment(words[index])) index += 1;
+  } else if (words[index]?.toLowerCase() === 'env') {
+    index = envPayloadIndex(words, index + 1);
+  }
   while (isEnvironmentAssignment(words[index])) index += 1;
   if (words[index] === '--') index += 1;
   return index > 0 ? words.slice(index).join(' ') : String(command ?? '').trim();
 }
 
+function envPayloadIndex(words, startIndex) {
+  let index = startIndex;
+  while (index < words.length) {
+    const word = words[index];
+    const lower = word?.toLowerCase();
+    if (!word) return index;
+    if (word === '--') return index + 1;
+    if (isEnvironmentAssignment(word)) {
+      index += 1;
+      continue;
+    }
+    if (['-i', '--ignore-environment', '-0', '--null'].includes(lower)) {
+      index += 1;
+      continue;
+    }
+    if (['-u', '--unset', '-C', '--chdir', '-S', '--split-string'].includes(lower) && words[index + 1]) {
+      index += 2;
+      continue;
+    }
+    if (/^-u.+/.test(word) || lower.startsWith('--unset=')) {
+      index += 1;
+      continue;
+    }
+    return index;
+  }
+  return index;
+}
+
 function isEnvironmentAssignment(word) {
   return /^[A-Za-z_][A-Za-z0-9_]*=.*/.test(word ?? '');
+}
+
+function shellWrapperPayload(part) {
+  const words = shellWords(stripPackageCommandPrefix(part));
+  const shell = words[0]?.toLowerCase();
+  if (!['sh', 'bash', 'pwsh', 'powershell'].includes(shell)) return null;
+
+  for (let index = 1; index < words.length; index += 1) {
+    const lower = words[index]?.toLowerCase();
+    if (['-c', '/c', '-command', '/command'].includes(lower)) {
+      const payload = words[index + 1];
+      return payload ? String(payload) : '';
+    }
+    if (['-lc', '-ec'].includes(lower)) {
+      const payload = words[index + 1];
+      return payload ? String(payload) : '';
+    }
+    if (lower?.startsWith('-c') && lower.length > 2) return words[index].slice(2);
+  }
+
+  return null;
+}
+
+function isStaticShellWrapperPayload(payload) {
+  const text = String(payload ?? '').trim();
+  return Boolean(text) && !/[$`]/.test(text);
 }
 
 function yarnWorkspacesForeachScriptName(command) {
