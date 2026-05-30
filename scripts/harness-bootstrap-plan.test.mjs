@@ -980,6 +980,11 @@ test('parses slash Make targets and ignores commented recipes', () => {
 test('keeps local Make formatter writes out of runtime-safety hints', () => {
   const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-make-local-write-'));
   try {
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        check: 'make check',
+      },
+    }));
     writeFileSync(resolve(tempRoot, 'Makefile'), [
       'check:',
       '\tprettier --write .',
@@ -990,7 +995,9 @@ test('keeps local Make formatter writes out of runtime-safety hints', () => {
     const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
 
     assert(!survey.commands.some((run) => run.command === 'make check'));
+    assert(!survey.commands.some((run) => run.command === 'npm run check'));
     assert(!survey.runtimeSafetyHints.some((hint) => hint.path === 'Makefile'));
+    assert(!survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
     assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
@@ -2223,6 +2230,28 @@ test('uses task-runner deploy targets as runtime-safety evidence', () => {
     && hint.reason === 'package script "test" may mutate external state'
   )));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('ignores task-runner filter and project names when detecting deploy targets', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-task-runner-filter-name-'));
+  try {
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        build: 'turbo run build --filter deploy',
+        check: 'nx run deploy:build',
+      },
+    }));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(survey.commands.some((run) => run.command === 'npm run build'));
+    assert(survey.commands.some((run) => run.command === 'npm run check'));
+    assert(!survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+    assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test('screens Nx positional targets before emitting package wrappers', () => {

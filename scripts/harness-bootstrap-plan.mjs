@@ -335,11 +335,12 @@ export function surveyRepository(inputPath, options = {}) {
   const docs = collectDocs(allFiles);
   const packageManager = inferPackageManager(fileSet, packageJson);
   const unsafeMakeTargets = collectUnsafeMakeTargets(root, fileSet, packageManifests);
+  const runtimeSafetyUnsafeMakeTargets = collectUnsafeMakeTargets(root, fileSet, packageManifests, { runtimeSafety: true });
   const packageScripts = collectPackageScripts(packageManifests, packageManager, fileSet, unsafeMakeTargets, {
     incompleteScan: files.truncated,
   });
   const makeTargets = collectMakeTargets(root, fileSet, unsafeMakeTargets);
-  const makeRuntimeSafetyHints = collectMakeRuntimeSafetyHints(root, fileSet, packageManifests);
+  const makeRuntimeSafetyHints = collectMakeRuntimeSafetyHints(root, fileSet, packageManifests, runtimeSafetyUnsafeMakeTargets);
   const ci = collectCi(root, allFiles, packageManifests, unsafeMakeTargets, { incompleteScan: files.truncated });
   const scriptFiles = allFiles.filter((path) => path.startsWith('scripts/')).sort();
   const harnessControls = collectHarnessControls(allFiles);
@@ -377,7 +378,7 @@ export function surveyRepository(inputPath, options = {}) {
     repoDependencyHints: collectRepoDependencyHints(allFiles, packageJson),
     runtimeSafetyHints: dedupeObjects(
       [
-        ...collectRuntimeSafetyHints(allFiles, ci, packageManifests, unsafeMakeTargets, { incompleteScan: files.truncated }),
+        ...collectRuntimeSafetyHints(allFiles, ci, packageManifests, runtimeSafetyUnsafeMakeTargets, { incompleteScan: files.truncated }),
         ...makeRuntimeSafetyHints,
       ],
       (hint) => `${hint.path}\0${hint.reason}`,
@@ -1179,19 +1180,19 @@ function collectMakeTargets(root, fileSet, unsafeTargets = collectUnsafeMakeTarg
     }));
 }
 
-function collectMakeRuntimeSafetyHints(root, fileSet, packageManifests = []) {
+function collectMakeRuntimeSafetyHints(root, fileSet, packageManifests = [], unsafeTargets = null) {
   const targets = collectMakeTargetRecipes(root, fileSet, { includeIncludedMakefiles: true });
-  const unsafeTargets = unsafeMakeTargetKeys(targets, packageManifests, { runtimeSafety: true });
+  const runtimeSafetyUnsafeTargets = unsafeTargets ?? unsafeMakeTargetKeys(targets, packageManifests, { runtimeSafety: true });
   return targets
-    .filter((target) => unsafeTargets.has(makeTargetKey(target.directory, target.name)))
+    .filter((target) => runtimeSafetyUnsafeTargets.has(makeTargetKey(target.directory, target.name)))
     .map((target) => ({
       path: target.path,
       reason: `make target "${target.name}" may mutate external state`,
     }));
 }
 
-function collectUnsafeMakeTargets(root, fileSet, packageManifests = []) {
-  return unsafeMakeTargetKeys(collectMakeTargetRecipes(root, fileSet, { includeIncludedMakefiles: true }), packageManifests);
+function collectUnsafeMakeTargets(root, fileSet, packageManifests = [], options = {}) {
+  return unsafeMakeTargetKeys(collectMakeTargetRecipes(root, fileSet, { includeIncludedMakefiles: true }), packageManifests, options);
 }
 
 function collectMakeTargetRecipes(root, fileSet, options = {}) {
@@ -3036,21 +3037,11 @@ function packageManagerOptionConsumesNext(option, manager = '') {
 }
 
 function hasDangerousTaskTarget(part) {
-  const normalized = taskRunnerCommandText(part);
-  if (!normalized) return false;
-  return /(?:^|\s)[@A-Za-z0-9_./-]+:(?:deploy|release|publish|provision)(?:\b|[:._-])/i.test(normalized)
-    || /(?:^|\s)--target(?:=|\s+)(?:deploy|release|publish|provision)(?:\b|[:._-])/i.test(normalized)
-    || /(?:^|\s)(?:--targets?|-t)(?:=|\s+)\S*(?:deploy|release|publish|provision)(?:\b|[:._,-])/i.test(normalized)
-    || /(?:^|\s)(?:deploy|release|publish|provision)(?:\b|[:._-])/i.test(normalized);
+  return packageScriptNamesFromTaskRunnerCommand(part).some(isAuthorityPackageScript);
 }
 
 function hasDangerousForwardedTarget(part) {
   return /(?:^|\s)--target(?:=|\s+)(?:deploy|release|publish|provision)(?:\b|[:._-])/i.test(String(part ?? ''));
-}
-
-function taskRunnerCommandText(part) {
-  const invocation = taskRunnerInvocation(part);
-  return invocation ? invocation.words.join(' ') : null;
 }
 
 function taskRunnerInvocation(part) {
@@ -3818,9 +3809,9 @@ function findUnsafeTaskRunnerPackageScript(childScripts, command, chain, context
       const targetScripts = packageScriptsObject(childManifest?.json?.scripts);
       const expandedScripts = expandPackageScriptSelector(childScript, targetScripts);
       for (const expandedScript of expandedScripts) {
+        resolvedScript = true;
         const visitKey = `${childManifest.path}\0${expandedScript}`;
         if (context.visited?.has(visitKey)) continue;
-        resolvedScript = true;
         const unsafeScript = findUnsafePackageScript(expandedScript, targetScripts, chain, {
           ...context,
           manifest: childManifest,
