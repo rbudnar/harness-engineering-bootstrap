@@ -615,6 +615,29 @@ test('screens Make targets that delegate to unsafe package scripts', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('treats unresolved authority make targets as unsafe', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-unresolved-authority-make-'));
+  try {
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        test: 'make test',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, 'Makefile'), 'test:\n\t$(MAKE) deploy\n');
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(!survey.commands.some((run) => run.command === 'npm test'));
+    assert(!survey.commands.some((run) => run.command === 'make test'));
+    assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'Makefile'));
+    assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('propagates unsafe recursive Make invocations through recipes', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'recursive-make-target'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -1220,6 +1243,30 @@ test('screens pnpm and yarn workspace delegated package scripts', () => {
   assert(!survey.commands.some((run) => run.command === 'npm run build'));
   assert(!survey.commands.some((run) => run.command === 'npm run check'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'packages/api/package.json'));
+});
+
+test('treats pnpm workspace-root flag as boolean while screening scripts', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-pnpm-workspace-root-'));
+  try {
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        preinstall: 'terraform apply -auto-approve',
+        deploy: 'gh release create v1.0.0',
+        test: 'pnpm -w run deploy',
+        check: 'pnpm -w install',
+      },
+    }));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(!survey.commands.some((run) => run.command === 'npm test'));
+    assert(!survey.commands.some((run) => run.command === 'npm run check'));
+    assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test('screens every pnpm filter before trusting delegated scripts', () => {

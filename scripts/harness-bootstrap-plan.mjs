@@ -98,7 +98,7 @@ const dangerousCommandPatterns = [
   /\bnpm\s+publish\b/,
   /\bpnpm\s+publish\b/,
   /\bnpm\s+(?:(?:--workspace|-w)(?:=|\s+)\S+\s+|--workspaces?\s+|-ws\s+)*publish\b/,
-  /\bpnpm\s+(?:(?:--filter|-F)(?:=|\s+)\S+\s+|-r\s+|--recursive\s+)*publish\b/,
+  /\bpnpm\s+(?:(?:--filter|-F)(?:=|\s+)\S+\s+|-r\s+|--recursive\s+|-w\s+|--workspace-root\s+)*publish\b/,
   /\byarn\s+npm\s+publish\b/,
   /\bbun\s+publish\b/,
   /\bdocker\s+push\b/,
@@ -113,7 +113,7 @@ const dangerousCommandPatterns = [
   /\b(node|tsx?|python3?|bash|sh|pwsh|powershell)\s+\S*(deploy|release|publish|provision)[\w./\\-]*/i,
   /\b(npm|pnpm|yarn|bun)\s+(run\s+)?[\w:.-]*(deploy|publish|release)[\w:.-]*\b/,
   /\bnpm\s+(?:(?:--prefix|--workspace|-w)(?:=|\s+)\S+\s+|--workspaces?\s+|-ws\s+)*(run\s+)?[\w:.-]*(deploy|publish|release|provision)[\w:.-]*\b/,
-  /\bpnpm\s+(?:(?:--filter|-f|--dir|-c)(?:=|\s+)\S+\s+|-r\s+|--recursive\s+)*(run\s+)?[\w:.-]*(deploy|publish|release|provision)[\w:.-]*\b/,
+  /\bpnpm\s+(?:(?:--filter|-f|--dir|-c)(?:=|\s+)\S+\s+|-r\s+|--recursive\s+|-w\s+|--workspace-root\s+)*(run\s+)?[\w:.-]*(deploy|publish|release|provision)[\w:.-]*\b/,
   /\byarn\s+(?:(?:--cwd|workspace)(?:=|\s+)\S+\s+)*(run\s+)?[\w:.-]*(deploy|publish|release|provision)[\w:.-]*\b/,
   /\bbun\s+(?:(?:--cwd)(?:=|\s+)\S+\s+)*run\s+[\w:.-]*(deploy|publish|release|provision)[\w:.-]*\b/,
   /\bazd\s+(up|deploy|provision|restore)\b/,
@@ -2645,6 +2645,10 @@ function unsafeMakeTargetReasonFromDirectory(command, unsafeMakeTargets, baseDir
       const { target } = targetMatch;
       return `it calls make target "${target}"${location} whose recipe may mutate external state`;
     }
+    const authorityTarget = invocation.targets.find((target) => isAuthorityMakeTargetName(target));
+    if (authorityTarget) {
+      return `it calls unresolved authority make target "${authorityTarget}"; inspect before running`;
+    }
   }
 
   return null;
@@ -3602,7 +3606,7 @@ function isPackageInstallCommand(command) {
     const word = words[index];
     const lower = word?.toLowerCase();
     if (!word || word === '--') continue;
-    if (packageOptionConsumesNext(word)) {
+    if (packageOptionConsumesNext(word, manager)) {
       index += 1;
       continue;
     }
@@ -4120,7 +4124,7 @@ function scopedPackageScriptNameFromWords(words, blockedCommands = []) {
   const activeWords = wordsBeforePackageArgSeparator(words);
   const scopedOptions = {
     npm: ['--prefix', '--workspace', '-w'],
-    pnpm: ['--dir', '-C', '--filter', '-F'],
+    pnpm: ['--dir', '-C', '--filter', '-F', '-w', '--workspace-root'],
     yarn: ['--cwd'],
     bun: ['--cwd'],
   }[manager] ?? [];
@@ -4192,6 +4196,7 @@ function packageOptionValues(words, options) {
 }
 
 function scriptNameAfterPackageOptions(words, startIndex, blockedCommands = []) {
+  const manager = words[0]?.toLowerCase();
   const blocked = new Set(blockedCommands.map((command) => command.toLowerCase()));
   for (let index = startIndex; index < words.length; index += 1) {
     const word = words[index];
@@ -4204,7 +4209,7 @@ function scriptNameAfterPackageOptions(words, startIndex, blockedCommands = []) 
     }
     if (lower === 'test') return 'test';
     if (word.startsWith('-')) {
-      if (packageOptionConsumesNext(word)) index += 1;
+      if (packageOptionConsumesNext(word, manager)) index += 1;
       continue;
     }
     if (blocked.has(lower) || !validPackageScriptName(word)) return null;
@@ -4213,8 +4218,10 @@ function scriptNameAfterPackageOptions(words, startIndex, blockedCommands = []) 
   return null;
 }
 
-function packageOptionConsumesNext(option) {
+function packageOptionConsumesNext(option, manager = '') {
+  const lower = option.toLowerCase();
   if (option.includes('=')) return false;
+  if (manager === 'pnpm' && lower === '-w') return false;
   return [
     '-F',
     '-C',
@@ -4224,7 +4231,7 @@ function packageOptionConsumesNext(option) {
     '--filter',
     '--prefix',
     '--workspace',
-  ].some((candidate) => option.toLowerCase() === candidate.toLowerCase());
+  ].some((candidate) => lower === candidate.toLowerCase());
 }
 
 function validPackageScriptName(name) {
