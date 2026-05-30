@@ -343,7 +343,10 @@ export function surveyRepository(inputPath, options = {}) {
   });
   const makeTargets = collectMakeTargets(root, fileSet, unsafeMakeTargets);
   const makeRuntimeSafetyHints = collectMakeRuntimeSafetyHints(root, fileSet, packageManifests, runtimeSafetyUnsafeMakeTargets);
-  const ci = collectCi(root, allFiles, packageManifests, unsafeMakeTargets, { incompleteScan: files.truncated });
+  const ci = collectCi(root, allFiles, packageManifests, unsafeMakeTargets, {
+    incompleteScan: files.truncated,
+    runtimeSafetyUnsafeMakeTargets,
+  });
   const scriptFiles = allFiles.filter((path) => path.startsWith('scripts/')).sort();
   const harnessControls = collectHarnessControls(allFiles);
   const prWorkflowMetricHints = collectPrWorkflowMetricHints(root, allFiles);
@@ -1054,12 +1057,16 @@ function collectCi(root, files, packageManifests = [], unsafeMakeTargets = new S
   }).sort();
 
   const runCommands = [];
+  const ciOptions = {
+    ...options,
+    runtimeSafetyUnsafeMakeTargets: options.runtimeSafetyUnsafeMakeTargets ?? unsafeMakeTargets,
+  };
   for (const path of ciFiles) {
     const text = readText(root, path);
     if (path.toLowerCase().startsWith('.github/workflows/')) {
-      runCommands.push(...collectWorkflowRunCommands(text, path, packageManifests, unsafeMakeTargets, options));
+      runCommands.push(...collectWorkflowRunCommands(text, path, packageManifests, unsafeMakeTargets, ciOptions));
     } else {
-      runCommands.push(...collectGenericCiRunCommands(text, path, packageManifests, unsafeMakeTargets, options));
+      runCommands.push(...collectGenericCiRunCommands(text, path, packageManifests, unsafeMakeTargets, ciOptions));
     }
   }
 
@@ -1210,6 +1217,7 @@ function collectMakeTargetRecipes(root, fileSet, options = {}) {
   const includedTargets = makefilePaths.flatMap((path) => {
     const callerDirectory = makefileDirectory(path);
     return collectIncludedMakefilePaths(path, textByPath, fileSet)
+      .filter((includedPath) => textByPath.has(includedPath))
       .flatMap((includedPath) => parseMakeTargetRecipes(textByPath.get(includedPath), includedPath, { directory: callerDirectory }));
   });
 
@@ -1657,6 +1665,7 @@ function collectWorkflowRunCommands(text, source, packageManifests = [], unsafeM
           workingDirectory,
           runtimeSafetyReason,
           unsafeMakeTargets,
+          runtimeSafetyUnsafeMakeTargets: options.runtimeSafetyUnsafeMakeTargets,
           incompleteScan: options.incompleteScan,
         }));
       }
@@ -1665,6 +1674,7 @@ function collectWorkflowRunCommands(text, source, packageManifests = [], unsafeM
         workingDirectory,
         runtimeSafetyReason,
         unsafeMakeTargets,
+        runtimeSafetyUnsafeMakeTargets: options.runtimeSafetyUnsafeMakeTargets,
         incompleteScan: options.incompleteScan,
       }));
     }
@@ -1798,7 +1808,12 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
   const lines = text.split(/\r?\n/);
   const commands = [];
   const carriesShellPhaseDirectory = isGitLabCiSource(source);
-  const ciOptions = (extra = {}) => ({ ...extra, unsafeMakeTargets, incompleteScan: options.incompleteScan });
+  const ciOptions = (extra = {}) => ({
+    ...extra,
+    unsafeMakeTargets,
+    runtimeSafetyUnsafeMakeTargets: options.runtimeSafetyUnsafeMakeTargets,
+    incompleteScan: options.incompleteScan,
+  });
   let shellPhaseWorkingDirectory = null;
   let shellPhaseIndent = null;
 
@@ -2498,6 +2513,7 @@ function packageManagerForManifest(fileSet, manifest, fallback) {
     if (fileSet.has(`${directory}/pnpm-lock.yaml`)) return 'pnpm';
     if (fileSet.has(`${directory}/yarn.lock`)) return 'yarn';
     if (fileSet.has(`${directory}/bun.lock`) || fileSet.has(`${directory}/bun.lockb`)) return 'bun';
+    if (fileSet.has(`${directory}/package-lock.json`) || fileSet.has(`${directory}/npm-shrinkwrap.json`)) return 'npm';
   }
 
   return fallback;
@@ -2614,6 +2630,7 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
   const workingDirectory = options.workingDirectory ?? null;
   const runtimeSafetyReason = options.runtimeSafetyReason ?? null;
   const unsafeMakeTargets = options.unsafeMakeTargets ?? new Set();
+  const runtimeSafetyUnsafeMakeTargets = options.runtimeSafetyUnsafeMakeTargets ?? unsafeMakeTargets;
   const workingDirectoryReason = workingDirectory
     ? `it declares working-directory ${formatInlineValue(workingDirectory)}; inspect and run from that directory manually`
     : null;
@@ -2625,7 +2642,7 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
     currentDirectory: workingDirectory ?? '',
   });
   const packageScriptRuntimeSafetyReason = unsafePackageScriptReason(command, packageManifest, packageManifests, {
-    unsafeMakeTargets,
+    unsafeMakeTargets: runtimeSafetyUnsafeMakeTargets,
     incompleteScan: options.incompleteScan,
     currentDirectory: workingDirectory ?? '',
     runtimeSafety: true,

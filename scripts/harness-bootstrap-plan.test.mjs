@@ -199,6 +199,30 @@ test('infers pnpm from workspace metadata before defaulting to npm', () => {
   }
 });
 
+test('honors nested npm lockfiles under non-npm roots', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-nested-npm-lock-'));
+  try {
+    mkdirSync(resolve(tempRoot, 'tools', 'app'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({ private: true }));
+    writeFileSync(resolve(tempRoot, 'pnpm-lock.yaml'), 'lockfileVersion: 9\n');
+    writeFileSync(resolve(tempRoot, 'tools', 'app', 'package.json'), JSON.stringify({
+      scripts: {
+        test: 'node --test',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, 'tools', 'app', 'package-lock.json'), '{}');
+
+    const survey = surveyRepository(tempRoot);
+    const commands = survey.commands.map((command) => command.command);
+
+    assert.equal(survey.packageManager, 'pnpm');
+    assert(commands.includes('npm --prefix tools/app test'));
+    assert(!commands.includes('pnpm --dir tools/app test'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('includes hyphenated validation package scripts after safety screening', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'hyphenated-validation-scripts'));
   const commands = survey.commands.map((command) => command.command);
@@ -948,6 +972,25 @@ test('includes safe nested Makefile validation targets', () => {
   assert(!plan.openQuestions.some((question) => question.includes('exact command')));
 });
 
+test('ignores non-Makefile include helpers without crashing', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-make-include-env-'));
+  try {
+    writeFileSync(resolve(tempRoot, 'Makefile'), [
+      'include config.env',
+      'test:',
+      '\t@echo ok',
+      '',
+    ].join('\n'));
+    writeFileSync(resolve(tempRoot, 'config.env'), 'FOO=bar\n');
+
+    const survey = surveyRepository(tempRoot);
+
+    assert(survey.commands.some((run) => run.command === 'make test'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('screens compact make directory options before emitting package commands', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'make-compact-directory-package'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -998,6 +1041,45 @@ test('keeps local Make formatter writes out of runtime-safety hints', () => {
     assert(!survey.commands.some((run) => run.command === 'make check'));
     assert(!survey.commands.some((run) => run.command === 'npm run check'));
     assert(!survey.runtimeSafetyHints.some((hint) => hint.path === 'Makefile'));
+    assert(!survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+    assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('keeps CI Make formatter package writes out of runtime-safety hints', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-ci-make-local-write-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        check: 'make check',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, 'Makefile'), [
+      'check:',
+      '\tprettier --write .',
+      '',
+    ].join('\n'));
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'ci.yml'), [
+      'jobs:',
+      '  test:',
+      '    steps:',
+      '      - run: npm run check',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(survey.ci.runCommands.some((run) => (
+      run.command === 'npm run check'
+      && !run.safe
+      && run.packageScriptReason.includes('package script "check"')
+      && !run.packageScriptRuntimeSafetyReason
+    )));
+    assert(!survey.runtimeSafetyHints.some((hint) => hint.path === '.github/workflows/ci.yml'));
     assert(!survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
     assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
   } finally {
