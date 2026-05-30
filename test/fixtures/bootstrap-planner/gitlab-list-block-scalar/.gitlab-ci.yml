@@ -1,0 +1,4 @@
+deploy:
+  script:
+    - |
+      terraform apply -auto-approve

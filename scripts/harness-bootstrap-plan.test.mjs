@@ -392,6 +392,21 @@ test('parses non-GitHub CI scripts for runtime-safety triggers', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('parses generic CI list block scalars as commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'gitlab-list-block-scalar'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.source === '.gitlab-ci.yml'
+    && run.command === 'terraform apply -auto-approve'
+    && run.multiline
+    && !run.safe
+  )));
+  assert(!survey.ci.runCommands.some((run) => run.command === '|' || run.command === '>'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === '.gitlab-ci.yml'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('parses GitLab before and after scripts for runtime-safety triggers', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'gitlab-before-after-ci'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -1445,6 +1460,19 @@ test('uses workflow step metadata as runtime-safety evidence', () => {
 
 test('uses inherited workflow secrets as runtime-safety evidence', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'workflow-inherited-secrets'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'npm test'
+    && !run.safe
+    && run.runtimeSafetyReason === 'GitHub workflow step inherits secrets'
+  )));
+  assert(!survey.commands.some((run) => run.command === 'npm test'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('uses inline inherited workflow secrets as runtime-safety evidence', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workflow-inline-inherited-secrets'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
 
   assert(survey.ci.runCommands.some((run) => (

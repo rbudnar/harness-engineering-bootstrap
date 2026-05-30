@@ -1574,7 +1574,13 @@ function scopeBlockSecretText(lines, start, end, blockIndent) {
   for (let index = start; index < end; index += 1) {
     const line = lines[index];
     if (!line.trim()) continue;
-    if (indentation(line) !== blockIndent || !/^\s*env:\s*$/.test(line)) continue;
+    if (indentation(line) !== blockIndent) continue;
+    const envMatch = line.match(/^\s*env:\s*(.*)$/);
+    if (!envMatch) continue;
+    const inlineEnv = envMatch[1].trim();
+    if (/\$\{\{\s*secrets\./i.test(inlineEnv)) return inlineEnv;
+    if (inlineEnv) continue;
+
     const blockLines = [];
     for (let blockIndex = index + 1; blockIndex < end; blockIndex += 1) {
       const blockLine = lines[blockIndex];
@@ -1775,19 +1781,49 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
         const listCommand = nextLine.match(/^\s*-\s+(.+?)\s*$/)?.[1];
         if (listCommand) {
           const command = stripYamlQuotes(listCommand.trim());
-          const changedDirectory = workingDirectoryFromCdCommand(command);
-          if (changedDirectory !== null) {
-            blockWorkingDirectory = changedDirectory;
-            if (phaseCarriesDirectory) {
-              shellPhaseWorkingDirectory = changedDirectory;
-              shellPhaseIndent = indentation(line);
+          if (/^[|>]/.test(command)) {
+            const listBlockLines = [];
+            const listCommandIndent = indentation(nextLine);
+            let listBlockIndent = null;
+
+            for (let listIndex = nextIndex + 1; listIndex < lines.length; listIndex += 1) {
+              const listBlockLine = lines[listIndex];
+              if (!listBlockLine.trim()) {
+                if (listBlockLines.length) listBlockLines.push('');
+                continue;
+              }
+
+              const listBlockLineIndent = indentation(listBlockLine);
+              if (listBlockLineIndent <= listCommandIndent) break;
+              if (listBlockIndent === null) listBlockIndent = listBlockLineIndent;
+              if (listBlockLineIndent < listBlockIndent) break;
+              listBlockLines.push(listBlockLine);
+              index = listIndex;
+              nextIndex = listIndex;
             }
-            commands.push(classifyCiRunCommand(source, command, false, packageManifests, { unsafeMakeTargets }));
+
+            const blockCommand = normalizeRunBlock(listBlockLines, { folded: command.startsWith('>') });
+            if (blockCommand) {
+              commands.push(classifyCiRunCommand(source, blockCommand, true, packageManifests, {
+                workingDirectory: blockWorkingDirectory,
+                unsafeMakeTargets,
+              }));
+            }
           } else {
-            commands.push(classifyCiRunCommand(source, command, false, packageManifests, {
-              workingDirectory: blockWorkingDirectory,
-              unsafeMakeTargets,
-            }));
+            const changedDirectory = workingDirectoryFromCdCommand(command);
+            if (changedDirectory !== null) {
+              blockWorkingDirectory = changedDirectory;
+              if (phaseCarriesDirectory) {
+                shellPhaseWorkingDirectory = changedDirectory;
+                shellPhaseIndent = indentation(line);
+              }
+              commands.push(classifyCiRunCommand(source, command, false, packageManifests, { unsafeMakeTargets }));
+            } else {
+              commands.push(classifyCiRunCommand(source, command, false, packageManifests, {
+                workingDirectory: blockWorkingDirectory,
+                unsafeMakeTargets,
+              }));
+            }
           }
         } else if (siblingWorkingDirectory) {
           const nestedWorkingDirectory = nextLine.match(/^\s*working[-_]directory:\s*(.+?)\s*$/)?.[1];
