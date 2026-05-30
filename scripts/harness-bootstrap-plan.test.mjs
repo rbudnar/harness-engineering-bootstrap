@@ -321,6 +321,7 @@ test('screens quoted scoped install lifecycle hooks before emitting package comm
   const survey = surveyRepository(resolve(fixturesRoot, 'quoted-scoped-install-lifecycle'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
 
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
   assert(!survey.commands.some((run) => run.command === 'npm test'));
   assert(!survey.commands.some((run) => run.command === 'npm run check'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'services/api v2/package.json'));
@@ -1574,6 +1575,8 @@ test('uses task-runner deploy targets as runtime-safety evidence', () => {
   assert(!survey.commands.some((run) => run.command === 'npm test'));
   assert(!survey.commands.some((run) => run.command === 'npm run quality'));
   assert(!survey.commands.some((run) => run.command === 'npm run build'));
+  assert(!survey.commands.some((run) => run.command === 'npm run typecheck'));
+  assert(!survey.commands.some((run) => run.command === 'npm run lint'));
   assert(!survey.commands.some((run) => run.command === 'npm run validate'));
   assert(!survey.commands.some((run) => run.command === 'npm run coverage'));
   assert(survey.runtimeSafetyHints.some((hint) => (
@@ -1591,9 +1594,12 @@ test('screens package script aggregators before emitting validation commands', (
   const survey = surveyRepository(resolve(fixturesRoot, 'script-aggregator-package'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
 
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(!survey.commands.some((run) => run.command === 'npm run coverage'));
   assert(!survey.commands.some((run) => run.command === 'npm test'));
   assert(!survey.commands.some((run) => run.command === 'npm run lint'));
   assert(!survey.commands.some((run) => run.command === 'npm run build'));
+  assert(!survey.commands.some((run) => run.command === 'npm run validate'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });

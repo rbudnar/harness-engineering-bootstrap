@@ -2685,6 +2685,7 @@ function hasDangerousTaskTarget(part) {
   if (!normalized) return false;
   return /(?:^|\s)[@A-Za-z0-9_./-]+:(?:deploy|release|publish|provision)(?:\b|[:._-])/i.test(normalized)
     || /(?:^|\s)--target(?:=|\s+)(?:deploy|release|publish|provision)(?:\b|[:._-])/i.test(normalized)
+    || /(?:^|\s)(?:--targets?|-t)(?:=|\s+)\S*(?:deploy|release|publish|provision)(?:\b|[:._,-])/i.test(normalized)
     || /(?:^|\s)(?:deploy|release|publish|provision)(?:\b|[:._-])/i.test(normalized);
 }
 
@@ -3149,12 +3150,16 @@ function findUnsafePackageScript(scriptName, scripts, chain = [], context = {}) 
     for (const childScript of dedupe(childScripts)) {
       for (const childManifest of packageScriptManifestsForCommand(part, partManifest ?? context.manifest, context.packageManifests ?? [], currentDirectory)) {
         const targetScripts = packageScriptsObject(childManifest?.json?.scripts) ?? scriptMap;
-        const unsafeScript = findUnsafePackageScript(childScript, targetScripts, nextChain, {
-          ...context,
-          manifest: childManifest,
-          visited: nextVisited,
-        });
-        if (unsafeScript) return unsafeScript;
+        const expandedScripts = expandPackageScriptSelector(childScript, targetScripts);
+        if (!expandedScripts.length && isAuthorityPackageScript(childScript)) return { scriptName: childScript, chain: [...nextChain, childScript] };
+        for (const expandedScript of expandedScripts) {
+          const unsafeScript = findUnsafePackageScript(expandedScript, targetScripts, nextChain, {
+            ...context,
+            manifest: childManifest,
+            visited: nextVisited,
+          });
+          if (unsafeScript) return unsafeScript;
+        }
       }
     }
   }
@@ -3227,6 +3232,18 @@ function packageScriptNamesFromAggregatorCommand(command) {
   return scripts;
 }
 
+function expandPackageScriptSelector(selector, scripts) {
+  const scriptMap = packageScriptsObject(scripts);
+  if (!scriptMap) return [];
+  if (!/[*?]/.test(selector)) return Object.hasOwn(scriptMap, selector) ? [selector] : [];
+  const pattern = new RegExp(`^${escapeRegExp(selector).replace(/\\\*/g, '.*').replace(/\\\?/g, '.')}$`);
+  return Object.keys(scriptMap).filter((name) => pattern.test(name));
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function aggregatorOptionConsumesNext(option) {
   return !option.includes('=') && ['-c', '--config', '-l', '--label', '-n', '--max-parallel'].includes(option.toLowerCase());
 }
@@ -3252,6 +3269,9 @@ function packageScriptNameFromCommand(command) {
   }
 
   if (manager === 'npm') {
+    const npmScriptName = scriptNameAfterPackageOptions(words, 1, ['ci', 'install']);
+    if (npmScriptName) return npmScriptName;
+
     const prefixScriptName = npmPrefixScriptNameFromWords(words);
     if (prefixScriptName) return prefixScriptName;
 
@@ -3442,7 +3462,7 @@ function scriptNameAfterPackageOptions(words, startIndex, blockedCommands = []) 
     const lower = word?.toLowerCase();
     if (!word) continue;
     if (word === '--') continue;
-    if (lower === 'run') {
+    if (lower === 'run' || lower === 'run-script') {
       const scriptName = words[index + 1];
       return validPackageScriptName(scriptName) ? canonicalPackageScriptName(scriptName) : null;
     }
