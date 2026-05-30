@@ -1672,6 +1672,30 @@ test('uses HTTP write hooks as runtime-safety evidence', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('uses database migration CLIs as runtime-safety evidence', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'migration-cli-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  for (const command of [
+    'npm run build',
+    'npm run check',
+    'npm run lint',
+    'npm run quality',
+    'npm run typecheck',
+    'npm run validate',
+  ]) {
+    assert(!survey.commands.some((run) => run.command === command));
+  }
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'npm ci'
+    && !run.safe
+    && run.packageScriptReason.includes('postinstall')
+  )));
+  assert(!survey.commands.some((run) => run.command === 'npm ci'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('uses task-runner deploy targets as runtime-safety evidence', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'target-deploy-package'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
