@@ -113,7 +113,7 @@ const dangerousCommandPatterns = [
   /\b(node|tsx?|python3?|bash|sh|pwsh|powershell)\s+\S*(deploy|release|publish|provision)[\w./\\-]*/i,
   /\b(npm|pnpm|yarn|bun)\s+(run\s+)?[\w:-]*(deploy|publish|release)[\w:-]*\b/,
   /\bnpm\s+--prefix\s+\S+\s+(run\s+)?[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
-  /\bpnpm\s+--dir\s+\S+\s+(run\s+)?[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
+  /\bpnpm\s+(?:--dir|-c)\s+\S+\s+(run\s+)?[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
   /\byarn\s+--cwd\s+\S+\s+(run\s+)?[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
   /\bbun\s+--cwd\s+\S+\s+run\s+[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
   /\bazd\s+(up|deploy|provision|restore)\b/,
@@ -2929,11 +2929,28 @@ function taskRunnerInvocation(part) {
   if (['npx', 'bunx'].includes(lower[index])) {
     index = skipPackageExecutorOptions(words, index + 1);
   } else {
-    index = packageManagerExecCommandIndex(words) ?? index;
+    index = packageManagerExecCommandIndex(words) ?? packageManagerShimCommandIndex(words) ?? index;
   }
 
   if (!['nx', 'turbo', 'moon', 'lage'].includes(lower[index])) return null;
   return { runner: lower[index], words: words.slice(index) };
+}
+
+function packageManagerShimCommandIndex(words) {
+  const manager = words[0]?.toLowerCase();
+  if (!['pnpm', 'yarn', 'bun'].includes(manager)) return null;
+  for (let index = 1; index < words.length; index += 1) {
+    const word = words[index];
+    const lower = word?.toLowerCase();
+    if (!word || word === '--') return null;
+    if (word.startsWith('-')) {
+      if (packageManagerOptionConsumesNext(word, manager) && words[index + 1]) index += 1;
+      continue;
+    }
+    if (['add', 'ci', 'dlx', 'exec', 'install', 'publish', 'remove', 'run', 'test'].includes(lower)) return null;
+    return index;
+  }
+  return null;
 }
 
 function skipPackageExecutorOptions(words, startIndex) {
@@ -3376,7 +3393,7 @@ function resolvePackageDirectory(directory, baseDirectory = null) {
 
 function packageDirectoryFromCommand(command) {
   const trimmed = stripPackageCommandPrefix(command);
-  const beforeCommand = trimmed.match(/^(?:npm\s+--prefix|pnpm\s+--dir|yarn\s+--cwd|bun\s+--cwd)(?:=|\s+)("[^"]+"|'[^']+'|\S+)/i);
+  const beforeCommand = trimmed.match(/^(?:npm\s+--prefix|pnpm\s+(?:--dir|-C)|yarn\s+--cwd|bun\s+--cwd)(?:=|\s+)("[^"]+"|'[^']+'|\S+)/i);
   if (beforeCommand) return stripYamlQuotes(beforeCommand[1].trim());
 
   const trailingNpmPrefix = npmTrailingPrefixDirectory(shellWords(trimmed));
@@ -3468,7 +3485,7 @@ function isInstallCommand(command) {
   return isPackageInstallCommand(trimmed)
     || /^(npm\s+ci|npm\s+install|pnpm\s+install|yarn\s+install|bun\s+install)\b/.test(trimmed)
     || /^npm\s+(?:(?:--prefix|--workspace|-w)(?:=|\s+)\S+|--workspaces?)\s+(ci|install)\b/.test(trimmed)
-    || /^pnpm\s+(?:(?:--dir|--filter|-F)(?:=|\s+)\S+)\s+install\b/.test(trimmed)
+    || /^pnpm\s+(?:(?:--dir|-C|--filter|-F)(?:=|\s+)\S+)\s+install\b/.test(trimmed)
     || /^yarn\s+--cwd(?:=|\s+)\S+\s+install\b/.test(trimmed)
     || /^bun\s+--cwd(?:=|\s+)\S+\s+install\b/.test(trimmed);
 }
@@ -3951,10 +3968,10 @@ function packageScriptNameFromCommand(command) {
   const trailingNpmPrefixTest = trimmed.match(/^npm\s+test\b.*(?:\s|^)--prefix(?:=|\s+)\S+/i);
   if (trailingNpmPrefixTest) return 'test';
 
-  const pnpmDirRun = trimmed.match(/^pnpm\s+--dir(?:=|\s+)\S+\s+run\s+([\w:-]+)/i);
+  const pnpmDirRun = trimmed.match(/^pnpm\s+(?:--dir|-C)(?:=|\s+)\S+\s+run\s+([\w:-]+)/i);
   if (pnpmDirRun) return pnpmDirRun[1];
 
-  const pnpmDirTest = trimmed.match(/^pnpm\s+--dir(?:=|\s+)\S+\s+test\b/i);
+  const pnpmDirTest = trimmed.match(/^pnpm\s+(?:--dir|-C)(?:=|\s+)\S+\s+test\b/i);
   if (pnpmDirTest) return 'test';
 
   const yarnCwd = trimmed.match(/^yarn\s+--cwd(?:=|\s+)\S+\s+(?:run\s+)?([\w:-]+)/i);
@@ -4000,7 +4017,7 @@ function scopedPackageScriptNameFromWords(words, blockedCommands = []) {
   const activeWords = wordsBeforePackageArgSeparator(words);
   const scopedOptions = {
     npm: ['--prefix', '--workspace', '-w'],
-    pnpm: ['--dir', '--filter', '-F'],
+    pnpm: ['--dir', '-C', '--filter', '-F'],
     yarn: ['--cwd'],
     bun: ['--cwd'],
   }[manager] ?? [];
@@ -4097,6 +4114,7 @@ function packageOptionConsumesNext(option) {
   if (option.includes('=')) return false;
   return [
     '-F',
+    '-C',
     '-w',
     '--cwd',
     '--dir',
@@ -4325,7 +4343,7 @@ function isSafeValidationCommandPart(part) {
     /^node\s+--test(?:\s+.*)?$/,
     /^(npm|pnpm|yarn|bun)\s+test(?:\s+.*)?$/,
     /^npm\s+--prefix(?:=|\s+)("[^"]+"|'[^']+'|\S+)\s+(test|run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*)(?:\s+.*)?$/,
-    /^pnpm\s+--dir(?:=|\s+)("[^"]+"|'[^']+'|\S+)\s+(test|run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*)(?:\s+.*)?$/,
+    /^pnpm\s+(?:--dir|-c)(?:=|\s+)("[^"]+"|'[^']+'|\S+)\s+(test|run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*)(?:\s+.*)?$/,
     /^yarn\s+--cwd(?:=|\s+)("[^"]+"|'[^']+'|\S+)\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*(?:\s+.*)?$/,
     /^bun\s+--cwd(?:=|\s+)("[^"]+"|'[^']+'|\S+)\s+run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*(?:\s+.*)?$/,
     /^(npm|pnpm|yarn|bun)\s+run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*(?:\s+.*)?$/,
@@ -4358,7 +4376,7 @@ function scopedPackageDirectoryValues(command) {
   const manager = words[0]?.toLowerCase();
   const scopedOptions = {
     npm: ['--prefix'],
-    pnpm: ['--dir'],
+    pnpm: ['--dir', '-C'],
     yarn: ['--cwd'],
     bun: ['--cwd'],
   }[manager] ?? [];

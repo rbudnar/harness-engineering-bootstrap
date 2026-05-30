@@ -1788,6 +1788,23 @@ test('uses task-runner deploy targets as runtime-safety evidence', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens package-manager task-runner shims and pnpm directory aliases', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'package-manager-task-runner-shim'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  for (const command of [
+    'pnpm build',
+    'pnpm run check',
+    'pnpm run lint',
+    'pnpm test',
+  ]) {
+    assert(!survey.commands.some((run) => run.command === command));
+  }
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'services/api/package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens task-runner workspace targets before emitting validation commands', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'task-runner-workspace-package'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
