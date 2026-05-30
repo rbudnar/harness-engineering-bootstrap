@@ -778,6 +778,37 @@ test('treats unresolved authority make targets as unsafe', () => {
   }
 });
 
+test('uses unresolved authority make CI commands as runtime-safety evidence', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-unresolved-authority-make-ci-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'ci.yml'), [
+      'jobs:',
+      '  deploy:',
+      '    steps:',
+      '      - run: make deploy',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(survey.ci.runCommands.some((run) => (
+      run.command === 'make deploy'
+      && !run.safe
+      && run.inspectOnlyReason.includes('unresolved authority make target "deploy"')
+      && run.makeTargetRuntimeSafetyReason.includes('unresolved authority make target "deploy"')
+    )));
+    assert(survey.runtimeSafetyHints.some((hint) => (
+      hint.path === '.github/workflows/ci.yml'
+      && hint.reason.includes('unresolved authority make target "deploy"')
+    )));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('propagates unsafe recursive Make invocations through recipes', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'recursive-make-target'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });

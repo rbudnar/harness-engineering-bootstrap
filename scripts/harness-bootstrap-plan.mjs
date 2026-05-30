@@ -1469,7 +1469,9 @@ function collectRuntimeSafetyHints(files, ci = { runCommands: [] }, packageManif
     .filter((command) => !command.safe && isRuntimeSafetyCommand(command))
     .map((command) => ({
       path: command.source,
-      reason: command.runtimeSafetyReason ?? `CI command may mutate external state: ${formatInlineValue(command.command)}`,
+      reason: command.runtimeSafetyReason
+        ?? command.makeTargetRuntimeSafetyReason
+        ?? `CI command may mutate external state: ${formatInlineValue(command.command)}`,
     }));
 
   const packageHints = collectPackageRuntimeSafetyHints(packageManifests, unsafeMakeTargets, options);
@@ -1546,6 +1548,7 @@ function collectPackageRuntimeSafetyHints(packageManifests, unsafeMakeTargets = 
 function isRuntimeSafetyCommand(command) {
   return hasRuntimeSafetyDangerousCommand(command.command)
     || Boolean(command.packageScriptRuntimeSafetyReason)
+    || Boolean(command.makeTargetRuntimeSafetyReason)
     || Boolean(command.runtimeSafetyReason);
 }
 
@@ -2635,6 +2638,7 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
     ? `it declares working-directory ${formatInlineValue(workingDirectory)}; inspect and run from that directory manually`
     : null;
   const makeTargetReason = unsafeMakeTargetReason(command, unsafeMakeTargets, workingDirectory);
+  const makeTargetRuntimeSafetyReason = unsafeMakeTargetReason(command, runtimeSafetyUnsafeMakeTargets, workingDirectory);
   const packageManifest = packageManifestForCommand(command, packageManifests, workingDirectory);
   const packageScriptReason = unsafePackageScriptReason(command, packageManifest, packageManifests, {
     unsafeMakeTargets,
@@ -2663,6 +2667,7 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
     workingDirectory,
     packageScriptReason,
     packageScriptRuntimeSafetyReason,
+    makeTargetRuntimeSafetyReason,
     runtimeSafetyReason,
     safe,
     inspectOnlyReason: safe
