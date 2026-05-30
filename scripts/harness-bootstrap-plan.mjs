@@ -117,10 +117,12 @@ const dangerousCommandPatterns = [
   /\byarn\s+--cwd\s+\S+\s+(run\s+)?[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
   /\bbun\s+--cwd\s+\S+\s+run\s+[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
   /\bazd\s+(up|deploy|provision|restore)\b/,
-  /\baz\s+.+\b(create|delete|deploy|update|upload|import|set|purge|restore|start|stop|restart|scale)\b/,
+  /\baz\s+.+\b(create|delete|deploy|update|upload|import|set|purge|restore|start|stop|restart|scale|up)\b/,
   /\baws\s+(s3|s3api)\s+(sync|cp|mv|rm|rb|mb|put|delete|create|update)\b/,
   /\baws\s+.+\b(put|delete|create|deploy|publish|update)\b/,
   /\bgcloud\s+.+\b(deploy|delete|create|update)\b/,
+  /\bsupabase\s+db\s+push\b/,
+  /\bdocker\s+compose\s+up\b.*(?:^|\s)-d(?:\s|$)/,
   /\brm\s+-rf\b/,
   /\bgo\s+fmt\b/,
   /\bcargo\s+fmt\b(?![^&|;]*\s--check\b)/,
@@ -1232,7 +1234,8 @@ function unsafeMakeTargetKeys(targets, packageManifests = []) {
       const key = makeTargetKey(target.directory, target.name);
       if (unsafe.has(key)) continue;
       if (
-        hasDangerousCommand(target.recipe)
+        isAuthorityMakeTargetName(target.name)
+        || hasDangerousCommand(target.recipe)
         || unsafePackageScriptReason(
           target.recipe,
           packageManifestForCommand(target.recipe, packageManifests, target.directory),
@@ -1265,8 +1268,13 @@ function isUnsafeMakePrerequisite(name, directory, byKey, seen = new Set()) {
   const target = byKey.get(key);
   if (!target || seen.has(key)) return false;
   seen.add(key);
-  return hasDangerousCommand(target.recipe)
+  return isAuthorityMakeTargetName(target.name)
+    || hasDangerousCommand(target.recipe)
     || target.prerequisites.some((prerequisite) => isUnsafeMakePrerequisite(prerequisite, target.directory, byKey, seen));
+}
+
+function isAuthorityMakeTargetName(name) {
+  return /(^|[:._-])(deploy|release|publish|provision)([:._-]|$)/i.test(name);
 }
 
 function makeTargetKey(directory, target) {
@@ -2672,6 +2680,12 @@ function hasDangerousCliVerb(part) {
     helm: new Set(['upgrade', 'install', 'uninstall', 'delete', 'rollback']),
     pulumi: new Set(['up', 'destroy', 'cancel', 'refresh', 'import']),
     terraform: new Set(['apply', 'destroy', 'import', 'taint', 'untaint', 'force-unlock']),
+    serverless: new Set(['deploy']),
+    sls: new Set(['deploy']),
+    sam: new Set(['deploy']),
+    cdk: new Set(['deploy']),
+    amplify: new Set(['publish']),
+    heroku: new Set(['container:push', 'deploy:jar', 'deploy:war']),
     vercel: new Set(['deploy']),
     fly: new Set(['deploy']),
     netlify: new Set(['deploy']),

@@ -1,6 +1,7 @@
 {
   "private": true,
   "scripts": {
-    "build": "docker compose push"
+    "build": "docker compose push",
+    "validate": "docker compose up -d"
   }
 }

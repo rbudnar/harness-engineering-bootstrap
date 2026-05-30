@@ -7,3 +7,11 @@ jobs:
       - run: npx wrangler deploy
       - run: pnpm dlx firebase deploy
       - run: azd up --no-prompt
+      - run: serverless deploy --stage prod
+      - run: sls deploy
+      - run: sam deploy
+      - run: cdk deploy
+      - run: amplify publish
+      - run: heroku container:push web
+      - run: supabase db push
+      - run: az webapp up
