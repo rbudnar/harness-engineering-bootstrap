@@ -6,3 +6,4 @@ jobs:
       - run: fly deploy
       - run: npx wrangler deploy
       - run: pnpm dlx firebase deploy
+      - run: azd up --no-prompt

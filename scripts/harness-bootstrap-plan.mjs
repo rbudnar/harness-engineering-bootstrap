@@ -116,6 +116,7 @@ const dangerousCommandPatterns = [
   /\bpnpm\s+--dir\s+\S+\s+(run\s+)?[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
   /\byarn\s+--cwd\s+\S+\s+(run\s+)?[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
   /\bbun\s+--cwd\s+\S+\s+run\s+[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
+  /\bazd\s+(up|deploy|provision|restore)\b/,
   /\baz\s+.+\b(create|delete|deploy|update|upload|import|set|purge|restore|start|stop|restart|scale)\b/,
   /\baws\s+(s3|s3api)\s+(sync|cp|mv|rm|rb|mb|put|delete|create|update)\b/,
   /\baws\s+.+\b(put|delete|create|deploy|publish|update)\b/,

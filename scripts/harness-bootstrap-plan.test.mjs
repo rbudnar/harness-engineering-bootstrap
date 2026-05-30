@@ -1561,6 +1561,7 @@ test('uses direct deploy CLIs as runtime-safety evidence', () => {
   assert(survey.ci.runCommands.some((run) => run.command === 'fly deploy' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'npx wrangler deploy' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'pnpm dlx firebase deploy' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'azd up --no-prompt' && !run.safe));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === '.github/workflows/ci.yml'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
