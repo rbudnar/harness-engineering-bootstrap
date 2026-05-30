@@ -111,12 +111,12 @@ If this repository has the HEB planner helper available, start with the read-onl
 ```bash
 node scripts/harness-bootstrap-plan.mjs --repo <target-repo>
 node scripts/harness-bootstrap-plan.mjs --repo <target-repo> --json
-node scripts/harness-bootstrap-plan.mjs --repo <target-repo> --mode update --target-version <release-tag>
+node scripts/harness-bootstrap-plan.mjs --repo <target-repo> --mode update --target-version v0.1.0
 ```
 
 The helper is a planner, not a generator. It may emit markdown or JSON for later reuse, but it must not write target-repo files or silently accept optional modules.
 
-For repositories that are already bootstrapped, use update mode before applying a newer template version. The update plan should compare the accepted local harness against the target release notes, classify each upstream change as already satisfied, applicable, intentionally rejected as bloat, or blocked by missing local trigger evidence, and name the rollback path before merge.
+For repositories that are already bootstrapped, use update mode before applying a newer template version. HEB release tags use `v<VERSION>` while `VERSION` and metadata store the numeric value. The update plan should compare the accepted local harness against the target release notes, classify each upstream change as already satisfied, applicable, intentionally rejected as bloat, deferred, or blocked by missing local trigger evidence, and name the rollback path before merge.
 
 Before writing files, inspect:
 
@@ -162,7 +162,7 @@ The plan header should include:
 - `next_action`, `validation_command`, and `stop_condition`
 - `supersedes`, `superseded_by`, and a retirement or revisit rule
 
-Accepted bootstraps should record template metadata in `docs/harness-version.json` or `.harness/harness-version.json`, including the accepted template version or tag, source release/tag, install or update date, and any intentionally rejected release changes. Update the metadata only after the bootstrap or update PR passes validation. Rollback should be a normal PR revert plus restoration of the previous metadata and validation evidence.
+Accepted bootstraps should record template metadata in `docs/harness-version.json` or `.harness/harness-version.json`, including `templateVersion`, `sourceRelease`, install or update date, accepted changes, rejected or deferred release changes, validation evidence, and rollback notes when updating an existing bootstrap. Update the metadata only after the bootstrap or update PR passes validation. Rollback should be a normal PR revert plus restoration of the previous metadata and validation evidence.
 
 Each execution turn should run this preflight:
 
