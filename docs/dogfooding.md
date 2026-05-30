@@ -115,4 +115,4 @@ Output must keep required core, triggered modules, rejected modules, smaller-con
 
 ## Review Posture
 
-Treat every template addition as guilty until it proves it improves right-context-at-right-time behavior. Prefer deleting, tightening, or routing existing guidance before adding a new section.
+Treat every template addition as guilty until it proves it improves right-context-at-right-time behavior. Prefer deleting, tightening, or routing existing guidance before adding a new section. If review finds repeated issues in one defect family, the next change must name the missing model and add or update a regression matrix instead of point-fixing examples.

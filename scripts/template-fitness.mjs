@@ -45,6 +45,16 @@ const anchors = [
     text: 'Template rule changes must keep this dogfooding harness current in the same PR',
     reason: 'template changes must update the dogfooding contract when they change repo best practices',
   },
+  {
+    path: 'templates/Harness Engineering Bootstrap.md',
+    text: 'If review finds two issues in the same defect family',
+    reason: 'same-family review churn must become a modeled fix',
+  },
+  {
+    path: 'docs/dogfooding.md',
+    text: 'one defect family',
+    reason: 'this repo must dogfood same-family review churn escalation',
+  },
 ];
 
 const suggestionClassifications = [

@@ -352,6 +352,8 @@ Include:
 - Slow or external tests
 - Current coverage map if useful and mechanically maintainable
 
+For high-risk, reusable, or repeatedly corrected implementation-time decision surfaces, include the model before treating the work as review-ready. A decision surface is code or harness logic that classifies, parses, routes, migrates, authorizes, plans, or decides whether an action is safe. Examples include command classifiers, CI parsers, package-manager wrappers, migration planners, permission gates, resolvers, and release/update planners. For small one-off helpers, a focused local test can be enough. Promote to a compact fixture or regression matrix when the surface is safety-relevant, reused, cross-tool, or has produced same-family review findings; name false-safe and false-blocking outcomes, validate the input families the surface claims to handle, and revisit the matrix if it becomes noisy or no longer covers active behavior.
+
 ### `docs/ci-cd.md` - Automation and Release
 
 Include:
@@ -906,6 +908,8 @@ Before declaring work complete, check whether the task exposed a repeated mistak
 
 If yes, update the smallest durable harness surface in the same PR: `docs/README.md`, decision memory, a contract, a script, a review rule, a skill, or a focused doc. If the right fix is unclear, record a marker in the PR body, review thread, issue, or configured feedback log, such as `harness:miss-adr`, `harness:missing-guide`, `harness:missing-sensor`, `harness:wrong-command`, or `harness:context-rot`.
 
+If review finds two issues in the same defect family, stop point-fixing examples. Name the missing model or decision surface, update the fixture/regression matrix, and fix the class before continuing. Do not defer in-scope defects as follow-up work merely because review churn is high.
+
 Do not solve repeated mistakes only in provider memory, scratchpads, plans, or PR comments.
 
 ## Provider Memory
@@ -1166,6 +1170,7 @@ When a repeated or high-risk failure appears, classify the fix:
 - Mechanically checkable mistake: add a script/CI check.
 - Review should have caught it: add or update the canonical review harness or the relevant tool-specific adapter.
 - Wrong migration scope or unverified handoff claim: add a semantic-scope guide, PR prompt, review rule, data contract, repo contract, or route.
+- Repeated same-family implementation defect: identify the missing model or decision surface and add or update a fixture/regression matrix before more point fixes.
 - Failure happened before code was written: add or improve a guide.
 - Failure escaped after code was written: add or improve a sensor.
 - Existing control fired but was ignored or too noisy: improve the control's output, lifecycle, or severity before adding another rule.
@@ -1902,6 +1907,7 @@ Do not treat baseline imperfections as automatic blockers. The goal is to make t
 - [ ] Add a compact decision index with status, area, applies-to, read-when, rule, and detail/anchor fields
 - [ ] Add a decision-router script when decision count, file length, or repeated misses justify it
 - [ ] Create or update `docs/testing.md`
+- [ ] For parsers, classifiers, planners, resolvers, migrations, command runners, or safety gates, define false-safe/false-blocking risks and a fixture matrix before review
 - [ ] Create or update `docs/ci-cd.md`
 - [ ] Create or update `docs/human-guide.md`
 - [ ] Add a control inventory for mature/high-churn repos, classifying guide/sensor and computational/inferential controls

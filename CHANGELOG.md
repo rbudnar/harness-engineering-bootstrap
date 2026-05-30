@@ -7,6 +7,7 @@ Dates reflect repository history, not formal package releases.
 - Added a read-only bootstrap planner CLI with markdown and JSON output, fixture tests, and CI coverage so agents can produce review-ready harness setup plans before writing target-repo files.
 - Added durable plan lifecycle guidance for active plan artifacts, execution preflight, single-agent phase separation, explicit rejection of untriggered modules, and progress-log handoff.
 - Added update-mode planning, template version metadata, rollback guidance, and a `VERSION` fitness check so already-bootstrapped repositories can move between template releases without manual chat relay.
+- Added implementation-time decision-surface and defect-family guidance so repeated same-class review findings become modeled fixes with regression matrices instead of point patches.
 
 ## 2026-05-25
 
