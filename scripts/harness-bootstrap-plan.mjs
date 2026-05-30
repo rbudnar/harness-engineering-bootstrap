@@ -2615,9 +2615,20 @@ function packageManagerForManifest(fileSet, manifest, fallback) {
     if (fileSet.has(`${directory}/yarn.lock`)) return 'yarn';
     if (fileSet.has(`${directory}/bun.lock`) || fileSet.has(`${directory}/bun.lockb`)) return 'bun';
     if (fileSet.has(`${directory}/package-lock.json`) || fileSet.has(`${directory}/npm-shrinkwrap.json`)) return 'npm';
+    if (ancestorHasFile(fileSet, directory, 'pnpm-workspace.yaml')) return 'pnpm';
   }
 
   return fallback;
+}
+
+function ancestorHasFile(fileSet, directory, filename) {
+  let current = normalizePackageDirectory(directory);
+  while (current) {
+    if (fileSet.has(`${current}/${filename}`)) return true;
+    const parent = dirname(current);
+    current = parent === '.' || parent === current ? '' : parent;
+  }
+  return fileSet.has(filename);
 }
 
 function packageManagerFromDeclaration(packageJson = null) {
@@ -3071,7 +3082,7 @@ function hasDangerousCliVerb(part) {
 
 function packageManagerExecCommandIndex(words) {
   const manager = words[0]?.toLowerCase();
-  if (!['npm', 'pnpm', 'yarn'].includes(manager)) return null;
+  if (!['npm', 'pnpm', 'yarn', 'bun'].includes(manager)) return null;
   for (let index = 1; index < words.length; index += 1) {
     const word = words[index];
     const lower = word?.toLowerCase();
@@ -3080,10 +3091,11 @@ function packageManagerExecCommandIndex(words) {
       if (packageManagerOptionConsumesNext(word, manager) && words[index + 1]) index += 1;
       continue;
     }
-    if (manager === 'npm' && lower === 'exec') return skipPackageExecutorOptions(words, index + 1);
+    if (manager === 'npm' && ['exec', 'x'].includes(lower)) return skipPackageExecutorOptions(words, index + 1);
     if (['pnpm', 'yarn'].includes(manager) && ['exec', 'dlx'].includes(lower)) {
       return skipPackageExecutorOptions(words, index + 1);
     }
+    if (manager === 'bun' && lower === 'x') return skipPackageExecutorOptions(words, index + 1);
     return null;
   }
   return null;
@@ -3221,7 +3233,7 @@ function skipPackageExecutorOptions(words, startIndex) {
   let index = startIndex;
   while (index < words.length && words[index]?.startsWith('-')) {
     const option = words[index].toLowerCase();
-    if (!option.includes('=') && ['-p', '--package', '-c', '--call'].includes(option) && words[index + 1]) index += 2;
+    if (!option.includes('=') && packageExecutorOptionConsumesNext(option) && words[index + 1]) index += 2;
     else index += 1;
   }
   return index;
@@ -3244,6 +3256,7 @@ function packageExecutorPayloads(part) {
     if (lower === '-c' || lower === '--call') return [words.slice(index + 1).join(' ')].filter(Boolean);
     if (lower.startsWith('--call=')) return [[word.slice('--call='.length), ...words.slice(index + 1)].join(' ')].filter(Boolean);
     if (word.startsWith('-') && packageExecutorOptionConsumesNext(word) && words[index + 1]) index += 1;
+    else if (!word.startsWith('-')) return [words.slice(index).join(' ')].filter(Boolean);
   }
   return [];
 }
@@ -3251,7 +3264,7 @@ function packageExecutorPayloads(part) {
 function packageExecutorOptionStart(words) {
   const manager = words[0]?.toLowerCase();
   if (['npx', 'bunx'].includes(manager)) return 1;
-  if (!['npm', 'pnpm', 'yarn'].includes(manager)) return null;
+  if (!['npm', 'pnpm', 'yarn', 'bun'].includes(manager)) return null;
   for (let index = 1; index < words.length; index += 1) {
     const word = words[index];
     const lower = word?.toLowerCase();
@@ -3260,8 +3273,9 @@ function packageExecutorOptionStart(words) {
       if (packageManagerOptionConsumesNext(word, manager) && words[index + 1]) index += 1;
       continue;
     }
-    if (manager === 'npm' && lower === 'exec') return index + 1;
+    if (manager === 'npm' && ['exec', 'x'].includes(lower)) return index + 1;
     if (['pnpm', 'yarn'].includes(manager) && ['exec', 'dlx'].includes(lower)) return index + 1;
+    if (manager === 'bun' && lower === 'x') return index + 1;
     return null;
   }
   return null;
@@ -3270,7 +3284,24 @@ function packageExecutorOptionStart(words) {
 function packageExecutorOptionConsumesNext(option) {
   const lower = String(option ?? '').toLowerCase();
   if (lower.includes('=')) return false;
-  return ['-p', '--package'].includes(lower);
+  if (lower.startsWith('--config.')) return true;
+  return [
+    '-c',
+    '-p',
+    '-w',
+    '--cache',
+    '--call',
+    '--config',
+    '--cwd',
+    '--dir',
+    '--filter',
+    '--package',
+    '--prefix',
+    '--registry',
+    '--tag',
+    '--userconfig',
+    '--workspace',
+  ].includes(lower);
 }
 
 function hasDangerousReleaseToolCommand(part) {

@@ -199,6 +199,36 @@ test('infers pnpm from workspace metadata before defaulting to npm', () => {
   }
 });
 
+test('inherits pnpm from nested workspace metadata', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-nested-pnpm-workspace-'));
+  try {
+    mkdirSync(resolve(tempRoot, 'tools', 'pkg'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({ private: true }));
+    writeFileSync(resolve(tempRoot, 'tools', 'pnpm-workspace.yaml'), 'packages:\n  - pkg\n');
+    writeFileSync(resolve(tempRoot, 'tools', 'package.json'), JSON.stringify({
+      scripts: {
+        test: 'node --test',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, 'tools', 'pkg', 'package.json'), JSON.stringify({
+      scripts: {
+        test: 'node --test',
+      },
+    }));
+
+    const survey = surveyRepository(tempRoot);
+    const commands = survey.commands.map((command) => command.command);
+
+    assert.equal(survey.packageManager, 'npm');
+    assert(commands.includes('pnpm --dir tools test'));
+    assert(commands.includes('pnpm --dir tools/pkg test'));
+    assert(!commands.includes('npm --prefix tools test'));
+    assert(!commands.includes('npm --prefix tools/pkg test'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('honors nested npm lockfiles under non-npm roots', () => {
   const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-nested-npm-lock-'));
   try {
@@ -1692,6 +1722,48 @@ test('screens shell and env wrapped package script chains', () => {
       && hint.reason === 'package script "lint" may mutate external state'
     )));
     assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('screens package executor aliases before trusting validation scripts', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-package-executor-aliases-'));
+  try {
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        test: 'npm x wrangler deploy',
+        check: 'bun x wrangler deploy',
+      },
+    }));
+
+    const survey = surveyRepository(tempRoot);
+
+    assert(!survey.commands.some((run) => run.command === 'npm test'));
+    assert(!survey.commands.some((run) => run.command === 'npm run check'));
+    assert(survey.runtimeSafetyHints.some((hint) => hint.reason === 'package script "test" may mutate external state'));
+    assert(survey.runtimeSafetyHints.some((hint) => hint.reason === 'package script "check" may mutate external state'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('screens package executor payloads after value-taking options', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-package-executor-options-'));
+  try {
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        test: 'npx --registry https://registry.npmjs.org wrangler deploy',
+        check: 'npm exec --workspace api wrangler deploy',
+      },
+    }));
+
+    const survey = surveyRepository(tempRoot);
+
+    assert(!survey.commands.some((run) => run.command === 'npm test'));
+    assert(!survey.commands.some((run) => run.command === 'npm run check'));
+    assert(survey.runtimeSafetyHints.some((hint) => hint.reason === 'package script "test" may mutate external state'));
+    assert(survey.runtimeSafetyHints.some((hint) => hint.reason === 'package script "check" may mutate external state'));
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }
