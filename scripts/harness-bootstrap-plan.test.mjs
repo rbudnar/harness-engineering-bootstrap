@@ -1959,6 +1959,49 @@ test('keeps singular npm workspace commands scoped to one manifest', () => {
   assert(survey.commands.some((run) => run.command === 'npm run build --workspace web'));
 });
 
+test('keeps npm short workspace validation selectors runnable', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-npm-short-workspace-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'packages', 'api'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'packages', 'pkg'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      workspaces: ['packages/*'],
+    }));
+    writeFileSync(resolve(tempRoot, 'packages', 'api', 'package.json'), JSON.stringify({
+      name: 'api',
+      scripts: {
+        test: 'node --test',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, 'packages', 'pkg', 'package.json'), JSON.stringify({
+      name: '@scope/pkg',
+      scripts: {
+        build: 'node --test',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'ci.yml'), [
+      'name: ci',
+      'jobs:',
+      '  test:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: npm test -w packages/api',
+      '      - run: npm run build -w @scope/pkg',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+
+    for (const command of ['npm test -w packages/api', 'npm run build -w @scope/pkg']) {
+      assert(survey.ci.runCommands.some((run) => run.command === command && run.safe), command);
+      assert(survey.commands.some((run) => run.command === command), command);
+    }
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('screens every npm workspace selector before emitting CI commands', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'multi-workspace-selector'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -2990,6 +3033,7 @@ test('keeps forwarded package write flags inspect-only', () => {
       '      - run: npm run format -- --write',
       '      - run: npm test -- --updateSnapshot',
       '      - run: npm test -- -u',
+      '      - run: npm test -- -w',
       '',
     ].join('\n'));
 
@@ -3001,6 +3045,7 @@ test('keeps forwarded package write flags inspect-only', () => {
       'npm run format -- --write',
       'npm test -- --updateSnapshot',
       'npm test -- -u',
+      'npm test -- -w',
     ]) {
       assert(survey.ci.runCommands.some((run) => run.command === command && !run.safe));
       assert(!survey.commands.some((run) => run.command === command));

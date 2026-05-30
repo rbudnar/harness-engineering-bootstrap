@@ -5019,11 +5019,12 @@ function isSafeValidationCommandPart(part) {
 
 function hasPackageValidationWriteFlags(command) {
   const words = shellWords(command);
+  const manager = words[0]?.toLowerCase();
   const scriptIndex = packageValidationScriptIndex(words);
   if (scriptIndex == null) return false;
 
   const args = words.slice(scriptIndex + 1);
-  return hasWriteModeFlag(args);
+  return hasWriteModeFlag(args, { manager });
 }
 
 function packageValidationScriptIndex(words) {
@@ -5046,10 +5047,20 @@ function packageValidationScriptIndex(words) {
   return null;
 }
 
-function hasWriteModeFlag(args) {
-  return args.some((arg) => {
+function hasWriteModeFlag(args, options = {}) {
+  let afterPackageArgSeparator = false;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
     const lower = String(arg ?? '').toLowerCase();
-    return lower === '-w'
+    if (lower === '--') {
+      afterPackageArgSeparator = true;
+      continue;
+    }
+    if (!afterPackageArgSeparator && options.manager === 'npm' && isNpmWorkspaceSelectorArg(lower)) {
+      if (!lower.includes('=') && args[index + 1]) index += 1;
+      continue;
+    }
+    if (lower === '-w'
       || lower === '-u'
       || lower === '--fix'
       || lower === '--update'
@@ -5062,8 +5073,16 @@ function hasWriteModeFlag(args) {
       || lower.startsWith('--updatesnapshot=')
       || lower.startsWith('--update-snapshot=')
       || lower.startsWith('--update-snapshots=')
-      || lower.startsWith('--write=');
-  });
+      || lower.startsWith('--write=')) return true;
+  }
+  return false;
+}
+
+function isNpmWorkspaceSelectorArg(lower) {
+  return lower === '-w'
+    || lower === '--workspace'
+    || lower.startsWith('-w=')
+    || lower.startsWith('--workspace=');
 }
 
 function unsafeScopedPackageDirectoryReason(command, currentDirectory = '') {
