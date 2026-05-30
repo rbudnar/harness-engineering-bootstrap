@@ -1173,7 +1173,7 @@ function packageScriptCommand(packageManager, name, directory = '') {
 
 function scopedPackageScriptCommand(packageManager, name, directory) {
   const path = quotePath(directory);
-  if (packageManager === 'yarn') return `yarn --cwd ${path} ${name}`;
+  if (packageManager === 'yarn') return name === 'test' ? `yarn --cwd ${path} test` : `yarn --cwd ${path} run ${name}`;
   if (packageManager === 'pnpm') return name === 'test' ? `pnpm --dir ${path} test` : `pnpm --dir ${path} run ${name}`;
   if (packageManager === 'bun') return `bun --cwd ${path} run ${name}`;
   return name === 'test' ? `npm --prefix ${path} test` : `npm --prefix ${path} run ${name}`;
@@ -3233,10 +3233,11 @@ function hasDangerousDockerCommand(part) {
   const args = stripCliGlobalOptions(words.slice(1), 'docker');
   if (['push', 'login'].includes(args[0])) return true;
   if (args[0] === 'image' && args[1] === 'push') return true;
+  if (args[0] === 'manifest' && args[1] === 'push') return true;
   if (args[0] === 'compose' && hasDangerousComposeCommand(args.slice(1), words)) return true;
   return args[0] === 'buildx'
     && ['build', 'bake'].includes(args[1])
-    && words.some(isDockerPushOption);
+    && (words.some(isDockerPushOption) || hasDockerRegistryOutput(words));
 }
 
 function hasDangerousComposeCommand(args, words = args) {
@@ -3247,6 +3248,24 @@ function hasDangerousComposeCommand(args, words = args) {
 
 function isDockerPushOption(word) {
   return word === '--push' || word.startsWith('--push=');
+}
+
+function hasDockerRegistryOutput(args) {
+  for (let index = 0; index < args.length; index += 1) {
+    const word = args[index]?.toLowerCase() ?? '';
+    if (word === '--output' || word === '-o') {
+      if (isDockerRegistryOutputValue(args[index + 1])) return true;
+      index += 1;
+      continue;
+    }
+    if (word.startsWith('--output=') && isDockerRegistryOutputValue(word.slice('--output='.length))) return true;
+    if (word.startsWith('-o=') && isDockerRegistryOutputValue(word.slice('-o='.length))) return true;
+  }
+  return false;
+}
+
+function isDockerRegistryOutputValue(value) {
+  return String(value ?? '').toLowerCase().split(',').includes('type=registry');
 }
 
 function firstComposeCommand(args) {
@@ -4732,7 +4751,7 @@ function isSafeValidationCommandPart(part) {
     /^(npm|pnpm|yarn|bun)\s+test(?:\s+.*)?$/,
     /^npm\s+--prefix(?:=|\s+)("[^"]+"|'[^']+'|\S+)\s+(test|run\s+[\w:.-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:.-]*)(?:\s+.*)?$/,
     /^pnpm\s+(?:--dir|-c)(?:=|\s+)("[^"]+"|'[^']+'|\S+)\s+(test|run\s+[\w:.-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:.-]*)(?:\s+.*)?$/,
-    /^yarn\s+--cwd(?:=|\s+)("[^"]+"|'[^']+'|\S+)\s+[\w:.-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:.-]*(?:\s+.*)?$/,
+    /^yarn\s+--cwd(?:=|\s+)("[^"]+"|'[^']+'|\S+)\s+(?:run\s+)?[\w:.-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:.-]*(?:\s+.*)?$/,
     /^bun\s+--cwd(?:=|\s+)("[^"]+"|'[^']+'|\S+)\s+run\s+[\w:.-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:.-]*(?:\s+.*)?$/,
     /^(npm|pnpm|yarn|bun)\s+run\s+[\w:.-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:.-]*(?:\s+.*)?$/,
     /^(npm|pnpm|yarn|bun)\s+(build|lint|typecheck|check|validate)(?:\s+.*)?$/,

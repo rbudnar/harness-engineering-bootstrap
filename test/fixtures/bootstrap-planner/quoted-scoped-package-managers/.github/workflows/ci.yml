@@ -8,5 +8,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: pnpm --dir "services/api v2" run build
-      - run: yarn --cwd "services/api v2" build
+      - run: yarn --cwd "services/api v2" run build
       - run: bun --cwd "services/api v2" run build

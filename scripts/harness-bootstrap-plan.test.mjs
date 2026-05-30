@@ -223,6 +223,36 @@ test('honors nested npm lockfiles under non-npm roots', () => {
   }
 });
 
+test('uses runnable scoped Yarn script commands', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-yarn-cwd-run-'));
+  try {
+    mkdirSync(resolve(tempRoot, 'packages', 'api'), { recursive: true });
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({ private: true }));
+    writeFileSync(resolve(tempRoot, 'yarn.lock'), '');
+    writeFileSync(resolve(tempRoot, 'packages', 'api', 'package.json'), JSON.stringify({
+      scripts: {
+        check: 'tsc --noEmit',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'ci.yml'), [
+      'jobs:',
+      '  test:',
+      '    steps:',
+      '      - run: yarn --cwd packages/api run check',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+
+    assert(survey.commands.some((run) => run.command === 'yarn --cwd packages/api run check'));
+    assert(!survey.commands.some((run) => run.command === 'yarn --cwd packages/api check'));
+    assert(survey.ci.runCommands.some((run) => run.command === 'yarn --cwd packages/api run check' && run.safe));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('includes hyphenated validation package scripts after safety screening', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'hyphenated-validation-scripts'));
   const commands = survey.commands.map((command) => command.command);
@@ -1226,7 +1256,7 @@ test('screens quoted scoped pnpm yarn and bun package paths', () => {
 
   for (const command of [
     'pnpm --dir "services/api v2" run build',
-    'yarn --cwd "services/api v2" build',
+    'yarn --cwd "services/api v2" run build',
     'bun --cwd "services/api v2" run build',
   ]) {
     assert(survey.ci.runCommands.some((run) => (
@@ -1660,8 +1690,19 @@ test('treats Docker registry pushes as inspect-only commands', () => {
   assert(survey.ci.runCommands.some((run) => run.command === 'docker push ghcr.io/example/app' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'docker image push ghcr.io/example/app' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'docker -H tcp://daemon:2375 push ghcr.io/example/app' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'docker manifest push ghcr.io/example/app:latest' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'docker buildx build --output=type=registry ghcr.io/example/app:latest .' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'docker buildx build --output type=registry ghcr.io/example/app:latest .' && !run.safe));
   assert(!survey.commands.some((run) => run.command === 'npm run check'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === '.github/workflows/ci.yml'
+    && hint.reason.includes('docker manifest push ghcr.io/example/app:latest')
+  )));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === '.github/workflows/ci.yml'
+    && hint.reason.includes('docker buildx build --output=type=registry ghcr.io/example/app:latest .')
+  )));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 

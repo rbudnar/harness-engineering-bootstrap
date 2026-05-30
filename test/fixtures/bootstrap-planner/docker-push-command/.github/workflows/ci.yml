@@ -10,3 +10,6 @@ jobs:
       - run: docker push ghcr.io/example/app
       - run: docker image push ghcr.io/example/app
       - run: docker -H tcp://daemon:2375 push ghcr.io/example/app
+      - run: docker manifest push ghcr.io/example/app:latest
+      - run: docker buildx build --output=type=registry ghcr.io/example/app:latest .
+      - run: docker buildx build --output type=registry ghcr.io/example/app:latest .
