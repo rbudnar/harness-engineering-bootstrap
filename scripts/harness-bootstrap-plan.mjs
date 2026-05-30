@@ -2710,10 +2710,14 @@ function hasDangerousPackageManagerCommand(part) {
     const yarnNpmCommand = packageManagerArgsAfterOptions(args, 1)[0]?.toLowerCase();
     return ['login', 'publish'].includes(yarnNpmCommand);
   }
+  if (manager === 'npm' && command === 'dist-tag') {
+    const distTagCommand = packageManagerArgsAfterOptions(args, 1)[0]?.toLowerCase();
+    return ['add', 'rm', 'remove'].includes(distTagCommand);
+  }
   const mutatingCommands = {
-    npm: new Set(['adduser', 'login', 'publish']),
-    pnpm: new Set(['login', 'publish']),
-    yarn: new Set(['publish']),
+    npm: new Set(['access', 'adduser', 'deprecate', 'login', 'owner', 'publish', 'team', 'token', 'unpublish', 'version']),
+    pnpm: new Set(['login', 'publish', 'version']),
+    yarn: new Set(['publish', 'version']),
     bun: new Set(['publish']),
   };
   return Boolean(mutatingCommands[manager]?.has(command));
@@ -2817,15 +2821,39 @@ function hasDangerousDockerCommand(part) {
   const words = shellWords(part).map((word) => word.toLowerCase());
   if (words[0] === 'docker-compose') {
     const args = stripCliGlobalOptions(words.slice(1), 'docker');
-    return args[0] === 'push';
+    return hasDangerousComposeCommand(args);
   }
   if (words[0] !== 'docker') return false;
   const args = stripCliGlobalOptions(words.slice(1), 'docker');
   if (['push', 'login'].includes(args[0])) return true;
-  if (args[0] === 'compose' && args[1] === 'push') return true;
+  if (args[0] === 'compose' && hasDangerousComposeCommand(args.slice(1))) return true;
   return args[0] === 'buildx'
     && args[1] === 'build'
     && words.some((word) => word === '--push' || word.startsWith('--push='));
+}
+
+function hasDangerousComposeCommand(args) {
+  const command = firstComposeCommand(args);
+  return ['push', 'up'].includes(command);
+}
+
+function firstComposeCommand(args) {
+  for (let index = 0; index < args.length; index += 1) {
+    const word = args[index];
+    if (!word || word === '--') continue;
+    if (word.startsWith('-')) {
+      if (composeOptionConsumesNext(word) && args[index + 1]) index += 1;
+      continue;
+    }
+    return word;
+  }
+  return null;
+}
+
+function composeOptionConsumesNext(option) {
+  const lower = option.toLowerCase();
+  if (lower.includes('=')) return false;
+  return ['-f', '-p', '--ansi', '--env-file', '--file', '--parallel', '--profile', '--project-directory', '--project-name'].includes(lower);
 }
 
 function hasDangerousGitCommand(part) {

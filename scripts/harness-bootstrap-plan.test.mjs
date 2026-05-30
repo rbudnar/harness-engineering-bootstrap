@@ -803,6 +803,8 @@ test('screens package scripts that directly run runtime-surface files', () => {
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
 
   assert(!survey.commands.some((run) => run.command === 'npm run build'));
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(!survey.commands.some((run) => run.command === 'npm run quality'));
   assert(!survey.commands.some((run) => run.command === 'npm run validate'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
@@ -1295,7 +1297,9 @@ test('screens package manager publish commands after global options', () => {
   for (const command of [
     'npm run build',
     'npm run check',
+    'npm run lint',
     'npm run quality',
+    'npm run typecheck',
     'npm run validate',
     'npm run coverage',
     'npm test',
