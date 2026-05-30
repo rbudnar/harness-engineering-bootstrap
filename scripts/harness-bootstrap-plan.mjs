@@ -3235,9 +3235,10 @@ function hasDangerousDockerCommand(part) {
   if (args[0] === 'image' && args[1] === 'push') return true;
   if (args[0] === 'manifest' && args[1] === 'push') return true;
   if (args[0] === 'compose' && hasDangerousComposeCommand(args.slice(1), words)) return true;
-  return args[0] === 'buildx'
-    && ['build', 'bake'].includes(args[1])
-    && (words.some(isDockerPushOption) || hasDockerRegistryOutput(words));
+  if (args[0] !== 'buildx') return false;
+  if (args[1] === 'imagetools' && args[2] === 'create') return true;
+  return ['build', 'bake'].includes(args[1])
+    && (words.some(isDockerPushOption) || hasDockerPublishingOutput(words));
 }
 
 function hasDangerousComposeCommand(args, words = args) {
@@ -3250,22 +3251,24 @@ function isDockerPushOption(word) {
   return word === '--push' || word.startsWith('--push=');
 }
 
-function hasDockerRegistryOutput(args) {
+function hasDockerPublishingOutput(args) {
   for (let index = 0; index < args.length; index += 1) {
     const word = args[index]?.toLowerCase() ?? '';
     if (word === '--output' || word === '-o') {
-      if (isDockerRegistryOutputValue(args[index + 1])) return true;
+      if (isDockerPublishingOutputValue(args[index + 1])) return true;
       index += 1;
       continue;
     }
-    if (word.startsWith('--output=') && isDockerRegistryOutputValue(word.slice('--output='.length))) return true;
-    if (word.startsWith('-o=') && isDockerRegistryOutputValue(word.slice('-o='.length))) return true;
+    if (word.startsWith('--output=') && isDockerPublishingOutputValue(word.slice('--output='.length))) return true;
+    if (word.startsWith('-o=') && isDockerPublishingOutputValue(word.slice('-o='.length))) return true;
   }
   return false;
 }
 
-function isDockerRegistryOutputValue(value) {
-  return String(value ?? '').toLowerCase().split(',').includes('type=registry');
+function isDockerPublishingOutputValue(value) {
+  const fields = String(value ?? '').toLowerCase().split(',');
+  return fields.includes('type=registry')
+    || (fields.includes('type=image') && fields.includes('push=true'));
 }
 
 function firstComposeCommand(args) {

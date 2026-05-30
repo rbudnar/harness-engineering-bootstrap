@@ -1693,6 +1693,9 @@ test('treats Docker registry pushes as inspect-only commands', () => {
   assert(survey.ci.runCommands.some((run) => run.command === 'docker manifest push ghcr.io/example/app:latest' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'docker buildx build --output=type=registry ghcr.io/example/app:latest .' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'docker buildx build --output type=registry ghcr.io/example/app:latest .' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'docker buildx build --output=type=image,push=true,name=ghcr.io/example/app:latest .' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'docker buildx build -o type=image,push=true,name=ghcr.io/example/app:latest .' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'docker buildx imagetools create -t ghcr.io/example/app:latest ghcr.io/example/app@sha256:abc123' && !run.safe));
   assert(!survey.commands.some((run) => run.command === 'npm run check'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
   assert(survey.runtimeSafetyHints.some((hint) => (
@@ -1702,6 +1705,14 @@ test('treats Docker registry pushes as inspect-only commands', () => {
   assert(survey.runtimeSafetyHints.some((hint) => (
     hint.path === '.github/workflows/ci.yml'
     && hint.reason.includes('docker buildx build --output=type=registry ghcr.io/example/app:latest .')
+  )));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === '.github/workflows/ci.yml'
+    && hint.reason.includes('docker buildx build --output=type=image,push=true,name=ghcr.io/example/app:latest .')
+  )));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === '.github/workflows/ci.yml'
+    && hint.reason.includes('docker buildx imagetools create -t ghcr.io/example/app:latest ghcr.io/example/app@sha256:abc123')
   )));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
