@@ -151,7 +151,9 @@ const cliOptionsWithValues = new Set([
   '--endpoint-url',
   '--field-manager',
   '--host',
+  '--git-dir',
   '--kubeconfig',
+  '--log-level',
   '--namespace',
   '--output',
   '--profile',
@@ -162,6 +164,7 @@ const cliOptionsWithValues = new Set([
   '--server',
   '--token',
   '--user',
+  '--work-tree',
 ]);
 
 const moduleDefinitions = [
@@ -2637,6 +2640,7 @@ function hasDangerousCommand(command) {
       return !isSafeValidationCommandPart(part)
         && (
           hasDangerousCliVerb(inspectedPart)
+          || hasDangerousPackageManagerCommand(inspectedPart)
           || hasDangerousAwsCommand(inspectedPart)
           || hasDangerousDockerCommand(inspectedPart)
           || hasDangerousGitCommand(inspectedPart)
@@ -2678,6 +2682,68 @@ function hasDangerousCliVerb(part) {
   if (!mutatingVerbs[command]) return false;
   const verb = firstCliVerb(args, command);
   return Boolean(verb && mutatingVerbs[command].has(verb));
+}
+
+function hasDangerousPackageManagerCommand(part) {
+  const words = shellWords(part);
+  const manager = words[0]?.toLowerCase();
+  if (!['npm', 'pnpm', 'yarn', 'bun'].includes(manager)) return false;
+
+  const args = packageManagerArgsAfterOptions(words, 1);
+  const command = args[0]?.toLowerCase();
+  if (!command) return false;
+  if (manager === 'yarn' && command === 'npm') {
+    const yarnNpmCommand = packageManagerArgsAfterOptions(args, 1)[0]?.toLowerCase();
+    return ['login', 'publish'].includes(yarnNpmCommand);
+  }
+  const mutatingCommands = {
+    npm: new Set(['adduser', 'login', 'publish']),
+    pnpm: new Set(['login', 'publish']),
+    yarn: new Set(['publish']),
+    bun: new Set(['publish']),
+  };
+  return Boolean(mutatingCommands[manager]?.has(command));
+}
+
+function packageManagerArgsAfterOptions(words, startIndex) {
+  const args = [];
+  for (let index = startIndex; index < words.length; index += 1) {
+    const word = words[index];
+    if (!word) continue;
+    if (word === '--') {
+      args.push(...words.slice(index + 1));
+      break;
+    }
+    if (word.startsWith('-')) {
+      if (packageManagerOptionConsumesNext(word) && words[index + 1]) index += 1;
+      continue;
+    }
+    args.push(word);
+  }
+  return args;
+}
+
+function packageManagerOptionConsumesNext(option) {
+  const lower = option.toLowerCase();
+  if (lower.includes('=')) return false;
+  if (lower.startsWith('--config.')) return true;
+  return [
+    '-c',
+    '-f',
+    '-w',
+    '--access',
+    '--cache',
+    '--config',
+    '--cwd',
+    '--dir',
+    '--filter',
+    '--otp',
+    '--prefix',
+    '--registry',
+    '--tag',
+    '--userconfig',
+    '--workspace',
+  ].includes(lower);
 }
 
 function hasDangerousTaskTarget(part) {

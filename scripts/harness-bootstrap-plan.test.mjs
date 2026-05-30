@@ -825,7 +825,9 @@ test('screens mutating git and docker commands after global options', () => {
   assert(!survey.commands.some((run) => run.command === 'npm run check'));
   assert(!survey.commands.some((run) => run.command === 'npm run build'));
   assert(!survey.commands.some((run) => run.command === 'npm run test:docker-host'));
+  assert(!survey.commands.some((run) => run.command === 'npm run lint:docker-log'));
   assert(!survey.commands.some((run) => run.command === 'npm run check:aws'));
+  assert(!survey.commands.some((run) => run.command === 'npm run quality:git-worktree'));
   assert(!survey.commands.some((run) => run.command === 'npm run validate:pulumi'));
   assert(!survey.commands.some((run) => run.command === 'npm run build:config'));
   assert(!survey.commands.some((run) => run.command === 'npm run check:terraform'));
@@ -1269,6 +1271,24 @@ test('treats Docker Compose pushes as inspect-only commands', () => {
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
 
   assert(!survey.commands.some((run) => run.command === 'npm run build'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('screens package manager publish commands after global options', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'package-manager-option-publish'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  for (const command of [
+    'npm run build',
+    'npm run check',
+    'npm run quality',
+    'npm run validate',
+    'npm run coverage',
+    'npm test',
+  ]) {
+    assert(!survey.commands.some((run) => run.command === command));
+  }
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
