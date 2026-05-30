@@ -1530,7 +1530,9 @@ function collectPackageRuntimeSafetyHints(packageManifests, unsafeMakeTargets = 
 }
 
 function isRuntimeSafetyCommand(command) {
-  return hasRuntimeSafetyDangerousCommand(command.command) || Boolean(command.packageScriptReason) || Boolean(command.runtimeSafetyReason);
+  return hasRuntimeSafetyDangerousCommand(command.command)
+    || Boolean(command.packageScriptRuntimeSafetyReason)
+    || Boolean(command.runtimeSafetyReason);
 }
 
 function hasRuntimeSafetyDangerousCommand(command) {
@@ -2587,6 +2589,12 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
     incompleteScan: options.incompleteScan,
     currentDirectory: workingDirectory ?? '',
   });
+  const packageScriptRuntimeSafetyReason = unsafePackageScriptReason(command, packageManifest, packageManifests, {
+    unsafeMakeTargets,
+    incompleteScan: options.incompleteScan,
+    currentDirectory: workingDirectory ?? '',
+    runtimeSafety: true,
+  });
   const incompleteScanReason = options.incompleteScan && commandNeedsCompleteScan(command)
     ? 'it depends on package, workspace, or make targets that may be omitted by the truncated repository scan'
     : null;
@@ -2602,6 +2610,7 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
     multiline,
     workingDirectory,
     packageScriptReason,
+    packageScriptRuntimeSafetyReason,
     runtimeSafetyReason,
     safe,
     inspectOnlyReason: safe
@@ -3941,6 +3950,7 @@ function packageScriptNamesFromTaskRunnerCommand(command) {
     const targets = [
       ...taskRunnerOptionValues(words, ['--target', '--targets', '-t']),
       ...nxRunTargets(words, lower),
+      ...nxPositionalTargets(words, lower),
     ].flatMap(splitTaskRunnerTargets);
     return dedupe(targets.map(canonicalTaskRunnerTarget).filter(validPackageScriptName));
   }
@@ -3955,6 +3965,15 @@ function nxRunTargets(words, lower) {
   if (runIndex < 0) return [];
   const target = targetFromProjectTarget(words[runIndex + 1]);
   return target ? [target] : [];
+}
+
+function nxPositionalTargets(words, lower) {
+  if (lower.includes('run')) return [];
+  const command = words[1];
+  const normalizedCommand = command?.toLowerCase();
+  if (!command || command.startsWith('-')) return [];
+  if (['affected', 'connect', 'daemon', 'exec', 'format', 'generate', 'graph', 'init', 'list', 'migrate', 'release', 'repair', 'report', 'reset', 'run-many', 'show', 'sync', 'view-logs'].includes(normalizedCommand)) return [];
+  return [command];
 }
 
 function taskRunnerPositionalTargets(words) {
@@ -4353,8 +4372,25 @@ function resolvedWorkingDirectoryFromCdCommand(command, currentDirectory = '') {
 }
 
 function inspectCdCommand(command, currentDirectory = '') {
-  const match = command.trim().match(/^cd\s+("[^"]+"|'[^']+'|[^;&|]+)\s*$/i);
-  if (!match) return { isCd: false, directory: null, unsafeReason: null };
+  const trimmed = command.trim();
+  if (/^popd\b/i.test(trimmed)) {
+    return {
+      isCd: true,
+      directory: null,
+      unsafeReason: 'it changes directory through a shell directory stack',
+    };
+  }
+  const match = trimmed.match(/^(?:cd|pushd)\s+("[^"]+"|'[^']+'|[^;&|]+)\s*$/i);
+  if (!match) {
+    if (/^pushd\b/i.test(trimmed)) {
+      return {
+        isCd: true,
+        directory: null,
+        unsafeReason: 'it changes directory through an unsupported pushd form',
+      };
+    }
+    return { isCd: false, directory: null, unsafeReason: null };
+  }
   const directory = stripYamlQuotes(match[1].trim());
   if (!isStaticRelativeDirectory(directory)) {
     return {

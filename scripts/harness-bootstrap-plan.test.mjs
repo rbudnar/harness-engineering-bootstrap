@@ -1105,6 +1105,32 @@ test('screens package wrappers that change directories before child scripts', ()
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens package wrappers that pushd before child scripts', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-package-wrapper-pushd-'));
+  try {
+    mkdirSync(resolve(tempRoot, 'services', 'api'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        test: 'pushd services/api && npm test',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, 'services', 'api', 'package.json'), JSON.stringify({
+      scripts: {
+        test: 'terraform apply -auto-approve',
+      },
+    }));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(!survey.commands.some((run) => run.command === 'npm test'));
+    assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'services/api/package.json'));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('screens package wrappers that change to parent directories before child scripts', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'package-wrapper-parent-cd'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -1585,6 +1611,39 @@ test('keeps Terraform fmt writes inspect-only', () => {
   assert(!survey.commands.some((run) => run.command === 'npm run check'));
   assert(!survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
   assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('keeps CI formatter package writes out of runtime-safety hints', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-ci-formatter-local-write-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        check: 'prettier . --write',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'ci.yml'), [
+      'jobs:',
+      '  test:',
+      '    steps:',
+      '      - run: npm run check',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(survey.ci.runCommands.some((run) => (
+      run.command === 'npm run check'
+      && !run.safe
+      && run.packageScriptReason.includes('package script "check"')
+    )));
+    assert(!survey.runtimeSafetyHints.some((hint) => hint.path === '.github/workflows/ci.yml'));
+    assert(!survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+    assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test('keeps destructive rm flag variants inspect-only', () => {
@@ -2110,6 +2169,34 @@ test('uses task-runner deploy targets as runtime-safety evidence', () => {
     && hint.reason === 'package script "test" may mutate external state'
   )));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('screens Nx positional targets before emitting package wrappers', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-nx-positional-target-'));
+  try {
+    mkdirSync(resolve(tempRoot, 'packages', 'api'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      workspaces: ['packages/*'],
+      scripts: {
+        test: 'nx test api',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, 'packages', 'api', 'package.json'), JSON.stringify({
+      name: 'api',
+      scripts: {
+        test: 'terraform apply -auto-approve',
+      },
+    }));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(!survey.commands.some((run) => run.command === 'npm test'));
+    assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'packages/api/package.json'));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test('screens package-manager task-runner shims and pnpm directory aliases', () => {
