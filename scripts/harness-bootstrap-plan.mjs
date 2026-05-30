@@ -2902,6 +2902,11 @@ function hasDangerousForwardedTarget(part) {
 }
 
 function taskRunnerCommandText(part) {
+  const invocation = taskRunnerInvocation(part);
+  return invocation ? invocation.words.join(' ') : null;
+}
+
+function taskRunnerInvocation(part) {
   const words = shellWords(stripPackageCommandPrefix(part));
   const lower = words.map((word) => word.toLowerCase());
   let index = 0;
@@ -2913,7 +2918,7 @@ function taskRunnerCommandText(part) {
   }
 
   if (!['nx', 'turbo', 'moon', 'lage'].includes(lower[index])) return null;
-  return words.slice(index).join(' ');
+  return { runner: lower[index], words: words.slice(index) };
 }
 
 function skipPackageExecutorOptions(words, startIndex) {
@@ -3434,6 +3439,16 @@ function findUnsafePackageScript(scriptName, scripts, chain = [], context = {}) 
       }
     }
 
+    const taskRunnerChildScripts = packageScriptNamesFromTaskRunnerCommand(part);
+    if (taskRunnerChildScripts.length) {
+      const unsafeTaskRunnerScript = findUnsafeTaskRunnerPackageScript(taskRunnerChildScripts, part, nextChain, {
+        ...context,
+        currentDirectory,
+        visited: nextVisited,
+      });
+      if (unsafeTaskRunnerScript) return unsafeTaskRunnerScript;
+    }
+
     const childScripts = packageScriptNamesFromAggregatorCommand(part);
     const directChildScript = packageScriptNameFromCommand(part);
     if (directChildScript) childScripts.push(directChildScript);
@@ -3455,6 +3470,29 @@ function findUnsafePackageScript(scriptName, scripts, chain = [], context = {}) 
     }
   }
 
+  return null;
+}
+
+function findUnsafeTaskRunnerPackageScript(childScripts, command, chain, context = {}) {
+  for (const childScript of dedupe(childScripts)) {
+    let resolvedScript = false;
+    for (const childManifest of taskRunnerPackageScriptManifestsForCommand(command, context.packageManifests ?? [], context.currentDirectory)) {
+      const targetScripts = packageScriptsObject(childManifest?.json?.scripts);
+      const expandedScripts = expandPackageScriptSelector(childScript, targetScripts);
+      for (const expandedScript of expandedScripts) {
+        const visitKey = `${childManifest.path}\0${expandedScript}`;
+        if (context.visited?.has(visitKey)) continue;
+        resolvedScript = true;
+        const unsafeScript = findUnsafePackageScript(expandedScript, targetScripts, chain, {
+          ...context,
+          manifest: childManifest,
+          visited: context.visited,
+        });
+        if (unsafeScript) return unsafeScript;
+      }
+    }
+    if (!resolvedScript) return { scriptName: childScript, chain: [...chain, childScript] };
+  }
   return null;
 }
 
@@ -3511,6 +3549,11 @@ function makeCommandUsesExternalFile(command) {
 }
 
 function packageScriptManifestsForCommand(command, fallbackManifest, packageManifests = [], workingDirectory = null) {
+  if (packageScriptNamesFromTaskRunnerCommand(command).length) {
+    const manifests = taskRunnerPackageScriptManifestsForCommand(command, packageManifests, workingDirectory);
+    if (manifests.length) return manifests;
+  }
+
   if (isAllWorkspacePackageScriptCommand(command, fallbackManifest, packageManifests)) {
     const words = shellWords(stripPackageCommandPrefix(command));
     const rootManifest = packageManifests.find((manifest) => manifest.path === 'package.json') ?? fallbackManifest;
@@ -3536,6 +3579,22 @@ function packageScriptManifestsForCommand(command, fallbackManifest, packageMani
 
   const targetManifest = packageManifestForCommand(command, packageManifests, workingDirectory) ?? fallbackManifest;
   return [targetManifest].filter(Boolean);
+}
+
+function taskRunnerPackageScriptManifestsForCommand(command, packageManifests = [], workingDirectory = null) {
+  const targetScripts = packageScriptNamesFromTaskRunnerCommand(command);
+  if (!targetScripts.length) return [];
+  const targetManifest = packageManifestForCommand(command, packageManifests, workingDirectory);
+  const manifests = packageManifests.filter((manifest) => {
+    const scripts = packageScriptsObject(manifest.json?.scripts);
+    return scripts && targetScripts.some((scriptName) => Object.hasOwn(scripts, scriptName));
+  });
+  const allScriptManifests = packageManifests.filter((manifest) => packageScriptsObject(manifest.json?.scripts));
+  return dedupeObjects([
+    ...manifests,
+    ...allScriptManifests,
+    targetManifest,
+  ].filter(Boolean), (manifest) => manifest.path);
 }
 
 function isAllWorkspacePackageScriptCommand(command, packageManifest, packageManifests) {
@@ -3573,6 +3632,109 @@ function packageScriptNamesFromAggregatorCommand(command) {
     scripts.push(word);
   }
   return scripts;
+}
+
+function packageScriptNamesFromTaskRunnerCommand(command) {
+  const invocation = taskRunnerInvocation(command);
+  if (!invocation) return [];
+  const { runner, words } = invocation;
+  const lower = words.map((word) => word.toLowerCase());
+
+  if (runner === 'nx') {
+    const targets = [
+      ...taskRunnerOptionValues(words, ['--target', '--targets', '-t']),
+      ...nxRunTargets(words, lower),
+    ].flatMap(splitTaskRunnerTargets);
+    return dedupe(targets.map(canonicalTaskRunnerTarget).filter(validPackageScriptName));
+  }
+
+  const runIndex = lower.indexOf('run');
+  if (runIndex < 0) return [];
+  return dedupe(taskRunnerPositionalTargets(words.slice(runIndex + 1)));
+}
+
+function nxRunTargets(words, lower) {
+  const runIndex = lower.indexOf('run');
+  if (runIndex < 0) return [];
+  const target = targetFromProjectTarget(words[runIndex + 1]);
+  return target ? [target] : [];
+}
+
+function taskRunnerPositionalTargets(words) {
+  const targets = [];
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index];
+    if (!word || word === '--') break;
+    if (word.startsWith('-')) {
+      if (taskRunnerOptionConsumesNext(word) && words[index + 1]) index += 1;
+      continue;
+    }
+    const target = canonicalTaskRunnerTarget(word);
+    if (validPackageScriptName(target)) targets.push(target);
+  }
+  return targets;
+}
+
+function taskRunnerOptionValues(words, options) {
+  const normalizedOptions = options.map((option) => option.toLowerCase());
+  const values = [];
+  for (let index = 1; index < words.length; index += 1) {
+    const word = words[index];
+    if (word === '--') break;
+    const lower = word.toLowerCase();
+    const option = normalizedOptions.find((candidate) => lower === candidate || lower.startsWith(`${candidate}=`));
+    if (!option) continue;
+    if (lower.includes('=')) {
+      values.push(word.slice(option.length + 1));
+      continue;
+    }
+    if (words[index + 1]) {
+      values.push(words[index + 1]);
+      index += 1;
+    }
+  }
+  return values;
+}
+
+function splitTaskRunnerTargets(value) {
+  return String(value ?? '').split(',').map((target) => target.trim()).filter(Boolean);
+}
+
+function targetFromProjectTarget(value) {
+  const text = stripYamlQuotes(String(value ?? '').trim());
+  if (!text.includes(':')) return null;
+  return text.split(':')[1] ?? null;
+}
+
+function canonicalTaskRunnerTarget(value) {
+  let target = stripYamlQuotes(String(value ?? '').trim());
+  if (target.includes('#')) target = target.split('#').pop();
+  if (target.includes(':')) target = target.split(':')[1] ?? target;
+  return canonicalPackageScriptName(target);
+}
+
+function taskRunnerOptionConsumesNext(option) {
+  const lower = String(option ?? '').toLowerCase();
+  if (lower.includes('=')) return false;
+  return [
+    '-c',
+    '-p',
+    '-t',
+    '--cache-dir',
+    '--configuration',
+    '--concurrency',
+    '--cwd',
+    '--exclude',
+    '--filter',
+    '--output-logs',
+    '--parallel',
+    '--project',
+    '--projects',
+    '--runner',
+    '--scope',
+    '--target',
+    '--targets',
+  ].includes(lower);
 }
 
 function expandPackageScriptSelector(selector, scripts) {
