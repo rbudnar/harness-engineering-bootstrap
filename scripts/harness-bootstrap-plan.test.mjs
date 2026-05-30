@@ -1357,6 +1357,40 @@ test('detects workspace-scoped publish commands', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('detects scoped package deploy commands without manifests', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-scoped-deploy-no-manifest-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'ci.yml'), [
+      'name: deploy',
+      'jobs:',
+      '  deploy:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: npm --workspace app run deploy',
+      '      - run: pnpm --filter=api run deploy',
+      '      - run: npm --prefix=app run deploy',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    for (const command of [
+      'npm --workspace app run deploy',
+      'pnpm --filter=api run deploy',
+      'npm --prefix=app run deploy',
+    ]) {
+      assert(survey.ci.runCommands.some((run) => run.command === command && !run.safe));
+      assert(!survey.commands.some((run) => run.command === command));
+    }
+    assert(survey.runtimeSafetyHints.some((hint) => hint.path === '.github/workflows/ci.yml'));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('treats Docker Compose pushes as inspect-only commands', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'docker-compose-push-package'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
