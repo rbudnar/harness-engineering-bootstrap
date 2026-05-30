@@ -985,6 +985,38 @@ test('screens dynamic and escaping make directories before trusting package scri
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens variable-dispatched validation scripts before emitting package commands', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-dynamic-dispatch-package-'));
+  try {
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        test: 'npm run $TARGET',
+        check: 'make ${TARGET}',
+        quality: 'npx $TOOL',
+        validate: 'npm run unit -- --grep $TEST_NAME',
+        unit: 'node --test',
+      },
+    }));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(!survey.commands.some((run) => run.command === 'npm test'));
+    assert(!survey.commands.some((run) => run.command === 'npm run check'));
+    assert(!survey.commands.some((run) => run.command === 'npm run quality'));
+    assert(survey.commands.some((run) => run.command === 'npm run validate'));
+    for (const scriptName of ['test', 'check', 'quality']) {
+      assert(survey.runtimeSafetyHints.some((hint) => (
+        hint.path === 'package.json'
+        && hint.reason === `package script "${scriptName}" may mutate external state`
+      )));
+    }
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('screens bare make invocations through the default target', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'bare-make-default'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });

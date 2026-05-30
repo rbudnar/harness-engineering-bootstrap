@@ -1561,6 +1561,69 @@ function hasRuntimeSafetyDangerousCommand(command) {
     });
 }
 
+function hasUnresolvedDynamicDispatchCommand(command) {
+  return splitShellCommandParts(String(command ?? ''))
+    .flatMap(splitShellPipelineParts)
+    .some(hasUnresolvedDynamicDispatchPart);
+}
+
+function hasUnresolvedDynamicDispatchPart(part) {
+  const wrapperPayload = shellWrapperPayload(part);
+  if (wrapperPayload !== null) {
+    return !isStaticShellWrapperPayload(wrapperPayload)
+      || hasUnresolvedDynamicDispatchCommand(wrapperPayload);
+  }
+
+  const words = shellWords(stripPackageCommandPrefix(part));
+  if (!words.length) return false;
+  if (hasShellVariable(words[0]) && !isEnvironmentAssignment(words[0])) return true;
+  if (isMakeCommandWord(words[0])) return makeInvocationHasDynamicTarget(words);
+  if (packageManagerHasDynamicScriptTarget(words)) return true;
+  if (words[0]?.toLowerCase() === 'npx') return hasDynamicNpxCommand(words);
+  return false;
+}
+
+function makeInvocationHasDynamicTarget(words) {
+  const invocation = makeInvocationFromCommandPart(words.join(' '));
+  return invocation?.targets.some(hasShellVariable) ?? false;
+}
+
+function packageManagerHasDynamicScriptTarget(words) {
+  const manager = words[0]?.toLowerCase();
+  if (!['npm', 'pnpm', 'yarn', 'bun'].includes(manager)) return false;
+  for (let index = 1; index < words.length; index += 1) {
+    const word = words[index];
+    const lower = word?.toLowerCase();
+    if (!word || word === '--') return false;
+    if (lower === 'run' || lower === 'run-script') return hasShellVariable(words[index + 1]);
+    if (lower === 'test') return false;
+    if (word.startsWith('-')) {
+      if (packageOptionConsumesNext(word, manager)) index += 1;
+      continue;
+    }
+    if (['add', 'ci', 'dlx', 'exec', 'install', 'npm', 'remove', 'x'].includes(lower)) return false;
+    return hasShellVariable(word);
+  }
+  return false;
+}
+
+function hasDynamicNpxCommand(words) {
+  for (let index = 1; index < words.length; index += 1) {
+    const word = words[index];
+    if (!word || word === '--') return false;
+    if (word.startsWith('-')) {
+      if (['-p', '--package'].includes(word.toLowerCase())) index += 1;
+      continue;
+    }
+    return hasShellVariable(word);
+  }
+  return false;
+}
+
+function hasShellVariable(value) {
+  return /(^|[^\\])(?:\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[^}]+\}|\([^)]+\))|%[A-Za-z_][A-Za-z0-9_]*%)/.test(String(value ?? ''));
+}
+
 function isLocalWorktreeWriteCommand(part) {
   const lower = String(part ?? '').toLowerCase();
   return localWorktreeWritePatterns.some((pattern) => pattern.test(lower))
@@ -3536,6 +3599,9 @@ function unsafePackageScriptReason(command, packageManifest, packageManifests = 
     }
     const scopedDirectoryReason = unsafeScopedPackageDirectoryReason(part, currentDirectory);
     if (scopedDirectoryReason) return scopedDirectoryReason;
+    if (hasUnresolvedDynamicDispatchPart(part)) {
+      return 'it dispatches through an unresolved shell variable; inspect before running';
+    }
 
     const partManifest = packageManifestForCommand(part, packageManifests, currentDirectory) ?? packageManifest;
     for (const lifecycleManifest of installLifecycleManifestsForCommand(part, partManifest, packageManifests)) {
@@ -3789,6 +3855,7 @@ function findUnsafePackageScript(scriptName, scripts, chain = [], context = {}) 
   const body = String(scriptMap[scriptName] ?? '');
   if (isAuthorityPackageScript(scriptName)) return { scriptName, chain: nextChain };
   if (context.runtimeSafety ? hasRuntimeSafetyDangerousCommand(body) : hasDangerousCommand(body)) return { scriptName, chain: nextChain };
+  if (hasUnresolvedDynamicDispatchCommand(body)) return { scriptName, chain: nextChain };
   if (context.incompleteScan && commandNeedsCompleteScan(body)) return { scriptName, chain: nextChain };
   if (unsafeMakeTargetReasonFromDirectory(body, context.unsafeMakeTargets ?? new Set(), context.manifest?.directory)) return { scriptName, chain: nextChain };
 
