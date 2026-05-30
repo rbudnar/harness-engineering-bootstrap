@@ -299,10 +299,12 @@ export function surveyRepository(inputPath, options = {}) {
   const docs = collectDocs(allFiles);
   const packageManager = inferPackageManager(fileSet, packageJson);
   const unsafeMakeTargets = collectUnsafeMakeTargets(root, fileSet, packageManifests);
-  const packageScripts = collectPackageScripts(packageManifests, packageManager, fileSet, unsafeMakeTargets);
+  const packageScripts = collectPackageScripts(packageManifests, packageManager, fileSet, unsafeMakeTargets, {
+    incompleteScan: files.truncated,
+  });
   const makeTargets = collectMakeTargets(root, fileSet, unsafeMakeTargets);
   const makeRuntimeSafetyHints = collectMakeRuntimeSafetyHints(root, fileSet, packageManifests);
-  const ci = collectCi(root, allFiles, packageManifests, unsafeMakeTargets);
+  const ci = collectCi(root, allFiles, packageManifests, unsafeMakeTargets, { incompleteScan: files.truncated });
   const scriptFiles = allFiles.filter((path) => path.startsWith('scripts/')).sort();
   const harnessControls = collectHarnessControls(allFiles);
   const prWorkflowMetricHints = collectPrWorkflowMetricHints(root, allFiles);
@@ -338,7 +340,10 @@ export function surveyRepository(inputPath, options = {}) {
     internalDataStoreHints: collectInternalDataStoreHints(allFiles),
     repoDependencyHints: collectRepoDependencyHints(allFiles, packageJson),
     runtimeSafetyHints: dedupeObjects(
-      [...collectRuntimeSafetyHints(allFiles, ci, packageManifests, unsafeMakeTargets), ...makeRuntimeSafetyHints],
+      [
+        ...collectRuntimeSafetyHints(allFiles, ci, packageManifests, unsafeMakeTargets, { incompleteScan: files.truncated }),
+        ...makeRuntimeSafetyHints,
+      ],
       (hint) => `${hint.path}\0${hint.reason}`,
     ),
     planHints: collectPlanHints(allFiles),
@@ -996,7 +1001,7 @@ function collectBootstrapState({ instructionFiles, docs, harnessControls, versio
   };
 }
 
-function collectCi(root, files, packageManifests = [], unsafeMakeTargets = new Set()) {
+function collectCi(root, files, packageManifests = [], unsafeMakeTargets = new Set(), options = {}) {
   const ciFiles = files.filter((path) => {
     const lower = path.toLowerCase();
     return lower.startsWith('.github/workflows/')
@@ -1012,9 +1017,9 @@ function collectCi(root, files, packageManifests = [], unsafeMakeTargets = new S
   for (const path of ciFiles) {
     const text = readText(root, path);
     if (path.toLowerCase().startsWith('.github/workflows/')) {
-      runCommands.push(...collectWorkflowRunCommands(text, path, packageManifests, unsafeMakeTargets));
+      runCommands.push(...collectWorkflowRunCommands(text, path, packageManifests, unsafeMakeTargets, options));
     } else {
-      runCommands.push(...collectGenericCiRunCommands(text, path, packageManifests, unsafeMakeTargets));
+      runCommands.push(...collectGenericCiRunCommands(text, path, packageManifests, unsafeMakeTargets, options));
     }
   }
 
@@ -1067,18 +1072,19 @@ function collectPackageFiles(files) {
     .sort();
 }
 
-function collectPackageScripts(packageManifests, packageManager, fileSet = new Set(), unsafeMakeTargets = new Set()) {
+function collectPackageScripts(packageManifests, packageManager, fileSet = new Set(), unsafeMakeTargets = new Set(), options = {}) {
   return packageManifests.flatMap((manifest) => (
     collectPackageScriptsFromManifest(
       manifest,
       packageManagerForManifest(fileSet, manifest, packageManager),
       packageManifests,
       unsafeMakeTargets,
+      options,
     )
   ));
 }
 
-function collectPackageScriptsFromManifest(manifest, packageManager, packageManifests = [], unsafeMakeTargets = new Set()) {
+function collectPackageScriptsFromManifest(manifest, packageManager, packageManifests = [], unsafeMakeTargets = new Set(), options = {}) {
   const packageJson = manifest.json;
   const scripts = packageScriptsObject(packageJson?.scripts);
   if (!scripts) return [];
@@ -1090,7 +1096,10 @@ function collectPackageScriptsFromManifest(manifest, packageManager, packageMani
       return {
         source: manifest.path,
         command,
-        unsafeReason: unsafePackageScriptReason(command, manifest, packageManifests, { unsafeMakeTargets }),
+        unsafeReason: unsafePackageScriptReason(command, manifest, packageManifests, {
+          unsafeMakeTargets,
+          incompleteScan: options.incompleteScan,
+        }),
       };
     })
     .filter((script) => !script.unsafeReason)
@@ -1343,7 +1352,7 @@ function collectRepoDependencyHints(files, packageJson) {
   return dedupeObjects(hints, (item) => item.path);
 }
 
-function collectRuntimeSafetyHints(files, ci = { runCommands: [] }, packageManifests = [], unsafeMakeTargets = new Set()) {
+function collectRuntimeSafetyHints(files, ci = { runCommands: [] }, packageManifests = [], unsafeMakeTargets = new Set(), options = {}) {
   const fileHints = files
     .filter(isRuntimeSurfacePath)
     .map((path) => ({ path, reason: 'deploy, credential, production, or tool-runtime surface' }));
@@ -1355,7 +1364,7 @@ function collectRuntimeSafetyHints(files, ci = { runCommands: [] }, packageManif
       reason: command.runtimeSafetyReason ?? `CI command may mutate external state: ${formatInlineValue(command.command)}`,
     }));
 
-  const packageHints = collectPackageRuntimeSafetyHints(packageManifests, unsafeMakeTargets);
+  const packageHints = collectPackageRuntimeSafetyHints(packageManifests, unsafeMakeTargets, options);
 
   return dedupeObjects([...fileHints, ...commandHints, ...packageHints], (hint) => `${hint.path}\0${hint.reason}`);
 }
@@ -1402,7 +1411,7 @@ function prWorkflowMetricHintsForFile(root, path) {
   return dedupeObjects(hints, (hint) => `${hint.path}\0${hint.reason}`);
 }
 
-function collectPackageRuntimeSafetyHints(packageManifests, unsafeMakeTargets = new Set()) {
+function collectPackageRuntimeSafetyHints(packageManifests, unsafeMakeTargets = new Set(), options = {}) {
   return packageManifests.flatMap((manifest) => {
     const packageJson = manifest.json;
     const scripts = packageScriptsObject(packageJson?.scripts);
@@ -1416,7 +1425,7 @@ function collectPackageRuntimeSafetyHints(packageManifests, unsafeMakeTargets = 
           packageScriptCommand('npm', name, manifest.directory),
           manifest,
           packageManifests,
-          { unsafeMakeTargets },
+          { unsafeMakeTargets, incompleteScan: options.incompleteScan },
         )
       ))
       .map(([name]) => ({
@@ -1480,7 +1489,7 @@ function collectEvidenceHints(files) {
     .map((path) => ({ path, reason: 'source-heavy research or evidence surface' }));
 }
 
-function collectWorkflowRunCommands(text, source, packageManifests = [], unsafeMakeTargets = new Set()) {
+function collectWorkflowRunCommands(text, source, packageManifests = [], unsafeMakeTargets = new Set(), options = {}) {
   const lines = text.split(/\r?\n/);
   const commands = [];
 
@@ -1523,10 +1532,20 @@ function collectWorkflowRunCommands(text, source, packageManifests = [], unsafeM
 
       const blockCommand = normalizeRunBlock(blockLines, { folded: command.startsWith('>') });
       if (blockCommand) {
-        commands.push(classifyCiRunCommand(source, blockCommand, true, packageManifests, { workingDirectory, runtimeSafetyReason, unsafeMakeTargets }));
+        commands.push(classifyCiRunCommand(source, blockCommand, true, packageManifests, {
+          workingDirectory,
+          runtimeSafetyReason,
+          unsafeMakeTargets,
+          incompleteScan: options.incompleteScan,
+        }));
       }
     } else {
-      commands.push(classifyCiRunCommand(source, stripYamlQuotes(command), false, packageManifests, { workingDirectory, runtimeSafetyReason, unsafeMakeTargets }));
+      commands.push(classifyCiRunCommand(source, stripYamlQuotes(command), false, packageManifests, {
+        workingDirectory,
+        runtimeSafetyReason,
+        unsafeMakeTargets,
+        incompleteScan: options.incompleteScan,
+      }));
     }
   }
 
@@ -1653,10 +1672,11 @@ function isRuntimeSafetyAction(action) {
   return /(^|[-_/])(auth|credential|credentials|deploy|login|publish|release)([-_/@]|$)/i.test(action);
 }
 
-function collectGenericCiRunCommands(text, source, packageManifests = [], unsafeMakeTargets = new Set()) {
+function collectGenericCiRunCommands(text, source, packageManifests = [], unsafeMakeTargets = new Set(), options = {}) {
   const lines = text.split(/\r?\n/);
   const commands = [];
   const carriesShellPhaseDirectory = isGitLabCiSource(source);
+  const ciOptions = (extra = {}) => ({ ...extra, unsafeMakeTargets, incompleteScan: options.incompleteScan });
   let shellPhaseWorkingDirectory = null;
   let shellPhaseIndent = null;
 
@@ -1684,13 +1704,13 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
       }
 
       const blockCommand = normalizeRunBlock(blockLines);
-      if (blockCommand) commands.push(classifyCiRunCommand(source, blockCommand, true, packageManifests, { unsafeMakeTargets }));
+      if (blockCommand) commands.push(classifyCiRunCommand(source, blockCommand, true, packageManifests, ciOptions()));
       continue;
     }
 
     const namedShellInlineMatch = line.match(/^\s*(?:sh|bat|powershell|pwsh)\s*(?:\(|\s).*?\bscript\s*:\s*(['"])(.*?)\1/);
     if (namedShellInlineMatch) {
-      commands.push(classifyCiRunCommand(source, namedShellInlineMatch[2].trim(), false, packageManifests, { unsafeMakeTargets }));
+      commands.push(classifyCiRunCommand(source, namedShellInlineMatch[2].trim(), false, packageManifests, ciOptions()));
       continue;
     }
 
@@ -1706,13 +1726,13 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
       }
 
       const blockCommand = normalizeRunBlock(blockLines);
-      if (blockCommand) commands.push(classifyCiRunCommand(source, blockCommand, true, packageManifests, { unsafeMakeTargets }));
+      if (blockCommand) commands.push(classifyCiRunCommand(source, blockCommand, true, packageManifests, ciOptions()));
       continue;
     }
 
     const shellMatch = line.match(/^\s*(?:sh|bat|powershell|pwsh)\s+['"](.+)['"]\s*$/);
     if (shellMatch) {
-      commands.push(classifyCiRunCommand(source, shellMatch[1].trim(), false, packageManifests, { unsafeMakeTargets }));
+      commands.push(classifyCiRunCommand(source, shellMatch[1].trim(), false, packageManifests, ciOptions()));
       continue;
     }
 
@@ -1738,12 +1758,11 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
             shellPhaseWorkingDirectory = changedDirectory;
             shellPhaseIndent = indentation(line);
           }
-          commands.push(classifyCiRunCommand(source, command, false, packageManifests, { unsafeMakeTargets }));
+          commands.push(classifyCiRunCommand(source, command, false, packageManifests, ciOptions()));
         } else {
-          commands.push(classifyCiRunCommand(source, command, false, packageManifests, {
+          commands.push(classifyCiRunCommand(source, command, false, packageManifests, ciOptions({
             workingDirectory: inlineWorkingDirectory,
-            unsafeMakeTargets,
-          }));
+          })));
         }
       }
       continue;
@@ -1807,6 +1826,7 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
               commands.push(classifyCiRunCommand(source, blockCommand, true, packageManifests, {
                 workingDirectory: blockWorkingDirectory,
                 unsafeMakeTargets,
+                incompleteScan: options.incompleteScan,
               }));
             }
           } else {
@@ -1817,12 +1837,11 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
                 shellPhaseWorkingDirectory = changedDirectory;
                 shellPhaseIndent = indentation(line);
               }
-              commands.push(classifyCiRunCommand(source, command, false, packageManifests, { unsafeMakeTargets }));
+              commands.push(classifyCiRunCommand(source, command, false, packageManifests, ciOptions()));
             } else {
-              commands.push(classifyCiRunCommand(source, command, false, packageManifests, {
+              commands.push(classifyCiRunCommand(source, command, false, packageManifests, ciOptions({
                 workingDirectory: blockWorkingDirectory,
-                unsafeMakeTargets,
-              }));
+              })));
             }
           }
         } else if (siblingWorkingDirectory) {
@@ -1869,24 +1888,21 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
       }
 
       for (const nestedCommand of nestedCommands) {
-        commands.push(classifyCiRunCommand(source, nestedCommand.command, nestedCommand.multiline, packageManifests, {
+        commands.push(classifyCiRunCommand(source, nestedCommand.command, nestedCommand.multiline, packageManifests, ciOptions({
           workingDirectory: blockWorkingDirectory,
-          unsafeMakeTargets,
-        }));
+        })));
       }
 
       const blockCommand = normalizeRunBlock(blockLines);
       if (blockCommand) {
-        commands.push(classifyCiRunCommand(source, blockCommand, true, packageManifests, {
+        commands.push(classifyCiRunCommand(source, blockCommand, true, packageManifests, ciOptions({
           workingDirectory: blockWorkingDirectory,
-          unsafeMakeTargets,
-        }));
+        })));
       }
     } else {
-      commands.push(classifyCiRunCommand(source, stripYamlQuotes(value), false, packageManifests, {
+      commands.push(classifyCiRunCommand(source, stripYamlQuotes(value), false, packageManifests, ciOptions({
         workingDirectory: contextualWorkingDirectory,
-        unsafeMakeTargets,
-      }));
+      })));
     }
   }
 
@@ -2452,8 +2468,19 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
     : null;
   const makeTargetReason = unsafeMakeTargetReason(command, unsafeMakeTargets, workingDirectory);
   const packageManifest = packageManifestForCommand(command, packageManifests, workingDirectory);
-  const packageScriptReason = unsafePackageScriptReason(command, packageManifest, packageManifests, { unsafeMakeTargets });
-  const safe = !workingDirectoryReason && !runtimeSafetyReason && !makeTargetReason && !packageScriptReason && isSafeValidationCommand(command);
+  const packageScriptReason = unsafePackageScriptReason(command, packageManifest, packageManifests, {
+    unsafeMakeTargets,
+    incompleteScan: options.incompleteScan,
+  });
+  const incompleteScanReason = options.incompleteScan && commandNeedsCompleteScan(command)
+    ? 'it depends on package, workspace, or make targets that may be omitted by the truncated repository scan'
+    : null;
+  const safe = !workingDirectoryReason
+    && !runtimeSafetyReason
+    && !makeTargetReason
+    && !packageScriptReason
+    && !incompleteScanReason
+    && isSafeValidationCommand(command);
   return {
     source,
     command,
@@ -2464,7 +2491,12 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
     safe,
     inspectOnlyReason: safe
       ? null
-      : workingDirectoryReason || runtimeSafetyReason || makeTargetReason || packageScriptReason || 'it is not a known-safe validation command or it may mutate external state',
+      : workingDirectoryReason
+        || runtimeSafetyReason
+        || makeTargetReason
+        || packageScriptReason
+        || incompleteScanReason
+        || 'it is not a known-safe validation command or it may mutate external state',
   };
 }
 
@@ -3088,6 +3120,7 @@ function unsafePackageScriptReason(command, packageManifest, packageManifests = 
           manifest: lifecycleManifest,
           packageManifests,
           unsafeMakeTargets: options.unsafeMakeTargets,
+          incompleteScan: options.incompleteScan,
         });
         if (unsafeLifecycleScript) {
           return `it may run install lifecycle "${lifecycleScript}" whose dependency chain "${unsafeLifecycleScript.chain.join(' -> ')}" may mutate external state`;
@@ -3104,6 +3137,7 @@ function unsafePackageScriptReason(command, packageManifest, packageManifests = 
         manifest: targetManifest,
         packageManifests,
         unsafeMakeTargets: options.unsafeMakeTargets,
+        incompleteScan: options.incompleteScan,
       });
       if (unsafeScript) {
         return `it calls package script "${scriptName}" whose dependency chain "${unsafeScript.chain.join(' -> ')}" may mutate external state`;
@@ -3315,6 +3349,7 @@ function findUnsafePackageScript(scriptName, scripts, chain = [], context = {}) 
   const body = String(scriptMap[scriptName] ?? '');
   if (isAuthorityPackageScript(scriptName)) return { scriptName, chain: nextChain };
   if (hasDangerousCommand(body)) return { scriptName, chain: nextChain };
+  if (context.incompleteScan && commandNeedsCompleteScan(body)) return { scriptName, chain: nextChain };
   if (unsafeMakeTargetReasonFromDirectory(body, context.unsafeMakeTargets ?? new Set(), context.manifest?.directory)) return { scriptName, chain: nextChain };
 
   let currentDirectory = context.manifest?.directory ?? null;
@@ -3363,6 +3398,58 @@ function findUnsafePackageScript(scriptName, scripts, chain = [], context = {}) 
   }
 
   return null;
+}
+
+function commandNeedsCompleteScan(command) {
+  let currentDirectory = '';
+  for (const part of splitShellCommandParts(command)) {
+    const cdCommand = inspectCdCommand(part, currentDirectory);
+    if (cdCommand.isCd) {
+      if (cdCommand.unsafeReason) return true;
+      currentDirectory = cdCommand.directory;
+      continue;
+    }
+
+    const stripped = stripPackageCommandPrefix(part);
+    if (packageDirectoryFromCommand(stripped)
+      || packageWorkspacesFromCommand(stripped).length
+      || hasWorkspaceWidePackageCommand(stripped)) {
+      return true;
+    }
+
+    if (currentDirectory && (packageScriptNameFromCommand(stripped) || isInstallCommand(stripped))) return true;
+
+    const makeInvocation = makeInvocationFromCommandPart(stripped, currentDirectory);
+    if (makeInvocation?.unsafeReason) return true;
+    if (makeInvocation && (makeInvocation.directory || currentDirectory || makeCommandUsesExternalFile(stripped))) return true;
+  }
+  return false;
+}
+
+function hasWorkspaceWidePackageCommand(command) {
+  const lower = stripPackageCommandPrefix(command).toLowerCase();
+  return /(?:^|\s)npm\s+.*(?:--workspaces|-ws)(?:\s|=|$)/.test(lower)
+    || /(?:^|\s)pnpm\s+.*(?:-r|--recursive)(?:\s|=|$)/.test(lower)
+    || /(?:^|\s)yarn\s+workspaces\s+foreach\b/.test(lower);
+}
+
+function makeCommandUsesExternalFile(command) {
+  const words = shellWords(stripPackageCommandPrefix(command));
+  if (!isMakeCommandWord(words[0])) return false;
+  for (let index = 1; index < words.length; index += 1) {
+    const word = words[index];
+    if (['-f', '--file', '--makefile'].includes(word)) {
+      const next = words[index + 1] ?? '';
+      if (next.includes('/') || next.includes('\\')) return true;
+      index += 1;
+      continue;
+    }
+    const compact = word.match(/^-f(.+)$/)?.[1];
+    if (compact && (compact.includes('/') || compact.includes('\\'))) return true;
+    const inline = word.match(/^--(?:file|makefile)=(.+)$/)?.[1];
+    if (inline && (inline.includes('/') || inline.includes('\\'))) return true;
+  }
+  return false;
 }
 
 function packageScriptManifestsForCommand(command, fallbackManifest, packageManifests = [], workingDirectory = null) {

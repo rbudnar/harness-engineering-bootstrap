@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -2120,6 +2120,30 @@ test('scans root metadata before truncating large repository walks', () => {
   assert.equal(survey.versionState.installedVersion, '0.1.0');
   assert(survey.packageFiles.includes('package.json'));
   assert(survey.commands.some((run) => run.command === 'npm test'));
+});
+
+test('keeps delegated commands inspect-only when large repository walks truncate', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-truncated-delegation-'));
+  try {
+    mkdirSync(resolve(tempRoot, 'services', 'api'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'a.txt'), 'x');
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        test: 'make -C services/api test',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, 'services', 'api', 'Makefile'), 'test:\n\tterraform apply -auto-approve\n');
+
+    const survey = surveyRepository(tempRoot, { maxFiles: 2 });
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert.equal(survey.files.truncated, true);
+    assert(!survey.commands.some((run) => run.command === 'npm test'));
+    assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 function validationStepsText(plan) {
