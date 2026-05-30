@@ -103,6 +103,22 @@ test('does not trigger PR metrics from ordinary review prose', () => {
   assert(!plan.triggeredModules.some((module) => module.id === 'pr-workflow-metrics'));
 });
 
+test('does not treat website app directories as URL context maps', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-website-app-'));
+  try {
+    mkdirSync(resolve(tempRoot, 'website', 'src'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'website', 'src', 'App.js'), 'export default function App() { return null; }\n');
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(!survey.urlMapHints.some((hint) => hint.path.startsWith('website/')));
+    assert(plan.rejectedModules.some((module) => module.id === 'url-context-map'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('uses conservative data heuristics for root schemas, migrations, and source models', () => {
   const rootSchema = surveyRepository(resolve(fixturesRoot, 'root-schema'));
   const rootPlan = buildBootstrapPlan(rootSchema, { date: '2026-05-28' });
@@ -1895,6 +1911,37 @@ test('keeps forwarded deploy targets inspect-only', () => {
   assert(!survey.commands.some((run) => run.command === 'npm run build -- --target deploy'));
   assert(!survey.commands.some((run) => run.command === 'npm run build -- --push'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('keeps forwarded package write flags inspect-only', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-forwarded-write-flags-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'ci.yml'), [
+      'name: ci',
+      'jobs:',
+      '  test:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: npm run lint -- --fix',
+      '      - run: yarn lint --fix',
+      '      - run: npm run format -- --write',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+
+    for (const command of [
+      'npm run lint -- --fix',
+      'yarn lint --fix',
+      'npm run format -- --write',
+    ]) {
+      assert(survey.ci.runCommands.some((run) => run.command === command && !run.safe));
+      assert(!survey.commands.some((run) => run.command === command));
+    }
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test('screens env-prefixed Yarn foreach workspace scripts', () => {

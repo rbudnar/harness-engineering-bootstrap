@@ -1586,8 +1586,12 @@ function isPlanOrHandoffPath(path) {
 }
 
 function collectUrlMapHints(files) {
-  return files.filter((path) => /(^|\/)llms(-full)?\.txt$/i.test(path) || /docs-site|site\/|\.vitepress\//i.test(path))
+  return files.filter((path) => /(^|\/)llms(-full)?\.txt$/i.test(path) || isDocsSitePath(path))
     .map((path) => ({ path, reason: 'remote-agent context map or docs site' }));
+}
+
+function isDocsSitePath(path) {
+  return /(^|\/)(docs-site|site)(\/|$)/i.test(path) || /(^|\/)\.vitepress\//i.test(path);
 }
 
 function collectEvidenceHints(files) {
@@ -3127,6 +3131,7 @@ function hasDangerousForwardedPackageScriptArgs(part) {
   if (!args.length) return false;
   const text = args.join(' ');
   return /(?:^|\s)--push(?:=|\s|$)/i.test(text)
+    || hasWriteModeFlag(args)
     || hasDangerousForwardedTarget(text)
     || dangerousCommandPatterns.some((pattern) => pattern.test(text.toLowerCase()));
 }
@@ -4430,6 +4435,7 @@ function isSafeValidationCommandPart(part) {
   const normalizedPart = stripPackageCommandPrefix(part);
   const lower = normalizedPart.toLowerCase();
   if (dangerousCommandPatterns.some((pattern) => pattern.test(lower))) return false;
+  if (hasPackageValidationWriteFlags(normalizedPart)) return false;
   if (hasDangerousForwardedTarget(normalizedPart)) return false;
   if (hasDangerousForwardedPackageScriptArgs(normalizedPart)) return false;
   if (commandPartReferencesRuntimeSurface(normalizedPart)) return false;
@@ -4456,6 +4462,46 @@ function isSafeValidationCommandPart(part) {
   ];
 
   return validationPatterns.some((pattern) => pattern.test(lower));
+}
+
+function hasPackageValidationWriteFlags(command) {
+  const words = shellWords(command);
+  const scriptIndex = packageValidationScriptIndex(words);
+  if (scriptIndex == null) return false;
+
+  const args = words.slice(scriptIndex + 1);
+  return hasWriteModeFlag(args);
+}
+
+function packageValidationScriptIndex(words) {
+  const manager = words[0]?.toLowerCase();
+  if (!['npm', 'pnpm', 'yarn', 'bun'].includes(manager)) return null;
+  for (let index = 1; index < words.length; index += 1) {
+    const word = words[index];
+    const lower = word?.toLowerCase();
+    if (!word || word === '--') return null;
+    if (word.startsWith('-')) {
+      if (packageManagerOptionConsumesNext(word, manager) && words[index + 1]) index += 1;
+      continue;
+    }
+    if (['run', 'run-script'].includes(lower)) return words[index + 1] ? index + 1 : null;
+    return validationScriptCommandNames.has(canonicalPackageScriptName(lower))
+      || /[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*/.test(lower)
+      ? index
+      : null;
+  }
+  return null;
+}
+
+function hasWriteModeFlag(args) {
+  return args.some((arg) => {
+    const lower = String(arg ?? '').toLowerCase();
+    return lower === '-w'
+      || lower === '--fix'
+      || lower === '--write'
+      || lower.startsWith('--fix=')
+      || lower.startsWith('--write=');
+  });
 }
 
 function unsafeScopedPackageDirectoryReason(command, currentDirectory = '') {
