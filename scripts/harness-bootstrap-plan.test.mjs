@@ -672,6 +672,33 @@ test('screens compact make -f package wrappers through included makefiles', () =
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens included Makefile targets in the caller directory', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-included-make-caller-'));
+  try {
+    mkdirSync(resolve(tempRoot, 'ops'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        test: 'make test',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, 'Makefile'), 'include ops/ci.mk\n');
+    writeFileSync(resolve(tempRoot, 'ops', 'ci.mk'), 'test:\n\tterraform apply -auto-approve\n');
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(!survey.commands.some((run) => run.command === 'npm test'));
+    assert(survey.runtimeSafetyHints.some((hint) => (
+      hint.path === 'ops/ci.mk'
+      && hint.reason === 'make target "test" may mutate external state'
+    )));
+    assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('screens make -f recipes against the caller directory', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'make-file-caller-cwd-package'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -1803,6 +1830,28 @@ test('screens package-manager task-runner shims and pnpm directory aliases', () 
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'services/api/package.json'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('screens package-manager deployment binary shims', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-package-manager-deploy-shim-'));
+  try {
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        build: 'yarn wrangler deploy',
+        check: 'yarn run wrangler deploy',
+      },
+    }));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(!survey.commands.some((run) => run.command === 'npm run build'));
+    assert(!survey.commands.some((run) => run.command === 'npm run check'));
+    assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test('screens task-runner workspace targets before emitting validation commands', () => {

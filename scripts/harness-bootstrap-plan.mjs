@@ -1193,10 +1193,21 @@ function collectUnsafeMakeTargets(root, fileSet, packageManifests = []) {
 }
 
 function collectMakeTargetRecipes(root, fileSet, options = {}) {
-  return [...fileSet]
+  const makefilePaths = [...fileSet]
     .filter((path) => isMakefilePath(path, options))
-    .sort()
-    .flatMap((path) => parseMakeTargetRecipes(readText(root, path), path));
+    .sort();
+  const textByPath = new Map(makefilePaths.map((path) => [path, readText(root, path)]));
+  const targets = makefilePaths.flatMap((path) => parseMakeTargetRecipes(textByPath.get(path), path));
+
+  if (!options.includeIncludedMakefiles) return targets;
+
+  const includedTargets = makefilePaths.flatMap((path) => {
+    const callerDirectory = makefileDirectory(path);
+    return collectIncludedMakefilePaths(path, textByPath, fileSet)
+      .flatMap((includedPath) => parseMakeTargetRecipes(textByPath.get(includedPath), includedPath, { directory: callerDirectory }));
+  });
+
+  return [...targets, ...includedTargets];
 }
 
 function isMakefilePath(path, options = {}) {
@@ -1206,11 +1217,50 @@ function isMakefilePath(path, options = {}) {
     || (options.includeIncludedMakefiles && name.endsWith('.mk'));
 }
 
-function parseMakeTargetRecipes(text, path) {
+function collectIncludedMakefilePaths(path, textByPath, fileSet, seen = new Set([path])) {
+  const text = textByPath.get(path);
+  if (!text) return [];
+
+  const includedPaths = [];
+  for (const includePath of parseMakeIncludePaths(text)) {
+    const resolved = resolveMakeIncludePath(path, includePath, fileSet);
+    if (!resolved || seen.has(resolved)) continue;
+    seen.add(resolved);
+    includedPaths.push(resolved);
+    includedPaths.push(...collectIncludedMakefilePaths(resolved, textByPath, fileSet, seen));
+  }
+  return dedupe(includedPaths);
+}
+
+function parseMakeIncludePaths(text) {
+  return text.split(/\r?\n/)
+    .flatMap((line) => {
+      const match = line.match(/^\s*(?:-?include|sinclude)\s+(.+)$/);
+      if (!match) return [];
+      return match[1]
+        .replace(/\s+#.*$/, '')
+        .split(/\s+/)
+        .map((value) => value.trim())
+        .filter((value) => value && !/[*$%]/.test(value));
+    });
+}
+
+function resolveMakeIncludePath(includerPath, includePath, fileSet) {
+  if (/^(?:[A-Za-z]:|\/|\\\\|~)/.test(includePath)) return null;
+  const baseDirectory = makefileDirectory(includerPath);
+  const resolved = normalizePath(join(baseDirectory, includePath));
+  return fileSet.has(resolved) ? resolved : null;
+}
+
+function makefileDirectory(path) {
+  return dirname(path) === '.' ? '' : normalizePath(dirname(path));
+}
+
+function parseMakeTargetRecipes(text, path, options = {}) {
   const targets = [];
   let currentTargets = [];
   let explicitDefaultTarget = null;
-  const directory = dirname(path) === '.' ? '' : normalizePath(dirname(path));
+  const directory = options.directory ?? makefileDirectory(path);
 
   for (const line of text.split(/\r?\n/)) {
     const defaultGoalMatch = line.match(/^\.DEFAULT_GOAL\s*(?::=|\?=|\+=|=)\s*([^\s#]+)/);
@@ -2809,7 +2859,10 @@ function hasDangerousCliVerb(part) {
   if (['npx', 'bunx'].includes(words[commandIndex])) {
     commandIndex = skipPackageExecutorOptions(words, commandIndex + 1);
   } else {
-    commandIndex = packageManagerExecCommandIndex(words) ?? commandIndex;
+    commandIndex = packageManagerExecCommandIndex(words)
+      ?? packageManagerShimCommandIndex(words)
+      ?? packageManagerRunPayloadCommandIndex(words)
+      ?? commandIndex;
   }
   const command = words[commandIndex];
   const args = words.slice(commandIndex + 1);
@@ -2974,6 +3027,23 @@ function packageManagerShimCommandIndex(words) {
     }
     if (['add', 'ci', 'dlx', 'exec', 'install', 'publish', 'remove', 'run', 'test'].includes(lower)) return null;
     return index;
+  }
+  return null;
+}
+
+function packageManagerRunPayloadCommandIndex(words) {
+  const manager = words[0]?.toLowerCase();
+  if (!['npm', 'pnpm', 'yarn', 'bun'].includes(manager)) return null;
+  for (let index = 1; index < words.length; index += 1) {
+    const word = words[index];
+    const lower = word?.toLowerCase();
+    if (!word || word === '--') return null;
+    if (word.startsWith('-')) {
+      if (packageManagerOptionConsumesNext(word, manager) && words[index + 1]) index += 1;
+      continue;
+    }
+    if (['run', 'run-script'].includes(lower)) return words[index + 1] ? index + 1 : null;
+    return null;
   }
   return null;
 }
