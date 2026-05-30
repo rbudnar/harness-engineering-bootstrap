@@ -1566,6 +1566,20 @@ test('screens cd preamble package scripts in their changed directory', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens cd preamble package scripts when only nested manifests exist', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workflow-cd-nested-only-unsafe-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'cd services/api\nnpm test'
+    && !run.safe
+    && run.packageScriptReason.includes('package script "test"')
+  )));
+  assert(!survey.commands.some((run) => run.command === 'cd services/api\nnpm test'));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'services/api/package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('uses direct release CLIs as runtime-safety evidence', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'semantic-release-ci'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });

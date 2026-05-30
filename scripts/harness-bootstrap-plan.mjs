@@ -2975,10 +2975,7 @@ function commandPartReferencesRuntimeSurface(part) {
 }
 
 function unsafePackageScriptReason(command, packageManifest, packageManifests = [], options = {}) {
-  const packageJson = packageManifest?.json;
-  if (!packageJson) return null;
-
-  let currentDirectory = packageManifest.directory ?? null;
+  let currentDirectory = packageManifest?.directory ?? null;
   for (const part of splitShellCommandParts(command)) {
     const cdCommand = inspectCdCommand(part, currentDirectory);
     if (cdCommand.isCd) {
