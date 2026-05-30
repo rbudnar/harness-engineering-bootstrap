@@ -2751,6 +2751,8 @@ function hasDangerousCommand(command) {
         && (
           hasDangerousCliVerb(inspectedPart)
           || hasDangerousPackageManagerCommand(inspectedPart)
+          || hasDangerousPackageExecutorPayload(inspectedPart)
+          || hasDangerousReleaseToolCommand(inspectedPart)
           || hasDangerousAwsCommand(inspectedPart)
           || hasDangerousDockerCommand(inspectedPart)
           || hasDangerousGitCommand(inspectedPart)
@@ -2806,7 +2808,7 @@ function packageManagerExecCommandIndex(words) {
     const lower = word?.toLowerCase();
     if (!word || word === '--') return null;
     if (word.startsWith('-')) {
-      if (packageManagerOptionConsumesNext(word) && words[index + 1]) index += 1;
+      if (packageManagerOptionConsumesNext(word, manager) && words[index + 1]) index += 1;
       continue;
     }
     if (manager === 'npm' && lower === 'exec') return skipPackageExecutorOptions(words, index + 1);
@@ -2827,15 +2829,15 @@ function hasDangerousPackageManagerCommand(part) {
   const manager = words[0]?.toLowerCase();
   if (!['npm', 'pnpm', 'yarn', 'bun'].includes(manager)) return false;
 
-  const args = packageManagerArgsAfterOptions(words, 1);
+  const args = packageManagerArgsAfterOptions(words, 1, manager);
   const command = args[0]?.toLowerCase();
   if (!command) return false;
   if (manager === 'yarn' && command === 'npm') {
-    const yarnNpmCommand = packageManagerArgsAfterOptions(args, 1)[0]?.toLowerCase();
+    const yarnNpmCommand = packageManagerArgsAfterOptions(args, 1, 'npm')[0]?.toLowerCase();
     return ['login', 'publish'].includes(yarnNpmCommand);
   }
   if (manager === 'npm' && command === 'dist-tag') {
-    const distTagCommand = packageManagerArgsAfterOptions(args, 1)[0]?.toLowerCase();
+    const distTagCommand = packageManagerArgsAfterOptions(args, 1, manager)[0]?.toLowerCase();
     return ['add', 'rm', 'remove'].includes(distTagCommand);
   }
   const mutatingCommands = {
@@ -2847,7 +2849,7 @@ function hasDangerousPackageManagerCommand(part) {
   return Boolean(mutatingCommands[manager]?.has(command));
 }
 
-function packageManagerArgsAfterOptions(words, startIndex) {
+function packageManagerArgsAfterOptions(words, startIndex, manager = words[0]?.toLowerCase()) {
   const args = [];
   for (let index = startIndex; index < words.length; index += 1) {
     const word = words[index];
@@ -2857,7 +2859,7 @@ function packageManagerArgsAfterOptions(words, startIndex) {
       break;
     }
     if (word.startsWith('-')) {
-      if (packageManagerOptionConsumesNext(word) && words[index + 1]) index += 1;
+      if (packageManagerOptionConsumesNext(word, manager) && words[index + 1]) index += 1;
       continue;
     }
     args.push(word);
@@ -2865,9 +2867,10 @@ function packageManagerArgsAfterOptions(words, startIndex) {
   return args;
 }
 
-function packageManagerOptionConsumesNext(option) {
+function packageManagerOptionConsumesNext(option, manager = '') {
   const lower = option.toLowerCase();
   if (lower.includes('=')) return false;
+  if (manager === 'pnpm' && lower === '-w') return false;
   if (lower.startsWith('--config.')) return true;
   return [
     '-c',
@@ -2929,6 +2932,70 @@ function skipPackageExecutorOptions(words, startIndex) {
     else index += 1;
   }
   return index;
+}
+
+function hasDangerousPackageExecutorPayload(part) {
+  return packageExecutorPayloads(part).some((payload) => hasDangerousCommand(payload));
+}
+
+function packageExecutorPayloads(part) {
+  const words = shellWords(stripPackageCommandPrefix(part));
+  const startIndex = packageExecutorOptionStart(words);
+  if (startIndex == null) return [];
+
+  for (let index = startIndex; index < words.length; index += 1) {
+    const word = words[index];
+    const lower = word?.toLowerCase();
+    if (!word) continue;
+    if (word === '--') return [words.slice(index + 1).join(' ')].filter(Boolean);
+    if (lower === '-c' || lower === '--call') return [words.slice(index + 1).join(' ')].filter(Boolean);
+    if (lower.startsWith('--call=')) return [[word.slice('--call='.length), ...words.slice(index + 1)].join(' ')].filter(Boolean);
+    if (word.startsWith('-') && packageExecutorOptionConsumesNext(word) && words[index + 1]) index += 1;
+  }
+  return [];
+}
+
+function packageExecutorOptionStart(words) {
+  const manager = words[0]?.toLowerCase();
+  if (['npx', 'bunx'].includes(manager)) return 1;
+  if (!['npm', 'pnpm', 'yarn'].includes(manager)) return null;
+  for (let index = 1; index < words.length; index += 1) {
+    const word = words[index];
+    const lower = word?.toLowerCase();
+    if (!word || word === '--') return null;
+    if (word.startsWith('-')) {
+      if (packageManagerOptionConsumesNext(word, manager) && words[index + 1]) index += 1;
+      continue;
+    }
+    if (manager === 'npm' && lower === 'exec') return index + 1;
+    if (['pnpm', 'yarn'].includes(manager) && ['exec', 'dlx'].includes(lower)) return index + 1;
+    return null;
+  }
+  return null;
+}
+
+function packageExecutorOptionConsumesNext(option) {
+  const lower = String(option ?? '').toLowerCase();
+  if (lower.includes('=')) return false;
+  return ['-p', '--package'].includes(lower);
+}
+
+function hasDangerousReleaseToolCommand(part) {
+  const words = shellWords(stripPackageCommandPrefix(part)).map((word) => stripYamlQuotes(word).toLowerCase());
+  const commandIndex = releaseToolCommandIndex(words);
+  if (commandIndex == null) return false;
+  const command = words[commandIndex];
+  if (['semantic-release', 'release-it'].includes(command)) return true;
+  return command === 'changeset' && words[commandIndex + 1] === 'publish';
+}
+
+function releaseToolCommandIndex(words) {
+  const manager = words[0]?.toLowerCase();
+  if (['npx', 'bunx'].includes(manager)) return skipPackageExecutorOptions(words, 1);
+  const execCommandIndex = packageManagerExecCommandIndex(words);
+  if (execCommandIndex != null) return execCommandIndex;
+  if (['pnpm', 'yarn', 'bun'].includes(manager) && words[1] === 'changeset') return 1;
+  return 0;
 }
 
 function hasDangerousAwsCommand(part) {

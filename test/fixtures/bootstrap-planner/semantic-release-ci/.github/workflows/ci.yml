@@ -8,7 +8,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: npx semantic-release
+      - run: npx "semantic-release"
       - run: npm exec release-it
+      - run: pnpm exec "semantic-release"
       - run: pnpm exec semantic-release
       - run: npm exec -- changeset publish
       - run: npx --yes changeset publish

@@ -7,6 +7,8 @@ jobs:
       - run: npx vercel --prod
       - run: fly deploy
       - run: npx wrangler deploy
+      - run: npx --call "wrangler deploy"
+      - run: npm exec -c "wrangler deploy"
       - run: pnpm dlx firebase deploy
       - run: azd up --no-prompt
       - run: serverless deploy --stage prod

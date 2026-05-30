@@ -6,7 +6,7 @@
     "lint": "npm dist-tag add package@1.2.3 latest",
     "quality": "pnpm --registry https://registry.npmjs.org publish",
     "typecheck": "npm version patch",
-    "validate": "pnpm --config.registry https://registry.npmjs.org publish",
+    "validate": "pnpm -w publish",
     "coverage": "yarn --cwd . npm publish",
     "test": "bun --cwd . publish"
   }

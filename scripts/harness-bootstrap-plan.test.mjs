@@ -1306,7 +1306,7 @@ test('detects workspace-scoped publish commands', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'workspace-publish-ci'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
 
-  for (const command of ['npm --workspace api publish', 'npm --workspaces publish', 'pnpm -r publish']) {
+  for (const command of ['npm --workspace api publish', 'npm --workspaces publish', 'pnpm -r publish', 'pnpm -w publish']) {
     assert(survey.ci.runCommands.some((run) => run.command === command && !run.safe));
     assert(!survey.commands.some((run) => run.command === command));
   }
@@ -1644,7 +1644,9 @@ test('uses direct release CLIs as runtime-safety evidence', () => {
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
 
   assert(survey.ci.runCommands.some((run) => run.command === 'npx semantic-release' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'npx "semantic-release"' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'npm exec release-it' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'pnpm exec "semantic-release"' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'pnpm exec semantic-release' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'npm exec -- changeset publish' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'npx --yes changeset publish' && !run.safe));
@@ -1673,6 +1675,8 @@ test('uses direct deploy CLIs as runtime-safety evidence', () => {
   assert(survey.ci.runCommands.some((run) => run.command === 'npx vercel --prod' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'fly deploy' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'npx wrangler deploy' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'npx --call "wrangler deploy"' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'npm exec -c "wrangler deploy"' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'pnpm dlx firebase deploy' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'azd up --no-prompt' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'serverless deploy --stage prod' && !run.safe));

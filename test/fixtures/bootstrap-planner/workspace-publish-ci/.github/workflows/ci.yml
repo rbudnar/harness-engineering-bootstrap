@@ -5,3 +5,4 @@ jobs:
       - run: npm --workspace api publish
       - run: npm --workspaces publish
       - run: pnpm -r publish
+      - run: pnpm -w publish
