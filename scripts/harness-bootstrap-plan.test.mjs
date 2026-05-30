@@ -2092,6 +2092,8 @@ test('uses direct deploy CLIs as runtime-safety evidence', () => {
   assert(survey.ci.runCommands.some((run) => run.command === 'pnpm dlx firebase deploy' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'firebase hosting:channel:deploy preview' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'azd up --no-prompt' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'az acr login --name example' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'gcloud builds submit --tag gcr.io/project/app' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'serverless deploy --stage prod' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'serverless remove --stage prod' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'sls deploy' && !run.safe));
@@ -2119,6 +2121,7 @@ test('keeps HTTP writes with curl write-output as runtime-safety evidence', () =
       '    runs-on: ubuntu-latest',
       '    steps:',
       '      - run: curl -X POST --write-out "%{http_code}" https://example.invalid/hook',
+      "      - run: curl --json '{\"event\":\"ping\"}' https://example.invalid/hook",
       '',
     ].join('\n'));
 
@@ -2132,6 +2135,10 @@ test('keeps HTTP writes with curl write-output as runtime-safety evidence', () =
     assert(survey.runtimeSafetyHints.some((hint) => (
       hint.path === '.github/workflows/ci.yml'
       && hint.reason.includes('curl -X POST --write-out')
+    )));
+    assert(survey.runtimeSafetyHints.some((hint) => (
+      hint.path === '.github/workflows/ci.yml'
+      && hint.reason.includes('curl --json')
     )));
     assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
   } finally {

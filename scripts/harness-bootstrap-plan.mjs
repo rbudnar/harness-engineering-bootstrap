@@ -90,6 +90,7 @@ const dangerousCommandPatterns = [
   /\bgh\s+auth\s+login\b/,
   /\bgh\s+pr\s+merge\b/,
   /\baz\s+login\b/,
+  /\baz\s+[\w-]+\s+login\b/,
   /\bgcloud\s+auth\s+login\b/,
   /\baws\s+configure\b/,
   /\bnpm\s+(adduser|login)\b/,
@@ -120,6 +121,7 @@ const dangerousCommandPatterns = [
   /\baz\s+.+\b(create|delete|deploy|update|upload|import|set|purge|restore|start|stop|restart|scale|up)\b/,
   /\baws\s+(s3|s3api)\s+(sync|cp|mv|rm|rb|mb|put|delete|create|update)\b/,
   /\baws\s+.+\b(put|delete|create|deploy|publish|update)\b/,
+  /\bgcloud\s+builds\s+submit\b/,
   /\bgcloud\s+.+\b(deploy|delete|create|update)\b/,
   /\bsupabase\s+db\s+push\b/,
   /\bprisma\s+(migrate\s+(deploy|dev|reset)|db\s+push)\b/,
@@ -3334,11 +3336,11 @@ function hasDangerousCurlCommand(args) {
     if (lower.startsWith('-x') && lower.length > 2 && isHttpWriteMethod(lower.slice(2))) return true;
     if (lower.startsWith('--request=') && isHttpWriteMethod(lower.slice('--request='.length))) return true;
     if ([
-      '-d', '--data', '--data-raw', '--data-binary', '--data-urlencode',
+      '-d', '--data', '--data-raw', '--data-binary', '--data-urlencode', '--json',
       '--form', '--form-string', '--upload-file',
     ].includes(lower) || ['-F', '-T'].includes(word)) return true;
     if (/^-(?:d|F|T).+/.test(word)) return true;
-    if (/^--(?:data|data-raw|data-binary|data-urlencode|form|form-string|upload-file)=/.test(lower)) return true;
+    if (/^--(?:data|data-raw|data-binary|data-urlencode|json|form|form-string|upload-file)=/.test(lower)) return true;
   }
   return false;
 }

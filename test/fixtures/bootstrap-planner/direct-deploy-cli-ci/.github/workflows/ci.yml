@@ -12,6 +12,8 @@ jobs:
       - run: pnpm dlx firebase deploy
       - run: firebase hosting:channel:deploy preview
       - run: azd up --no-prompt
+      - run: az acr login --name example
+      - run: gcloud builds submit --tag gcr.io/project/app
       - run: serverless deploy --stage prod
       - run: serverless remove --stage prod
       - run: sls deploy
