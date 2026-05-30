@@ -2026,11 +2026,9 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
 
             const blockCommand = normalizeRunBlock(listBlockLines, { folded: command.startsWith('>') });
             if (blockCommand) {
-              commands.push(classifyCiRunCommand(source, blockCommand, true, packageManifests, {
+              commands.push(classifyCiRunCommand(source, blockCommand, true, packageManifests, ciOptions({
                 workingDirectory: blockWorkingDirectory,
-                unsafeMakeTargets,
-                incompleteScan: options.incompleteScan,
-              }));
+              })));
               const changedDirectory = finalWorkingDirectoryFromShellCommand(blockCommand, blockWorkingDirectory);
               if (changedDirectory !== null) {
                 blockWorkingDirectory = changedDirectory;
@@ -3975,7 +3973,7 @@ function commandNeedsCompleteScan(command) {
 
     const makeInvocation = makeInvocationFromCommandPart(stripped, currentDirectory);
     if (makeInvocation?.unsafeReason) return true;
-    if (makeInvocation && (makeInvocation.directory || currentDirectory || makeCommandUsesExternalFile(stripped))) return true;
+    if (makeInvocation) return true;
   }
   return false;
 }
@@ -3985,25 +3983,6 @@ function hasWorkspaceWidePackageCommand(command) {
   return /(?:^|\s)npm\s+.*(?:--workspaces|-ws)(?:\s|=|$)/.test(lower)
     || /(?:^|\s)pnpm\s+.*(?:-r|--recursive)(?:\s|=|$)/.test(lower)
     || /(?:^|\s)yarn\s+workspaces\s+foreach\b/.test(lower);
-}
-
-function makeCommandUsesExternalFile(command) {
-  const words = shellWords(stripPackageCommandPrefix(command));
-  if (!isMakeCommandWord(words[0])) return false;
-  for (let index = 1; index < words.length; index += 1) {
-    const word = words[index];
-    if (['-f', '--file', '--makefile'].includes(word)) {
-      const next = words[index + 1] ?? '';
-      if (next.includes('/') || next.includes('\\')) return true;
-      index += 1;
-      continue;
-    }
-    const compact = word.match(/^-f(.+)$/)?.[1];
-    if (compact && (compact.includes('/') || compact.includes('\\'))) return true;
-    const inline = word.match(/^--(?:file|makefile)=(.+)$/)?.[1];
-    if (inline && (inline.includes('/') || inline.includes('\\'))) return true;
-  }
-  return false;
 }
 
 function packageScriptManifestsForCommand(command, fallbackManifest, packageManifests = [], workingDirectory = null) {

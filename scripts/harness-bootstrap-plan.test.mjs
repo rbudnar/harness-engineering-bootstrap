@@ -1180,6 +1180,39 @@ test('keeps CI Make formatter package writes out of runtime-safety hints', () =>
   }
 });
 
+test('keeps generic CI list-block Make formatter writes out of runtime-safety hints', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-generic-ci-make-local-write-'));
+  try {
+    writeFileSync(resolve(tempRoot, 'Makefile'), [
+      'check:',
+      '\tprettier --write .',
+      '',
+    ].join('\n'));
+    writeFileSync(resolve(tempRoot, '.gitlab-ci.yml'), [
+      'test:',
+      '  script:',
+      '    - |',
+      '      make check',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(survey.ci.runCommands.some((run) => (
+      run.command === 'make check'
+      && !run.safe
+      && run.inspectOnlyReason.includes('make target "check"')
+      && !run.makeTargetRuntimeSafetyReason
+    )));
+    assert(!survey.runtimeSafetyHints.some((hint) => hint.path === '.gitlab-ci.yml'));
+    assert(!survey.runtimeSafetyHints.some((hint) => hint.path === 'Makefile'));
+    assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('screens package scripts that call runtime-surface files', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'package-runtime-surface'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -3079,6 +3112,39 @@ test('keeps delegated commands inspect-only when large repository walks truncate
     assert.equal(survey.files.truncated, true);
     assert(!survey.commands.some((run) => run.command === 'npm test'));
     assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('keeps Make commands inspect-only when large repository walks truncate', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-truncated-make-'));
+  try {
+    writeFileSync(resolve(tempRoot, 'a.txt'), 'x');
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        test: 'make test',
+        check: 'make -f ci.mk check',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, 'Makefile'), 'test:\n\tterraform apply -auto-approve\n');
+    writeFileSync(resolve(tempRoot, 'ci.mk'), 'check:\n\tterraform apply -auto-approve\n');
+
+    const survey = surveyRepository(tempRoot, { maxFiles: 2 });
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert.equal(survey.files.truncated, true);
+    assert(!survey.commands.some((run) => run.command === 'npm test'));
+    assert(!survey.commands.some((run) => run.command === 'npm run check'));
+    assert(survey.runtimeSafetyHints.some((hint) => (
+      hint.path === 'package.json'
+      && hint.reason === 'package script "test" may mutate external state'
+    )));
+    assert(survey.runtimeSafetyHints.some((hint) => (
+      hint.path === 'package.json'
+      && hint.reason === 'package script "check" may mutate external state'
+    )));
     assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
