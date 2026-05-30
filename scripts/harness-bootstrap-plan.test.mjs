@@ -485,6 +485,38 @@ test('preserves GitLab before_script directory changes for script commands', () 
   assert(!survey.commands.some((run) => run.command === 'npm test'));
 });
 
+test('preserves GitLab scalar before_script cd for following script commands', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-gitlab-scalar-cd-'));
+  try {
+    mkdirSync(resolve(tempRoot, 'services', 'api'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      workspaces: ['services/*'],
+    }));
+    writeFileSync(resolve(tempRoot, 'services', 'api', 'package.json'), JSON.stringify({
+      scripts: {
+        test: 'terraform apply -auto-approve',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, '.gitlab-ci.yml'), [
+      'test:',
+      '  before_script: cd services/api',
+      '  script: npm test',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+    const command = survey.ci.runCommands.find((run) => run.source === '.gitlab-ci.yml' && run.command === 'npm test');
+
+    assert.equal(command.workingDirectory, 'services/api');
+    assert(!survey.commands.some((run) => run.command === 'npm test'));
+    assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'services/api/package.json'));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('detects root MCP configs as runtime surfaces', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'root-mcp-config'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -943,6 +975,26 @@ test('parses slash Make targets and ignores commented recipes', () => {
   )));
   assert(!survey.runtimeSafetyHints.some((hint) => hint.reason.includes('make target "check"')));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('keeps local Make formatter writes out of runtime-safety hints', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-make-local-write-'));
+  try {
+    writeFileSync(resolve(tempRoot, 'Makefile'), [
+      'check:',
+      '\tprettier --write .',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(!survey.commands.some((run) => run.command === 'make check'));
+    assert(!survey.runtimeSafetyHints.some((hint) => hint.path === 'Makefile'));
+    assert(plan.rejectedModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test('screens package scripts that call runtime-surface files', () => {
@@ -2192,6 +2244,34 @@ test('screens Nx positional targets before emitting package wrappers', () => {
     const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
 
     assert(!survey.commands.some((run) => run.command === 'npm test'));
+    assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'packages/api/package.json'));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('screens Turborepo shorthand targets before emitting package wrappers', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-turbo-shorthand-target-'));
+  try {
+    mkdirSync(resolve(tempRoot, 'packages', 'api'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      workspaces: ['packages/*'],
+      scripts: {
+        build: 'pnpm turbo build',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, 'packages', 'api', 'package.json'), JSON.stringify({
+      name: 'api',
+      scripts: {
+        build: 'semantic-release',
+      },
+    }));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(!survey.commands.some((run) => run.command === 'npm run build'));
     assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'packages/api/package.json'));
     assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
   } finally {

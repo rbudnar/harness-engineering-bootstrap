@@ -1181,7 +1181,7 @@ function collectMakeTargets(root, fileSet, unsafeTargets = collectUnsafeMakeTarg
 
 function collectMakeRuntimeSafetyHints(root, fileSet, packageManifests = []) {
   const targets = collectMakeTargetRecipes(root, fileSet, { includeIncludedMakefiles: true });
-  const unsafeTargets = unsafeMakeTargetKeys(targets, packageManifests);
+  const unsafeTargets = unsafeMakeTargetKeys(targets, packageManifests, { runtimeSafety: true });
   return targets
     .filter((target) => unsafeTargets.has(makeTargetKey(target.directory, target.name)))
     .map((target) => ({
@@ -1310,9 +1310,10 @@ function splitMakeRuleTail(tail) {
   };
 }
 
-function unsafeMakeTargetKeys(targets, packageManifests = []) {
+function unsafeMakeTargetKeys(targets, packageManifests = [], options = {}) {
   const byKey = new Map(targets.map((target) => [makeTargetKey(target.directory, target.name), target]));
   const firstTargetByDirectory = new Map();
+  const hasUnsafeCommand = options.runtimeSafety ? hasRuntimeSafetyDangerousCommand : hasDangerousCommand;
   for (const target of targets) {
     const directory = normalizePackageDirectory(target.directory || '');
     if (target.explicitDefaultTarget) {
@@ -1331,22 +1332,22 @@ function unsafeMakeTargetKeys(targets, packageManifests = []) {
       if (unsafe.has(key)) continue;
       if (
         isAuthorityMakeTargetName(target.name)
-        || hasDangerousCommand(target.recipe)
+        || hasUnsafeCommand(target.recipe)
         || unsafePackageScriptReason(
           target.recipe,
           packageManifestForCommand(target.recipe, packageManifests, target.directory),
           packageManifests,
-          { unsafeMakeTargets: unsafe, currentDirectory: target.directory },
+          { unsafeMakeTargets: unsafe, currentDirectory: target.directory, runtimeSafety: options.runtimeSafety },
         )
         || (target.directory && unsafePackageScriptReason(
           target.recipe,
           packageManifestForCommand(target.recipe, packageManifests, ''),
           packageManifests,
-          { unsafeMakeTargets: unsafe, currentDirectory: '' },
+          { unsafeMakeTargets: unsafe, currentDirectory: '', runtimeSafety: options.runtimeSafety },
         ))
         || unsafeMakeTargetReasonFromDirectory(target.recipe, unsafe, target.directory)
         || (target.directory && unsafeMakeTargetReasonFromDirectory(target.recipe, unsafe, ''))
-        || target.prerequisites.some((name) => unsafe.has(makeTargetKey(target.directory, name)) || isUnsafeMakePrerequisite(name, target.directory, byKey))
+        || target.prerequisites.some((name) => unsafe.has(makeTargetKey(target.directory, name)) || isUnsafeMakePrerequisite(name, target.directory, byKey, new Set(), options))
       ) {
         unsafe.add(key);
         changed = true;
@@ -1366,14 +1367,15 @@ function unsafeMakeTargetKeys(targets, packageManifests = []) {
   return unsafe;
 }
 
-function isUnsafeMakePrerequisite(name, directory, byKey, seen = new Set()) {
+function isUnsafeMakePrerequisite(name, directory, byKey, seen = new Set(), options = {}) {
   const key = makeTargetKey(directory, name);
   const target = byKey.get(key);
   if (!target || seen.has(key)) return false;
   seen.add(key);
+  const hasUnsafeCommand = options.runtimeSafety ? hasRuntimeSafetyDangerousCommand : hasDangerousCommand;
   return isAuthorityMakeTargetName(target.name)
-    || hasDangerousCommand(target.recipe)
-    || target.prerequisites.some((prerequisite) => isUnsafeMakePrerequisite(prerequisite, target.directory, byKey, seen));
+    || hasUnsafeCommand(target.recipe)
+    || target.prerequisites.some((prerequisite) => isUnsafeMakePrerequisite(prerequisite, target.directory, byKey, seen, options));
 }
 
 function isAuthorityMakeTargetName(name) {
@@ -1867,7 +1869,7 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
       let inlineWorkingDirectory = contextualWorkingDirectory;
       for (const inlineCommand of inlineCommands) {
         const command = stripYamlQuotes(inlineCommand);
-        const changedDirectory = workingDirectoryFromCdCommand(command);
+        const changedDirectory = finalWorkingDirectoryFromShellCommand(command, inlineWorkingDirectory);
         if (changedDirectory !== null) {
           inlineWorkingDirectory = changedDirectory;
           if (phaseCarriesDirectory) {
@@ -1944,9 +1946,17 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
                 unsafeMakeTargets,
                 incompleteScan: options.incompleteScan,
               }));
+              const changedDirectory = finalWorkingDirectoryFromShellCommand(blockCommand, blockWorkingDirectory);
+              if (changedDirectory !== null) {
+                blockWorkingDirectory = changedDirectory;
+                if (phaseCarriesDirectory) {
+                  shellPhaseWorkingDirectory = changedDirectory;
+                  shellPhaseIndent = indentation(line);
+                }
+              }
             }
           } else {
-            const changedDirectory = workingDirectoryFromCdCommand(command);
+            const changedDirectory = finalWorkingDirectoryFromShellCommand(command, blockWorkingDirectory);
             if (changedDirectory !== null) {
               blockWorkingDirectory = changedDirectory;
               if (phaseCarriesDirectory) {
@@ -2003,22 +2013,42 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
         index = nextIndex;
       }
 
+      let nestedWorkingDirectory = blockWorkingDirectory;
       for (const nestedCommand of nestedCommands) {
         commands.push(classifyCiRunCommand(source, nestedCommand.command, nestedCommand.multiline, packageManifests, ciOptions({
-          workingDirectory: blockWorkingDirectory,
+          workingDirectory: nestedWorkingDirectory,
         })));
+        const changedDirectory = finalWorkingDirectoryFromShellCommand(nestedCommand.command, nestedWorkingDirectory);
+        if (changedDirectory !== null) {
+          nestedWorkingDirectory = changedDirectory;
+          if (phaseCarriesDirectory) {
+            shellPhaseWorkingDirectory = changedDirectory;
+            shellPhaseIndent = indentation(line);
+          }
+        }
       }
 
       const blockCommand = normalizeRunBlock(blockLines);
       if (blockCommand) {
         commands.push(classifyCiRunCommand(source, blockCommand, true, packageManifests, ciOptions({
-          workingDirectory: blockWorkingDirectory,
+          workingDirectory: nestedWorkingDirectory,
         })));
+        const changedDirectory = finalWorkingDirectoryFromShellCommand(blockCommand, nestedWorkingDirectory);
+        if (changedDirectory !== null && phaseCarriesDirectory) {
+          shellPhaseWorkingDirectory = changedDirectory;
+          shellPhaseIndent = indentation(line);
+        }
       }
     } else {
-      commands.push(classifyCiRunCommand(source, stripYamlQuotes(value), false, packageManifests, ciOptions({
+      const command = stripYamlQuotes(value);
+      commands.push(classifyCiRunCommand(source, command, false, packageManifests, ciOptions({
         workingDirectory: contextualWorkingDirectory,
       })));
+      const changedDirectory = finalWorkingDirectoryFromShellCommand(command, contextualWorkingDirectory);
+      if (changedDirectory !== null && phaseCarriesDirectory) {
+        shellPhaseWorkingDirectory = changedDirectory;
+        shellPhaseIndent = indentation(line);
+      }
     }
   }
 
@@ -3956,7 +3986,7 @@ function packageScriptNamesFromTaskRunnerCommand(command) {
   }
 
   const runIndex = lower.indexOf('run');
-  if (runIndex < 0) return [];
+  if (runIndex < 0) return dedupe(taskRunnerShorthandTargets(runner, words, lower));
   return dedupe(taskRunnerPositionalTargets(words.slice(runIndex + 1)));
 }
 
@@ -3975,6 +4005,45 @@ function nxPositionalTargets(words, lower) {
   if (['affected', 'connect', 'daemon', 'exec', 'format', 'generate', 'graph', 'init', 'list', 'migrate', 'release', 'repair', 'report', 'reset', 'run-many', 'show', 'sync', 'view-logs'].includes(normalizedCommand)) return [];
   return [command];
 }
+
+function taskRunnerShorthandTargets(runner, words, lower) {
+  if (runner !== 'turbo') return [];
+  const commandIndex = firstTaskRunnerPositionalIndex(words);
+  if (commandIndex == null) return [];
+  const command = lower[commandIndex];
+  if (!command || turboReservedCommands.has(command)) return [];
+  return taskRunnerPositionalTargets(words.slice(1));
+}
+
+function firstTaskRunnerPositionalIndex(words) {
+  for (let index = 1; index < words.length; index += 1) {
+    const word = words[index];
+    if (!word || word === '--') return null;
+    if (word.startsWith('-')) {
+      if (taskRunnerOptionConsumesNext(word) && words[index + 1]) index += 1;
+      continue;
+    }
+    return index;
+  }
+  return null;
+}
+
+const turboReservedCommands = new Set([
+  'bin',
+  'completion',
+  'daemon',
+  'generate',
+  'info',
+  'init',
+  'link',
+  'login',
+  'logout',
+  'ls',
+  'prune',
+  'query',
+  'telemetry',
+  'unlink',
+]);
 
 function taskRunnerPositionalTargets(words) {
   const targets = [];
@@ -4369,6 +4438,19 @@ function workingDirectoryFromCdCommand(command) {
 function resolvedWorkingDirectoryFromCdCommand(command, currentDirectory = '') {
   const result = inspectCdCommand(command, currentDirectory);
   return result.isCd && !result.unsafeReason ? result.directory : null;
+}
+
+function finalWorkingDirectoryFromShellCommand(command, currentDirectory = '') {
+  let workingDirectory = normalizePackageDirectory(currentDirectory || '');
+  let changed = false;
+  for (const part of splitShellCommandParts(command)) {
+    const cdCommand = inspectCdCommand(part, workingDirectory);
+    if (!cdCommand.isCd) continue;
+    if (cdCommand.unsafeReason) return null;
+    workingDirectory = cdCommand.directory;
+    changed = true;
+  }
+  return changed ? workingDirectory : null;
 }
 
 function inspectCdCommand(command, currentDirectory = '') {
