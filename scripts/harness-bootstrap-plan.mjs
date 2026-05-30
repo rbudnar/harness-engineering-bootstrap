@@ -111,11 +111,11 @@ const dangerousCommandPatterns = [
   /(^|\s)(?:(?:pnpm|yarn|bun)\s+)?changeset\s+publish(?:\s|$)/,
   /(^|\s)(semantic-release|release-it)(\s|$)/,
   /\b(node|tsx?|python3?|bash|sh|pwsh|powershell)\s+\S*(deploy|release|publish|provision)[\w./\\-]*/i,
-  /\b(npm|pnpm|yarn|bun)\s+(run\s+)?[\w:-]*(deploy|publish|release)[\w:-]*\b/,
-  /\bnpm\s+(?:(?:--prefix|--workspace|-w)(?:=|\s+)\S+\s+|--workspaces?\s+|-ws\s+)*(run\s+)?[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
-  /\bpnpm\s+(?:(?:--filter|-f|--dir|-c)(?:=|\s+)\S+\s+|-r\s+|--recursive\s+)*(run\s+)?[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
-  /\byarn\s+(?:(?:--cwd|workspace)(?:=|\s+)\S+\s+)*(run\s+)?[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
-  /\bbun\s+(?:(?:--cwd)(?:=|\s+)\S+\s+)*run\s+[\w:-]*(deploy|publish|release|provision)[\w:-]*\b/,
+  /\b(npm|pnpm|yarn|bun)\s+(run\s+)?[\w:.-]*(deploy|publish|release)[\w:.-]*\b/,
+  /\bnpm\s+(?:(?:--prefix|--workspace|-w)(?:=|\s+)\S+\s+|--workspaces?\s+|-ws\s+)*(run\s+)?[\w:.-]*(deploy|publish|release|provision)[\w:.-]*\b/,
+  /\bpnpm\s+(?:(?:--filter|-f|--dir|-c)(?:=|\s+)\S+\s+|-r\s+|--recursive\s+)*(run\s+)?[\w:.-]*(deploy|publish|release|provision)[\w:.-]*\b/,
+  /\byarn\s+(?:(?:--cwd|workspace)(?:=|\s+)\S+\s+)*(run\s+)?[\w:.-]*(deploy|publish|release|provision)[\w:.-]*\b/,
+  /\bbun\s+(?:(?:--cwd)(?:=|\s+)\S+\s+)*run\s+[\w:.-]*(deploy|publish|release|provision)[\w:.-]*\b/,
   /\bazd\s+(up|deploy|provision|restore)\b/,
   /\baz\s+.+\b(create|delete|deploy|update|upload|import|set|purge|restore|start|stop|restart|scale|up)\b/,
   /\baws\s+(s3|s3api)\s+(sync|cp|mv|rm|rb|mb|put|delete|create|update)\b/,
@@ -151,9 +151,10 @@ const localWorktreeWritePatterns = [
   /\bcargo\s+fmt\b(?![^&|;]*\s--check\b)/,
   /\bblack\b(?![^&|;]*\s--check\b)/,
   /\bruff\s+format\b(?![^&|;]*\s--check\b)/,
+  /\bruff\s+check\b.*\s--fix(?:=|\s|$)/,
+  /\b(?:eslint|stylelint|prettier|biome|dprint)\b.*\s--(?:fix|write)(?:=|\s|$)/,
   /\b(prettier|gofmt|dprint|terraform\s+fmt)\b.*\s-w(?:\s|$)/,
   /\bterraform\s+fmt\b(?![^&|;]*\s-check\b)/,
-  /\s--(fix|write)\b/,
 ];
 
 const validationScriptCommandNames = new Set([
@@ -4020,12 +4021,12 @@ function packageScriptNameFromCommand(command) {
     if (scopedScriptName) return scopedScriptName;
   }
 
-  const npmAllWorkspaceRun = trimmed.match(/^npm\s+--workspaces(?:=(?:true|1))?\s+(?:run\s+)?([\w:-]+)/i);
+  const npmAllWorkspaceRun = trimmed.match(/^npm\s+--workspaces(?:=(?:true|1))?\s+(?:run\s+)?([\w:.-]+)/i);
   if (npmAllWorkspaceRun && !['ci', 'install'].includes(npmAllWorkspaceRun[1].toLowerCase())) {
     return npmAllWorkspaceRun[1] === 'test' ? 'test' : npmAllWorkspaceRun[1];
   }
 
-  const pnpmRecursiveRun = trimmed.match(/^pnpm\s+(?:-r|--recursive)\s+(?:run\s+)?([\w:-]+)/i);
+  const pnpmRecursiveRun = trimmed.match(/^pnpm\s+(?:-r|--recursive)\s+(?:run\s+)?([\w:.-]+)/i);
   if (pnpmRecursiveRun && !['add', 'install', 'remove'].includes(pnpmRecursiveRun[1].toLowerCase())) {
     return pnpmRecursiveRun[1] === 'test' ? 'test' : pnpmRecursiveRun[1];
   }
@@ -4033,65 +4034,65 @@ function packageScriptNameFromCommand(command) {
   const yarnForeachRun = yarnWorkspacesForeachScriptName(trimmed);
   if (yarnForeachRun) return yarnForeachRun;
 
-  const trailingNpmWorkspaceRun = trimmed.match(/^npm\s+run\s+([\w:-]+)\b.*(?:--workspace|-w)(?:=|\s+)\S+/i);
+  const trailingNpmWorkspaceRun = trimmed.match(/^npm\s+run\s+([\w:.-]+)\b.*(?:--workspace|-w)(?:=|\s+)\S+/i);
   if (trailingNpmWorkspaceRun) return trailingNpmWorkspaceRun[1];
 
   const trailingNpmWorkspaceTest = trimmed.match(/^npm\s+test\b.*(?:--workspace|-w)(?:=|\s+)\S+/i);
   if (trailingNpmWorkspaceTest) return 'test';
 
-  const npmWorkspaceRun = trimmed.match(/^npm\s+(?:--workspace|-w)(?:=|\s+)\S+\s+run\s+([\w:-]+)/i);
+  const npmWorkspaceRun = trimmed.match(/^npm\s+(?:--workspace|-w)(?:=|\s+)\S+\s+run\s+([\w:.-]+)/i);
   if (npmWorkspaceRun) return npmWorkspaceRun[1];
 
   const npmWorkspaceTest = trimmed.match(/^npm\s+(?:--workspace|-w)(?:=|\s+)\S+\s+test\b/i);
   if (npmWorkspaceTest) return 'test';
 
-  const pnpmFilterRun = trimmed.match(/^pnpm\s+(?:--filter|-F)(?:=|\s+)\S+\s+run\s+([\w:-]+)/i);
+  const pnpmFilterRun = trimmed.match(/^pnpm\s+(?:--filter|-F)(?:=|\s+)\S+\s+run\s+([\w:.-]+)/i);
   if (pnpmFilterRun) return pnpmFilterRun[1];
 
-  const pnpmFilterDirect = trimmed.match(/^pnpm\s+(?:--filter|-F)(?:=|\s+)\S+\s+([\w:-]+)/i);
+  const pnpmFilterDirect = trimmed.match(/^pnpm\s+(?:--filter|-F)(?:=|\s+)\S+\s+([\w:.-]+)/i);
   if (pnpmFilterDirect && !['add', 'install', 'remove'].includes(pnpmFilterDirect[1].toLowerCase())) {
     return pnpmFilterDirect[1] === 'test' ? 'test' : pnpmFilterDirect[1];
   }
 
-  const yarnWorkspaceRun = trimmed.match(/^yarn\s+workspace\s+\S+\s+(?:run\s+)?([\w:-]+)/i);
+  const yarnWorkspaceRun = trimmed.match(/^yarn\s+workspace\s+\S+\s+(?:run\s+)?([\w:.-]+)/i);
   if (yarnWorkspaceRun && !['add', 'install', 'remove'].includes(yarnWorkspaceRun[1].toLowerCase())) {
     return yarnWorkspaceRun[1];
   }
 
-  const npmPrefixRun = trimmed.match(/^npm\s+--prefix(?:=|\s+)\S+\s+run\s+([\w:-]+)/i);
+  const npmPrefixRun = trimmed.match(/^npm\s+--prefix(?:=|\s+)\S+\s+run\s+([\w:.-]+)/i);
   if (npmPrefixRun) return npmPrefixRun[1];
 
   const npmPrefixTest = trimmed.match(/^npm\s+--prefix(?:=|\s+)\S+\s+test\b/i);
   if (npmPrefixTest) return 'test';
 
-  const trailingNpmPrefixRun = trimmed.match(/^npm\s+run\s+([\w:-]+)\b.*(?:\s|^)--prefix(?:=|\s+)\S+/i);
+  const trailingNpmPrefixRun = trimmed.match(/^npm\s+run\s+([\w:.-]+)\b.*(?:\s|^)--prefix(?:=|\s+)\S+/i);
   if (trailingNpmPrefixRun) return trailingNpmPrefixRun[1];
 
   const trailingNpmPrefixTest = trimmed.match(/^npm\s+test\b.*(?:\s|^)--prefix(?:=|\s+)\S+/i);
   if (trailingNpmPrefixTest) return 'test';
 
-  const pnpmDirRun = trimmed.match(/^pnpm\s+(?:--dir|-C)(?:=|\s+)\S+\s+run\s+([\w:-]+)/i);
+  const pnpmDirRun = trimmed.match(/^pnpm\s+(?:--dir|-C)(?:=|\s+)\S+\s+run\s+([\w:.-]+)/i);
   if (pnpmDirRun) return pnpmDirRun[1];
 
   const pnpmDirTest = trimmed.match(/^pnpm\s+(?:--dir|-C)(?:=|\s+)\S+\s+test\b/i);
   if (pnpmDirTest) return 'test';
 
-  const yarnCwd = trimmed.match(/^yarn\s+--cwd(?:=|\s+)\S+\s+(?:run\s+)?([\w:-]+)/i);
+  const yarnCwd = trimmed.match(/^yarn\s+--cwd(?:=|\s+)\S+\s+(?:run\s+)?([\w:.-]+)/i);
   if (yarnCwd && !['add', 'install', 'remove'].includes(yarnCwd[1].toLowerCase())) return yarnCwd[1];
 
-  const bunCwdRun = trimmed.match(/^bun\s+--cwd(?:=|\s+)\S+\s+run\s+([\w:-]+)/i);
+  const bunCwdRun = trimmed.match(/^bun\s+--cwd(?:=|\s+)\S+\s+run\s+([\w:.-]+)/i);
   if (bunCwdRun) return bunCwdRun[1];
 
-  const run = trimmed.match(/^(?:npm|pnpm|bun)\s+run\s+([\w:-]+)/i);
+  const run = trimmed.match(/^(?:npm|pnpm|bun)\s+run\s+([\w:.-]+)/i);
   if (run) return run[1];
 
   const test = trimmed.match(/^(?:npm|pnpm|yarn|bun)\s+test\b/i);
   if (test) return 'test';
 
-  const yarn = trimmed.match(/^yarn\s+(?:run\s+)?([\w:-]+)/i);
+  const yarn = trimmed.match(/^yarn\s+(?:run\s+)?([\w:.-]+)/i);
   if (yarn && !['add', 'install', 'remove'].includes(yarn[1].toLowerCase())) return yarn[1];
 
-  const direct = trimmed.match(/^(?:pnpm|bun)\s+([\w:-]+)/i);
+  const direct = trimmed.match(/^(?:pnpm|bun)\s+([\w:.-]+)/i);
   if (direct && !['add', 'install', 'remove'].includes(direct[1].toLowerCase())) return direct[1];
 
   return null;
@@ -4227,7 +4228,7 @@ function packageOptionConsumesNext(option) {
 }
 
 function validPackageScriptName(name) {
-  return /^[\w:-]+$/.test(name ?? '');
+  return /^[\w:.-]+$/.test(name ?? '');
 }
 
 function canonicalPackageScriptName(name) {
@@ -4259,7 +4260,7 @@ function yarnWorkspacesForeachScriptName(command) {
   if (runIndex < 0) return null;
 
   const scriptName = words[runIndex + 1];
-  if (!scriptName || !/^[\w:-]+$/.test(scriptName)) return null;
+  if (!scriptName || !/^[\w:.-]+$/.test(scriptName)) return null;
   if (['add', 'install', 'remove'].includes(scriptName.toLowerCase())) return null;
   return scriptName === 'test' ? 'test' : scriptName;
 }
@@ -4445,11 +4446,11 @@ function isSafeValidationCommandPart(part) {
   const validationPatterns = [
     /^node\s+--test(?:\s+.*)?$/,
     /^(npm|pnpm|yarn|bun)\s+test(?:\s+.*)?$/,
-    /^npm\s+--prefix(?:=|\s+)("[^"]+"|'[^']+'|\S+)\s+(test|run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*)(?:\s+.*)?$/,
-    /^pnpm\s+(?:--dir|-c)(?:=|\s+)("[^"]+"|'[^']+'|\S+)\s+(test|run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*)(?:\s+.*)?$/,
-    /^yarn\s+--cwd(?:=|\s+)("[^"]+"|'[^']+'|\S+)\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*(?:\s+.*)?$/,
-    /^bun\s+--cwd(?:=|\s+)("[^"]+"|'[^']+'|\S+)\s+run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*(?:\s+.*)?$/,
-    /^(npm|pnpm|yarn|bun)\s+run\s+[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*(?:\s+.*)?$/,
+    /^npm\s+--prefix(?:=|\s+)("[^"]+"|'[^']+'|\S+)\s+(test|run\s+[\w:.-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:.-]*)(?:\s+.*)?$/,
+    /^pnpm\s+(?:--dir|-c)(?:=|\s+)("[^"]+"|'[^']+'|\S+)\s+(test|run\s+[\w:.-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:.-]*)(?:\s+.*)?$/,
+    /^yarn\s+--cwd(?:=|\s+)("[^"]+"|'[^']+'|\S+)\s+[\w:.-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:.-]*(?:\s+.*)?$/,
+    /^bun\s+--cwd(?:=|\s+)("[^"]+"|'[^']+'|\S+)\s+run\s+[\w:.-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:.-]*(?:\s+.*)?$/,
+    /^(npm|pnpm|yarn|bun)\s+run\s+[\w:.-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:.-]*(?:\s+.*)?$/,
     /^(npm|pnpm|yarn|bun)\s+(build|lint|typecheck|check|validate)(?:\s+.*)?$/,
     /^(pytest|python\s+-m\s+pytest|go\s+test|cargo\s+test|mvn\s+test|gradle\s+test|(?:\.\/|\.\\)?mvnw(?:\.cmd)?\s+test|(?:\.\/|\.\\)?gradlew(?:\.bat)?\s+test)(?:\s+.*)?$/,
     /^make\s+(test|build|lint|check|quality|validate|coverage)(?:\s+\w+=\S+)?$/,
@@ -4486,7 +4487,7 @@ function packageValidationScriptIndex(words) {
     }
     if (['run', 'run-script'].includes(lower)) return words[index + 1] ? index + 1 : null;
     return validationScriptCommandNames.has(canonicalPackageScriptName(lower))
-      || /[\w:-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:-]*/.test(lower)
+      || /[\w:.-]*(test|build|lint|typecheck|check|quality|validate|coverage)[\w:.-]*/.test(lower)
       ? index
       : null;
   }

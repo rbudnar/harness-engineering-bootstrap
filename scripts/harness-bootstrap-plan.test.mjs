@@ -186,6 +186,26 @@ test('includes hyphenated validation package scripts after safety screening', ()
   assert(!survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
 });
 
+test('includes dotted validation package scripts after safety screening', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-dotted-validation-scripts-'));
+  try {
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        'test.unit': 'node --test',
+        'build.prod': 'node --test',
+      },
+    }));
+
+    const survey = surveyRepository(tempRoot);
+    const commands = survey.commands.map((command) => command.command);
+
+    assert(commands.includes('npm run test.unit'));
+    assert(commands.includes('npm run build.prod'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('json CLI output is reusable by the future scaffolder surface', () => {
   const fixture = resolve(fixturesRoot, 'basic-js');
   const output = execFileSync(
@@ -1770,6 +1790,37 @@ test('uses direct deploy CLIs as runtime-safety evidence', () => {
   assert(survey.ci.runCommands.some((run) => run.command === 'az webapp up' && !run.safe));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === '.github/workflows/ci.yml'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('keeps HTTP writes with curl write-output as runtime-safety evidence', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-curl-write-output-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'ci.yml'), [
+      'name: webhook',
+      'jobs:',
+      '  ping:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: curl -X POST --write-out "%{http_code}" https://example.invalid/hook',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(survey.ci.runCommands.some((run) => (
+      run.command === 'curl -X POST --write-out "%{http_code}" https://example.invalid/hook'
+      && !run.safe
+    )));
+    assert(survey.runtimeSafetyHints.some((hint) => (
+      hint.path === '.github/workflows/ci.yml'
+      && hint.reason.includes('curl -X POST --write-out')
+    )));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test('screens package-manager exec commands after manager options', () => {
