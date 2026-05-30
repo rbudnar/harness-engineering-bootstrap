@@ -1703,6 +1703,51 @@ test('prefers exact workspace package names over directory basenames', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens compact pnpm filter package scripts', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-pnpm-compact-filter-'));
+  try {
+    mkdirSync(resolve(tempRoot, 'packages', 'unsafe'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: { build: 'pnpm -Funsafe run build' },
+      workspaces: ['packages/*'],
+    }, null, 2));
+    writeFileSync(resolve(tempRoot, 'packages', 'unsafe', 'package.json'), JSON.stringify({
+      name: 'unsafe',
+      scripts: { build: 'terraform apply -auto-approve' },
+    }, null, 2));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(!survey.commands.some((run) => run.command === 'pnpm run build'));
+    assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'packages/unsafe/package.json'));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('screens compact pnpm directory package scripts outside repo', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-pnpm-compact-dir-'));
+  try {
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: { build: 'pnpm -C../outside run build' },
+    }, null, 2));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(!survey.commands.some((run) => run.command === 'pnpm run build'));
+    assert(survey.runtimeSafetyHints.some((hint) => (
+      hint.path === 'package.json'
+      && hint.reason === 'package script "build" may mutate external state'
+    )));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('screens delegated authority package scripts by name', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'delegated-authority-workspace'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });

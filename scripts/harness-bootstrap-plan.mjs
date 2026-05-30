@@ -3715,10 +3715,18 @@ function resolvePackageDirectory(directory, baseDirectory = null) {
 
 function packageDirectoryFromCommand(command) {
   const trimmed = stripPackageCommandPrefix(command);
-  const beforeCommand = trimmed.match(/^(?:npm\s+--prefix|pnpm\s+(?:--dir|-C)|yarn\s+--cwd|bun\s+--cwd)(?:=|\s+)("[^"]+"|'[^']+'|\S+)/i);
-  if (beforeCommand) return stripYamlQuotes(beforeCommand[1].trim());
+  const words = shellWords(trimmed);
+  const manager = words[0]?.toLowerCase();
+  const scopedOptions = {
+    npm: ['--prefix'],
+    pnpm: ['--dir', '-C'],
+    yarn: ['--cwd'],
+    bun: ['--cwd'],
+  }[manager] ?? [];
+  const explicitDirectory = packageOptionValue(words, scopedOptions);
+  if (explicitDirectory) return stripYamlQuotes(explicitDirectory.trim());
 
-  const trailingNpmPrefix = npmTrailingPrefixDirectory(shellWords(trimmed));
+  const trailingNpmPrefix = npmTrailingPrefixDirectory(words);
   if (trailingNpmPrefix) return trailingNpmPrefix;
 
   return null;
@@ -4389,13 +4397,15 @@ function scopedPackageScriptNameFromWords(words, blockedCommands = []) {
     bun: ['--cwd'],
   }[manager] ?? [];
 
-  if (!activeWords.some((word) => packageOptionMatches(word, scopedOptions))) return null;
+  if (!activeWords.some((word) => packageOptionMatches(word, scopedOptions, manager))) return null;
   return scriptNameAfterPackageOptions(activeWords, 1, blockedCommands);
 }
 
-function packageOptionMatches(word, options) {
+function packageOptionMatches(word, options, manager = '') {
   const lower = String(word ?? '').toLowerCase();
-  return options.some((option) => lower === option.toLowerCase() || lower.startsWith(`${option.toLowerCase()}=`));
+  const normalizedOptions = options.map((option) => option.toLowerCase());
+  return normalizedOptions.some((option) => lower === option || lower.startsWith(`${option}=`))
+    || compactPackageShortOptionValue(word, normalizedOptions, manager) !== null;
 }
 
 function hasNpmAllWorkspaces(words) {
@@ -4435,6 +4445,7 @@ function packageOptionValue(words, options) {
 }
 
 function packageOptionValues(words, options) {
+  const manager = words[0]?.toLowerCase();
   const normalizedOptions = options.map((option) => option.toLowerCase());
   const values = [];
   for (let index = 1; index < words.length; index += 1) {
@@ -4442,7 +4453,11 @@ function packageOptionValues(words, options) {
     if (word === '--') break;
     const lower = word.toLowerCase();
     const option = normalizedOptions.find((candidate) => lower === candidate || lower.startsWith(`${candidate}=`));
-    if (!option) continue;
+    if (!option) {
+      const compactValue = compactPackageShortOptionValue(word, normalizedOptions, manager);
+      if (compactValue !== null) values.push(compactValue);
+      continue;
+    }
     if (lower.includes('=')) {
       values.push(word.slice(option.length + 1));
       continue;
@@ -4453,6 +4468,20 @@ function packageOptionValues(words, options) {
     }
   }
   return values;
+}
+
+function compactPackageShortOptionValue(word, normalizedOptions, manager = '') {
+  const lower = String(word ?? '').toLowerCase();
+  const compactOptions = {
+    pnpm: ['-f', '-c'],
+  }[manager] ?? [];
+  const option = compactOptions.find((candidate) => (
+    normalizedOptions.includes(candidate)
+    && lower.startsWith(candidate)
+    && lower.length > candidate.length
+    && lower[candidate.length] !== '='
+  ));
+  return option ? String(word).slice(option.length) : null;
 }
 
 function scriptNameAfterPackageOptions(words, startIndex, blockedCommands = []) {
