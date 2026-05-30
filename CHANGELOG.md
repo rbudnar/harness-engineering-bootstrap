@@ -1,13 +1,63 @@
 # Changelog
 
-Dates reflect repository history, not formal package releases.
+Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for the full release-note contract.
 
-## 2026-05-28
+## Unreleased
+
+### Summary
+
+### Template Changes
+
+### Planner And Metadata
+
+### Migration
+
+### Validation
+
+### Rollback
+
+## v0.1.0 - 2026-05-30
+
+### Summary
+
+- Initial versioned HEB release for bootstrapping thin, task-routed agent harnesses and testing version-aware updates in consuming repositories.
+- Defines the release policy needed before treating `--target-version` as a public update contract.
+- Adds automated stable GitHub Releases for merged PRs with explicit release labels.
+
+### Template Changes
+
+- Added durable plan lifecycle guidance for active plan artifacts, execution preflight, single-agent phase separation, explicit rejection of untriggered modules, and progress-log handoff.
+- Added implementation-time decision-surface and defect-family guidance so repeated same-class review findings become modeled fixes with regression matrices instead of point patches.
+- Added `docs/releases.md` as the source for HEB versioning, tag format, release-note format, accepted metadata fields, and rollback expectations.
+- Documented stable release labels and ruleset bypass expectations so release automation stays intentional.
+
+### Planner And Metadata
 
 - Added a read-only bootstrap planner CLI with markdown and JSON output, fixture tests, and CI coverage so agents can produce review-ready harness setup plans before writing target-repo files.
-- Added durable plan lifecycle guidance for active plan artifacts, execution preflight, single-agent phase separation, explicit rejection of untriggered modules, and progress-log handoff.
 - Added update-mode planning, template version metadata, rollback guidance, and a `VERSION` fitness check so already-bootstrapped repositories can move between template releases without manual chat relay.
-- Added implementation-time decision-surface and defect-family guidance so repeated same-class review findings become modeled fixes with regression matrices instead of point patches.
+- Aligned planner update output with the release policy by naming `docs/releases.md`, `v<VERSION>` tags, and the accepted metadata fields.
+- Added a release-preparation helper that promotes `CHANGELOG.md` release notes, bumps `VERSION` for patch/minor releases, and emits GitHub Release notes.
+
+### Migration
+
+- First-time consumers can run the planner in bootstrap mode and record accepted metadata after validation.
+- Already-bootstrapped consumers should run update mode with `--target-version v0.1.0`, classify each release-note item, and record accepted, rejected, deferred, validation, and rollback metadata only after validation passes.
+- Use `release:current` to publish the current `VERSION` without a bump, or `release:patch` / `release:minor` to create the next stable release after merge.
+
+### Validation
+
+- `node --test scripts/prepare-stable-release.test.mjs`
+- `node --test scripts/harness-bootstrap-plan.test.mjs`
+- `node scripts/template-fitness.mjs`
+- `node scripts/harness-bootstrap-plan.mjs --repo . --mode update --target-version v0.1.0`
+
+### Rollback
+
+- Before publishing a tag, abandon the release branch and leave `VERSION` plus metadata unchanged.
+- Delete a generated GitHub Release and tag, then revert the release commit when a patch or minor release created one.
+- After a consuming repo accepts the release, roll back by reverting the update PR, restoring previous `docs/harness-version.json` or `.harness/harness-version.json`, rerunning validation, and recording the rollback note.
+
+## Pre-release History
 
 ## 2026-05-25
 

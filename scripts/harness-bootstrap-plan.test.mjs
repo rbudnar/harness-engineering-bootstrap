@@ -3354,8 +3354,13 @@ test('detects existing bootstraps and emits versioned update guidance', () => {
   assert.equal(plan.operation, 'update');
   assert.equal(plan.updatePlan.status, 'upgrade-available');
   assert.equal(plan.updatePlan.targetVersion, '0.2.0');
+  assert(plan.updatePlan.releaseSource.includes('docs/releases.md'));
+  assert(plan.updatePlan.metadataFields.includes('sourceRelease'));
+  assert(plan.updatePlan.metadataFields.includes('rejectedChanges'));
   assert.match(markdown, /## Template Update Plan/);
   assert.match(markdown, /--mode update --target-version 0\.2\.0/);
+  assert.match(markdown, /Metadata fields:/);
+  assert.match(markdown, /docs\/releases\.md/);
   assert.match(markdown, /Rollback path/);
   assert.match(markdown, /docs\/harness-version\.json/);
 });
@@ -3404,6 +3409,8 @@ test('supports explicit update mode for unversioned bootstraps', () => {
   assert.equal(plan.operation, 'update');
   assert.equal(plan.updatePlan.status, 'needs-version-baseline');
   assert.equal(plan.updatePlan.versionMetadata.path, 'docs/harness-version.json');
+  assert(plan.updatePlan.metadataFields.includes('acceptedChanges'));
+  assert(plan.updatePlan.metadataFields.includes('validation'));
   assert.match(plan.planArtifact.validationCommand, /--mode update --target-version 0\.2\.0/);
   assert.match(plan.planArtifact.validationCommand, /--date 2026-05-28/);
 });
