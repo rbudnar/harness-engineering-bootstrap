@@ -1127,7 +1127,7 @@ function collectPackageScripts(packageManifests, packageManager, fileSet = new S
   return packageManifests.flatMap((manifest) => (
     collectPackageScriptsFromManifest(
       manifest,
-      packageManagerForManifest(fileSet, manifest, packageManager),
+      packageManagerForManifest(fileSet, manifest, packageManager, packageManifests),
       packageManifests,
       unsafeMakeTargets,
       options,
@@ -2613,30 +2613,40 @@ function inferPackageManager(fileSet, packageJson = null) {
   return 'npm';
 }
 
-function packageManagerForManifest(fileSet, manifest, fallback) {
+function packageManagerForManifest(fileSet, manifest, fallback, packageManifests = []) {
   const declaredPackageManager = packageManagerFromDeclaration(manifest.json);
   if (declaredPackageManager) return declaredPackageManager;
 
   const directory = manifest.directory;
   if (directory) {
-    if (fileSet.has(`${directory}/pnpm-lock.yaml`)) return 'pnpm';
-    if (fileSet.has(`${directory}/yarn.lock`)) return 'yarn';
-    if (fileSet.has(`${directory}/bun.lock`) || fileSet.has(`${directory}/bun.lockb`)) return 'bun';
-    if (fileSet.has(`${directory}/package-lock.json`) || fileSet.has(`${directory}/npm-shrinkwrap.json`)) return 'npm';
-    if (ancestorHasFile(fileSet, directory, 'pnpm-workspace.yaml')) return 'pnpm';
+    const ancestorPackageManager = packageManagerFromAncestor(fileSet, packageManifests, directory);
+    if (ancestorPackageManager) return ancestorPackageManager;
   }
 
   return fallback;
 }
 
-function ancestorHasFile(fileSet, directory, filename) {
+function packageManagerFromAncestor(fileSet, packageManifests, directory) {
+  const manifestsByDirectory = new Map(packageManifests.map((manifest) => [manifest.directory, manifest]));
   let current = normalizePackageDirectory(directory);
   while (current) {
-    if (fileSet.has(`${current}/${filename}`)) return true;
+    const declaredPackageManager = packageManagerFromDeclaration(manifestsByDirectory.get(current)?.json);
+    if (declaredPackageManager) return declaredPackageManager;
+    const lockPackageManager = packageManagerFromDirectoryMetadata(fileSet, current);
+    if (lockPackageManager) return lockPackageManager;
     const parent = dirname(current);
     current = parent === '.' || parent === current ? '' : parent;
   }
-  return fileSet.has(filename);
+  return packageManagerFromDirectoryMetadata(fileSet, '');
+}
+
+function packageManagerFromDirectoryMetadata(fileSet, directory) {
+  const prefix = directory ? `${directory}/` : '';
+  if (fileSet.has(`${prefix}pnpm-lock.yaml`) || fileSet.has(`${prefix}pnpm-workspace.yaml`)) return 'pnpm';
+  if (fileSet.has(`${prefix}yarn.lock`)) return 'yarn';
+  if (fileSet.has(`${prefix}bun.lock`) || fileSet.has(`${prefix}bun.lockb`)) return 'bun';
+  if (fileSet.has(`${prefix}package-lock.json`) || fileSet.has(`${prefix}npm-shrinkwrap.json`)) return 'npm';
+  return null;
 }
 
 function packageManagerFromDeclaration(packageJson = null) {
@@ -3904,6 +3914,7 @@ function packageWorkspacesFromCommand(command) {
 
 function installLifecycleScriptNames(command, scripts) {
   if (!isInstallCommand(command)) return [];
+  if (installCommandDisablesLifecycleScripts(command)) return [];
   const scriptMap = packageScriptsObject(scripts);
   if (!scriptMap) return [];
   return [
@@ -3915,6 +3926,22 @@ function installLifecycleScriptNames(command, scripts) {
     'prepare',
     'postprepare',
   ].filter((name) => Object.hasOwn(scriptMap, name));
+}
+
+function installCommandDisablesLifecycleScripts(command) {
+  const words = shellWords(stripPackageCommandPrefix(command));
+  const manager = words[0]?.toLowerCase();
+  if (!['npm', 'pnpm', 'yarn', 'bun'].includes(manager)) return false;
+
+  for (const word of words.slice(1)) {
+    const lower = word.toLowerCase();
+    if (lower === '--') break;
+    if (lower === '--ignore-scripts') return true;
+    if (lower.startsWith('--ignore-scripts=')) {
+      return !['false', '0', 'no', 'off'].includes(lower.slice('--ignore-scripts='.length));
+    }
+  }
+  return false;
 }
 
 function installLifecycleManifestsForCommand(command, packageManifest, packageManifests) {

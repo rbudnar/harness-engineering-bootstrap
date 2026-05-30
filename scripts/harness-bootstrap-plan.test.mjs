@@ -229,6 +229,38 @@ test('inherits pnpm from nested workspace metadata', () => {
   }
 });
 
+test('inherits nested package manager declarations and locks', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-nested-manager-metadata-'));
+  try {
+    mkdirSync(resolve(tempRoot, 'tools', 'pkg'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'apps', 'web'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({ private: true }));
+    writeFileSync(resolve(tempRoot, 'tools', 'package.json'), JSON.stringify({ packageManager: 'yarn@4.0.0' }));
+    writeFileSync(resolve(tempRoot, 'tools', 'pkg', 'package.json'), JSON.stringify({
+      scripts: {
+        test: 'node --test',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, 'apps', 'bun.lockb'), '');
+    writeFileSync(resolve(tempRoot, 'apps', 'web', 'package.json'), JSON.stringify({
+      scripts: {
+        build: 'node --test',
+      },
+    }));
+
+    const survey = surveyRepository(tempRoot);
+    const commands = survey.commands.map((command) => command.command);
+
+    assert.equal(survey.packageManager, 'npm');
+    assert(commands.includes('yarn --cwd tools/pkg test'));
+    assert(commands.includes('bun --cwd apps/web run build'));
+    assert(!commands.includes('npm --prefix tools/pkg test'));
+    assert(!commands.includes('npm --prefix apps/web run build'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('honors nested npm lockfiles under non-npm roots', () => {
   const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-nested-npm-lock-'));
   try {
@@ -471,6 +503,45 @@ test('screens install lifecycle hooks before emitting install commands', () => {
   assert(survey.ci.runCommands.some((run) => run.command === 'npm ci' && !run.safe));
   assert(!survey.commands.some((run) => run.command === 'npm ci'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('honors install commands that disable lifecycle scripts', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-ignore-install-scripts-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        preinstall: 'terraform apply -auto-approve',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, 'pnpm-lock.yaml'), 'lockfileVersion: 9\n');
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'ci.yml'), [
+      'name: ci',
+      'jobs:',
+      '  test:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: npm ci --ignore-scripts',
+      '      - run: pnpm install --ignore-scripts',
+      '      - run: npm ci --ignore-scripts=false',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+
+    for (const command of ['npm ci --ignore-scripts', 'pnpm install --ignore-scripts']) {
+      assert(survey.ci.runCommands.some((run) => run.command === command && run.safe), command);
+      assert(survey.commands.some((run) => run.command === command), command);
+    }
+    assert(survey.ci.runCommands.some((run) => (
+      run.command === 'npm ci --ignore-scripts=false'
+      && !run.safe
+      && run.packageScriptReason.includes('preinstall')
+    )));
+    assert(!survey.commands.some((run) => run.command === 'npm ci --ignore-scripts=false'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test('screens scoped install lifecycle hooks before emitting install commands', () => {
