@@ -171,6 +171,7 @@ const cliOptionsWithValues = new Set([
   '--namespace',
   '--output',
   '--profile',
+  '--project',
   '--query',
   '--region',
   '--request-timeout',
@@ -2743,6 +2744,7 @@ function isSafeValidationCommand(command) {
 
 function hasDangerousCommand(command) {
   return splitShellCommandParts(String(command ?? ''))
+    .flatMap(splitShellPipelineParts)
     .some((part) => {
       const inspectedPart = stripPackageCommandPrefix(part);
       return !isSafeValidationCommandPart(part)
@@ -2791,9 +2793,9 @@ function hasDangerousCliVerb(part) {
     railway: new Set(['up']),
   };
   if (!mutatingVerbs[command]) return false;
-  const verb = firstCliVerb(args, command);
-  if (command === 'vercel' && !verb) return !isCliInfoOnly(args);
-  return Boolean(verb && mutatingVerbs[command].has(verb));
+  const verbs = stripCliGlobalOptions(args, command);
+  if (command === 'vercel' && !verbs.length) return !isCliInfoOnly(args);
+  return verbs.some((verb) => mutatingVerbs[command].has(verb));
 }
 
 function packageManagerExecCommandIndex(words) {
@@ -3942,6 +3944,36 @@ function splitShellCommandParts(command) {
     .split(/\r?\n|&&|\|\||;/)
     .map((part) => part.trim())
     .filter(Boolean);
+}
+
+function splitShellPipelineParts(command) {
+  const parts = [];
+  let current = '';
+  let quote = null;
+  const text = String(command ?? '');
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (quote) {
+      current += character;
+      if (character === quote) quote = null;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      current += character;
+      continue;
+    }
+    if (character === '|' && text[index - 1] !== '|' && text[index + 1] !== '|') {
+      const part = current.trim();
+      if (part) parts.push(part);
+      current = '';
+      continue;
+    }
+    current += character;
+  }
+  const part = current.trim();
+  if (part) parts.push(part);
+  return parts;
 }
 
 function normalizeShellContinuations(command) {

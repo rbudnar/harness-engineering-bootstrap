@@ -1,0 +1,7 @@
+{
+  "scripts": {
+    "build": "firebase --project prod deploy",
+    "check": "wrangler pages deploy dist",
+    "lint": "npm test | gh issue comment 1 --body-file -"
+  }
+}

@@ -1706,6 +1706,21 @@ test('screens package-manager exec commands after manager options', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens deploy subcommands and piped write commands', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'deploy-subcommand-pipeline-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  for (const command of [
+    'npm run build',
+    'npm run check',
+    'npm run lint',
+  ]) {
+    assert(!survey.commands.some((run) => run.command === command));
+  }
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('uses HTTP write hooks as runtime-safety evidence', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'http-write-package'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
