@@ -1,0 +1,7 @@
+{
+  "scripts": {
+    "build": "npm --workspace web exec vercel --prod",
+    "check": "pnpm --filter web exec firebase deploy",
+    "lint": "yarn --cwd web dlx wrangler deploy"
+  }
+}

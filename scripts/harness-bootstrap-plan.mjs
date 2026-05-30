@@ -2748,12 +2748,8 @@ function hasDangerousCliVerb(part) {
   let commandIndex = 0;
   if (['npx', 'bunx'].includes(words[commandIndex])) {
     commandIndex = skipPackageExecutorOptions(words, commandIndex + 1);
-  } else if (words[commandIndex] === 'npm' && words[commandIndex + 1] === 'exec') {
-    commandIndex = skipPackageExecutorOptions(words, commandIndex + 2);
-  } else if (words[commandIndex] === 'pnpm' && ['exec', 'dlx'].includes(words[commandIndex + 1])) {
-    commandIndex = skipPackageExecutorOptions(words, commandIndex + 2);
-  } else if (words[commandIndex] === 'yarn' && ['exec', 'dlx'].includes(words[commandIndex + 1])) {
-    commandIndex = skipPackageExecutorOptions(words, commandIndex + 2);
+  } else {
+    commandIndex = packageManagerExecCommandIndex(words) ?? commandIndex;
   }
   const command = words[commandIndex];
   const args = words.slice(commandIndex + 1);
@@ -2762,10 +2758,10 @@ function hasDangerousCliVerb(part) {
     helm: new Set(['upgrade', 'install', 'uninstall', 'delete', 'rollback']),
     pulumi: new Set(['up', 'destroy', 'cancel', 'refresh', 'import']),
     terraform: new Set(['apply', 'destroy', 'import', 'taint', 'untaint', 'force-unlock']),
-    serverless: new Set(['deploy']),
-    sls: new Set(['deploy']),
-    sam: new Set(['deploy']),
-    cdk: new Set(['deploy']),
+    serverless: new Set(['deploy', 'remove', 'rollback']),
+    sls: new Set(['deploy', 'remove', 'rollback']),
+    sam: new Set(['deploy', 'delete']),
+    cdk: new Set(['deploy', 'destroy']),
     amplify: new Set(['publish']),
     heroku: new Set(['container:push', 'deploy:jar', 'deploy:war']),
     vercel: new Set(['deploy']),
@@ -2779,6 +2775,26 @@ function hasDangerousCliVerb(part) {
   const verb = firstCliVerb(args, command);
   if (command === 'vercel' && !verb) return !isCliInfoOnly(args);
   return Boolean(verb && mutatingVerbs[command].has(verb));
+}
+
+function packageManagerExecCommandIndex(words) {
+  const manager = words[0]?.toLowerCase();
+  if (!['npm', 'pnpm', 'yarn'].includes(manager)) return null;
+  for (let index = 1; index < words.length; index += 1) {
+    const word = words[index];
+    const lower = word?.toLowerCase();
+    if (!word || word === '--') return null;
+    if (word.startsWith('-')) {
+      if (packageManagerOptionConsumesNext(word) && words[index + 1]) index += 1;
+      continue;
+    }
+    if (manager === 'npm' && lower === 'exec') return skipPackageExecutorOptions(words, index + 1);
+    if (['pnpm', 'yarn'].includes(manager) && ['exec', 'dlx'].includes(lower)) {
+      return skipPackageExecutorOptions(words, index + 1);
+    }
+    return null;
+  }
+  return null;
 }
 
 function isCliInfoOnly(args) {
@@ -2871,12 +2887,8 @@ function taskRunnerCommandText(part) {
 
   if (['npx', 'bunx'].includes(lower[index])) {
     index = skipPackageExecutorOptions(words, index + 1);
-  } else if (lower[index] === 'npm' && lower[index + 1] === 'exec') {
-    index = skipPackageExecutorOptions(words, index + 2);
-  } else if (lower[index] === 'pnpm' && ['exec', 'dlx'].includes(lower[index + 1])) {
-    index = skipPackageExecutorOptions(words, index + 2);
-  } else if (lower[index] === 'yarn' && ['exec', 'dlx'].includes(lower[index + 1])) {
-    index = skipPackageExecutorOptions(words, index + 2);
+  } else {
+    index = packageManagerExecCommandIndex(words) ?? index;
   }
 
   if (!['nx', 'turbo', 'moon', 'lage'].includes(lower[index])) return null;

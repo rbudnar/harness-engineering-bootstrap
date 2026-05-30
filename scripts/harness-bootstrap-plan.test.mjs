@@ -1664,14 +1664,33 @@ test('uses direct deploy CLIs as runtime-safety evidence', () => {
   assert(survey.ci.runCommands.some((run) => run.command === 'pnpm dlx firebase deploy' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'azd up --no-prompt' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'serverless deploy --stage prod' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'serverless remove --stage prod' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'sls deploy' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'sls remove' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'sam deploy' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'sam delete' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'cdk deploy' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'cdk destroy' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'amplify publish' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'heroku container:push web' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'supabase db push' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'az webapp up' && !run.safe));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === '.github/workflows/ci.yml'));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('screens package-manager exec commands after manager options', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'package-manager-exec-options'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  for (const command of [
+    'npm run build',
+    'npm run check',
+    'npm run lint',
+  ]) {
+    assert(!survey.commands.some((run) => run.command === command));
+  }
+  assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
