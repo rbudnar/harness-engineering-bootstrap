@@ -1568,6 +1568,9 @@ function hasUnresolvedDynamicDispatchCommand(command) {
 }
 
 function hasUnresolvedDynamicDispatchPart(part) {
+  const rawWords = shellWords(part);
+  if (hasEnvChdirOption(rawWords) || hasUnsupportedSubshellSyntax(part)) return true;
+
   const wrapperPayload = shellWrapperPayload(part);
   if (wrapperPayload !== null) {
     return !isStaticShellWrapperPayload(wrapperPayload)
@@ -1579,6 +1582,8 @@ function hasUnresolvedDynamicDispatchPart(part) {
   if (hasShellVariable(words[0]) && !isEnvironmentAssignment(words[0])) return true;
   if (isMakeCommandWord(words[0])) return makeInvocationHasDynamicTarget(words);
   if (packageManagerHasDynamicScriptTarget(words)) return true;
+  if (packageManagerHasDynamicExecutorTarget(words)) return true;
+  if (taskRunnerHasDynamicTarget(part)) return true;
   if (words[0]?.toLowerCase() === 'npx') return hasDynamicNpxCommand(words);
   return false;
 }
@@ -1605,6 +1610,32 @@ function packageManagerHasDynamicScriptTarget(words) {
     return hasShellVariable(word);
   }
   return false;
+}
+
+function packageManagerHasDynamicExecutorTarget(words) {
+  const startIndex = packageExecutorOptionStart(words);
+  if (startIndex == null) return false;
+  for (let index = startIndex; index < words.length; index += 1) {
+    const word = words[index];
+    const lower = word?.toLowerCase();
+    if (!word) continue;
+    if (word === '--') return words.slice(index + 1).some(hasShellVariable);
+    if (lower === '-c' || lower === '--call') return words.slice(index + 1).some(hasShellVariable);
+    if (lower?.startsWith('--call=')) return hasShellVariable(word.slice('--call='.length))
+      || words.slice(index + 1).some(hasShellVariable);
+    if (word.startsWith('-')) {
+      if (packageExecutorOptionConsumesNext(word) && words[index + 1]) index += 1;
+      continue;
+    }
+    return hasShellVariable(word);
+  }
+  return false;
+}
+
+function taskRunnerHasDynamicTarget(part) {
+  const invocation = taskRunnerInvocation(part);
+  if (!invocation) return false;
+  return invocation.words.slice(1).some(hasShellVariable);
 }
 
 function hasDynamicNpxCommand(words) {
@@ -4053,8 +4084,17 @@ function isAllWorkspacePackageScriptCommand(command, packageManifest, packageMan
 function lifecycleScriptNames(scriptName, scripts) {
   const scriptMap = packageScriptsObject(scripts);
   if (!scriptMap) return [];
-  if (/^(pre|post)/i.test(scriptName)) return [];
+  if (isPackageLifecycleHookScript(scriptName, scriptMap)) return [];
   return [`pre${scriptName}`, `post${scriptName}`].filter((name) => Object.hasOwn(scriptMap, name));
+}
+
+function isPackageLifecycleHookScript(scriptName, scriptMap) {
+  for (const prefix of ['pre', 'post']) {
+    if (!scriptName.startsWith(prefix)) continue;
+    const baseName = scriptName.slice(prefix.length);
+    if (baseName && Object.hasOwn(scriptMap, baseName)) return true;
+  }
+  return false;
 }
 
 function isAuthorityPackageScript(name) {
@@ -4576,6 +4616,24 @@ function envPayloadIndex(words, startIndex) {
   return index;
 }
 
+function hasEnvChdirOption(words) {
+  if (words[0]?.toLowerCase() !== 'env') return false;
+  for (let index = 1; index < words.length; index += 1) {
+    const word = words[index];
+    const lower = word?.toLowerCase();
+    if (!word || word === '--') return false;
+    if (isEnvironmentAssignment(word)) continue;
+    if (lower === '-c' || lower === '--chdir' || lower.startsWith('--chdir=')) return true;
+    if (lower === '-s' || lower === '--split-string' || lower === '-u' || lower === '--unset') {
+      if (words[index + 1]) index += 1;
+      continue;
+    }
+    if (['-i', '--ignore-environment', '-0', '--null'].includes(lower) || /^-u.+/.test(word) || lower.startsWith('--unset=')) continue;
+    return false;
+  }
+  return false;
+}
+
 function isEnvironmentAssignment(word) {
   return /^[A-Za-z_][A-Za-z0-9_]*=.*/.test(word ?? '');
 }
@@ -4716,6 +4774,11 @@ function splitShellCommandParts(command) {
     .filter(Boolean);
 }
 
+function hasUnsupportedSubshellSyntax(command) {
+  const text = String(command ?? '').trim();
+  return text.startsWith('(') || text.endsWith(')');
+}
+
 function splitShellPipelineParts(command) {
   const parts = [];
   let current = '';
@@ -4818,6 +4881,7 @@ function isExampleEnvFileName(name) {
 }
 
 function isSafeValidationCommandPart(part) {
+  if (hasEnvChdirOption(shellWords(part)) || hasUnsupportedSubshellSyntax(part)) return false;
   const normalizedPart = stripPackageCommandPrefix(part);
   const lower = normalizedPart.toLowerCase();
   if (dangerousCommandPatterns.some((pattern) => pattern.test(lower))) return false;

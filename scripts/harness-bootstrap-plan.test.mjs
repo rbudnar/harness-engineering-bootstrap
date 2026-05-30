@@ -409,6 +409,31 @@ test('screens npm lifecycle hooks before emitting validation commands', () => {
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens prepare hooks before emitting delegated package commands', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-prepare-hooks-'));
+  try {
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        build: 'npm run prepare',
+        prepare: 'node --test',
+        preprepare: 'terraform apply -auto-approve',
+      },
+    }, null, 2));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(!survey.commands.some((run) => run.command === 'npm run build'));
+    assert(survey.runtimeSafetyHints.some((hint) => (
+      hint.path === 'package.json'
+      && hint.reason === 'package script "preprepare" may mutate external state'
+    )));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('screens install lifecycle hooks before emitting install commands', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'install-lifecycle-ci'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
@@ -993,6 +1018,9 @@ test('screens variable-dispatched validation scripts before emitting package com
         test: 'npm run $TARGET',
         check: 'make ${TARGET}',
         quality: 'npx $TOOL',
+        coverage: 'npm exec $TOOL',
+        lint: 'pnpm dlx $TOOL',
+        build: 'turbo run $TARGET',
         validate: 'npm run unit -- --grep $TEST_NAME',
         unit: 'node --test',
       },
@@ -1004,8 +1032,11 @@ test('screens variable-dispatched validation scripts before emitting package com
     assert(!survey.commands.some((run) => run.command === 'npm test'));
     assert(!survey.commands.some((run) => run.command === 'npm run check'));
     assert(!survey.commands.some((run) => run.command === 'npm run quality'));
+    assert(!survey.commands.some((run) => run.command === 'npm run coverage'));
+    assert(!survey.commands.some((run) => run.command === 'npm run lint'));
+    assert(!survey.commands.some((run) => run.command === 'npm run build'));
     assert(survey.commands.some((run) => run.command === 'npm run validate'));
-    for (const scriptName of ['test', 'check', 'quality']) {
+    for (const scriptName of ['test', 'check', 'quality', 'coverage', 'lint', 'build']) {
       assert(survey.runtimeSafetyHints.some((hint) => (
         hint.path === 'package.json'
         && hint.reason === `package script "${scriptName}" may mutate external state`
@@ -1415,6 +1446,58 @@ test('screens package wrappers that change to child directories before child scr
   assert(!survey.commands.some((run) => run.command === 'npm --prefix packages/app test'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'packages/app/tools/package.json'));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('screens env chdir wrappers before emitting package commands', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-env-chdir-package-'));
+  try {
+    mkdirSync(resolve(tempRoot, 'services', 'api'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        test: 'env --chdir services/api npm test',
+      },
+    }, null, 2));
+    writeFileSync(resolve(tempRoot, 'services', 'api', 'package.json'), JSON.stringify({
+      scripts: {
+        test: 'terraform apply -auto-approve',
+      },
+    }, null, 2));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(!survey.commands.some((run) => run.command === 'npm test'));
+    assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('screens unsupported subshell directory wrappers before emitting package commands', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-subshell-cd-package-'));
+  try {
+    mkdirSync(resolve(tempRoot, 'services', 'api'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        test: '(cd services/api && npm test)',
+      },
+    }, null, 2));
+    writeFileSync(resolve(tempRoot, 'services', 'api', 'package.json'), JSON.stringify({
+      scripts: {
+        test: 'terraform apply -auto-approve',
+      },
+    }, null, 2));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+    assert(!survey.commands.some((run) => run.command === 'npm test'));
+    assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
+    assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test('screens package wrappers that run install lifecycle hooks', () => {
