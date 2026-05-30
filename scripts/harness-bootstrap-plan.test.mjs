@@ -1537,6 +1537,7 @@ test('treats Docker registry pushes as inspect-only commands', () => {
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
 
   assert(survey.ci.runCommands.some((run) => run.command === 'docker push ghcr.io/example/app' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'docker image push ghcr.io/example/app' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'docker -H tcp://daemon:2375 push ghcr.io/example/app' && !run.safe));
   assert(!survey.commands.some((run) => run.command === 'npm run check'));
   assert(survey.runtimeSafetyHints.some((hint) => hint.path === 'package.json'));
@@ -2082,6 +2083,7 @@ test('uses direct deploy CLIs as runtime-safety evidence', () => {
   assert(survey.ci.runCommands.some((run) => run.command === 'npx --call "wrangler deploy"' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'npm exec -c "wrangler deploy"' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'pnpm dlx firebase deploy' && !run.safe));
+  assert(survey.ci.runCommands.some((run) => run.command === 'firebase hosting:channel:deploy preview' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'azd up --no-prompt' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'serverless deploy --stage prod' && !run.safe));
   assert(survey.ci.runCommands.some((run) => run.command === 'serverless remove --stage prod' && !run.safe));

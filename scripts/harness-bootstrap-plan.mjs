@@ -2940,6 +2940,7 @@ function hasDangerousCliVerb(part) {
   if (!mutatingVerbs[command]) return false;
   const verbs = stripCliGlobalOptions(args, command);
   if (command === 'vercel' && !verbs.length) return !isCliInfoOnly(args);
+  if (command === 'firebase') return verbs.some((verb) => verb.split(':').includes('deploy'));
   return verbs.some((verb) => mutatingVerbs[command].has(verb));
 }
 
@@ -3219,6 +3220,7 @@ function hasDangerousDockerCommand(part) {
   if (words[0] !== 'docker') return false;
   const args = stripCliGlobalOptions(words.slice(1), 'docker');
   if (['push', 'login'].includes(args[0])) return true;
+  if (args[0] === 'image' && args[1] === 'push') return true;
   if (args[0] === 'compose' && hasDangerousComposeCommand(args.slice(1), words)) return true;
   return args[0] === 'buildx'
     && ['build', 'bake'].includes(args[1])

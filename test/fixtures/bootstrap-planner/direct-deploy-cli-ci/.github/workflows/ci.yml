@@ -10,6 +10,7 @@ jobs:
       - run: npx --call "wrangler deploy"
       - run: npm exec -c "wrangler deploy"
       - run: pnpm dlx firebase deploy
+      - run: firebase hosting:channel:deploy preview
       - run: azd up --no-prompt
       - run: serverless deploy --stage prod
       - run: serverless remove --stage prod
