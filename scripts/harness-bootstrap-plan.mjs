@@ -1578,9 +1578,10 @@ function workflowStepMetadataRuntimeSafetyReason(lines, stepIndex, action = '') 
   if (/(^|\n)secrets:\s*inherit(?:\s*(?:#.*)?)?$/im.test(text)) return 'GitHub workflow step inherits secrets';
   if (workflowInheritedSecretText(lines, stepIndex)) return 'GitHub workflow step inherits secrets';
   if (/docker\/build-push-action/i.test(action)) {
-    const pushMatch = text.match(/(^|\n)push:\s*("[^"]+"|'[^']+'|[^\s#]+)/i);
+    const pushMatch = text.match(/(^|\n)push:\s*("[^"]+"|'[^']+'|[^\s#},]+)/i)
+      ?? text.match(/\{[^}]*\bpush:\s*("[^"]+"|'[^']+'|[^\s#},]+)/i);
     if (pushMatch) {
-      const pushValue = stripYamlQuotes(pushMatch[2].trim()).toLowerCase();
+      const pushValue = stripYamlQuotes((pushMatch[2] ?? pushMatch[1]).trim()).toLowerCase();
       if (!['false', 'no', 'off', '0'].includes(pushValue)) return 'GitHub workflow step pushes Docker images';
     }
   }
@@ -3238,9 +3239,21 @@ function packageDirectoryFromCommand(command) {
   const beforeCommand = trimmed.match(/^(?:npm\s+--prefix|pnpm\s+--dir|yarn\s+--cwd|bun\s+--cwd)(?:=|\s+)("[^"]+"|'[^']+'|\S+)/i);
   if (beforeCommand) return stripYamlQuotes(beforeCommand[1].trim());
 
-  const trailingNpmPrefix = trimmed.match(/^npm\s+(?:run\s+[\w:-]+|test|ci|install)\b.*(?:\s|^)--prefix(?:=|\s+)("[^"]+"|'[^']+'|\S+)/i);
-  if (trailingNpmPrefix) return stripYamlQuotes(trailingNpmPrefix[1].trim());
+  const trailingNpmPrefix = npmTrailingPrefixDirectory(shellWords(trimmed));
+  if (trailingNpmPrefix) return trailingNpmPrefix;
 
+  return null;
+}
+
+function npmTrailingPrefixDirectory(words) {
+  if (words[0]?.toLowerCase() !== 'npm') return null;
+  const activeWords = wordsBeforePackageArgSeparator(words);
+  for (let index = 1; index < activeWords.length; index += 1) {
+    const word = activeWords[index];
+    const lower = word.toLowerCase();
+    if (lower === '--prefix') return activeWords[index + 1] ? stripYamlQuotes(activeWords[index + 1]) : null;
+    if (lower.startsWith('--prefix=')) return stripYamlQuotes(word.slice('--prefix='.length));
+  }
   return null;
 }
 
@@ -3669,16 +3682,17 @@ function packageScriptNameFromCommand(command) {
 }
 
 function npmPrefixScriptNameFromWords(words) {
-  const prefixIndex = words.findIndex((word) => {
+  const activeWords = wordsBeforePackageArgSeparator(words);
+  const prefixIndex = activeWords.findIndex((word) => {
     const lower = word.toLowerCase();
     return lower === '--prefix' || lower.startsWith('--prefix=');
   });
   if (prefixIndex < 0) return null;
-  const commandIndex = words[prefixIndex].includes('=') ? prefixIndex + 1 : prefixIndex + 2;
-  const command = words[commandIndex]?.toLowerCase();
+  const commandIndex = activeWords[prefixIndex].includes('=') ? prefixIndex + 1 : prefixIndex + 2;
+  const command = activeWords[commandIndex]?.toLowerCase();
   if (command === 'test') return 'test';
   if (command === 'run') {
-    const scriptName = words[commandIndex + 1];
+    const scriptName = activeWords[commandIndex + 1];
     return validPackageScriptName(scriptName) ? canonicalPackageScriptName(scriptName) : null;
   }
   return null;
@@ -3686,6 +3700,7 @@ function npmPrefixScriptNameFromWords(words) {
 
 function scopedPackageScriptNameFromWords(words, blockedCommands = []) {
   const manager = words[0]?.toLowerCase();
+  const activeWords = wordsBeforePackageArgSeparator(words);
   const scopedOptions = {
     npm: ['--prefix', '--workspace', '-w'],
     pnpm: ['--dir', '--filter', '-F'],
@@ -3693,8 +3708,8 @@ function scopedPackageScriptNameFromWords(words, blockedCommands = []) {
     bun: ['--cwd'],
   }[manager] ?? [];
 
-  if (!words.some((word) => packageOptionMatches(word, scopedOptions))) return null;
-  return scriptNameAfterPackageOptions(words, 1, blockedCommands);
+  if (!activeWords.some((word) => packageOptionMatches(word, scopedOptions))) return null;
+  return scriptNameAfterPackageOptions(activeWords, 1, blockedCommands);
 }
 
 function packageOptionMatches(word, options) {
@@ -3703,13 +3718,14 @@ function packageOptionMatches(word, options) {
 }
 
 function hasNpmAllWorkspaces(words) {
+  const activeWords = wordsBeforePackageArgSeparator(words);
   return words[0]?.toLowerCase() === 'npm'
-    && words.some((word) => isNpmAllWorkspacesOption(word));
+    && activeWords.some((word) => isNpmAllWorkspacesOption(word));
 }
 
 function hasNpmIncludeWorkspaceRoot(words) {
   if (words[0]?.toLowerCase() !== 'npm') return false;
-  return words.some((word) => {
+  return wordsBeforePackageArgSeparator(words).some((word) => {
     const lower = String(word ?? '').toLowerCase();
     if (lower === '--include-workspace-root') return true;
     if (!lower.startsWith('--include-workspace-root=')) return false;
@@ -3723,8 +3739,14 @@ function isNpmAllWorkspacesOption(word) {
 }
 
 function hasPnpmRecursive(words) {
+  const activeWords = wordsBeforePackageArgSeparator(words);
   return words[0]?.toLowerCase() === 'pnpm'
-    && words.some((word) => ['-r', '--recursive'].includes(word.toLowerCase()));
+    && activeWords.some((word) => ['-r', '--recursive'].includes(word.toLowerCase()));
+}
+
+function wordsBeforePackageArgSeparator(words) {
+  const separatorIndex = words.indexOf('--');
+  return separatorIndex < 0 ? words : words.slice(0, separatorIndex);
 }
 
 function packageOptionValue(words, options) {

@@ -1160,12 +1160,18 @@ test('stops parsing workspace options after package argument separator', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'workspace-arg-separator-ci'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
 
-  assert(survey.ci.runCommands.some((run) => (
-    run.command === 'npm test -- --workspace api'
-    && !run.safe
-    && run.packageScriptReason.includes('package script "test"')
-  )));
-  assert(!survey.commands.some((run) => run.command === 'npm test -- --workspace api'));
+  for (const command of [
+    'npm test -- --workspace api',
+    'npm test -- --prefix services/api',
+    'pnpm test -- --recursive',
+  ]) {
+    assert(survey.ci.runCommands.some((run) => (
+      run.command === command
+      && !run.safe
+      && run.packageScriptReason.includes('package script "test"')
+    )));
+    assert(!survey.commands.some((run) => run.command === command));
+  }
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
@@ -1455,6 +1461,19 @@ test('uses workflow step metadata as runtime-safety evidence', () => {
     hint.path === '.github/workflows/ci.yml'
     && hint.reason.includes('git push origin main')
   )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
+test('uses inline Docker push metadata as runtime-safety evidence', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'workflow-inline-docker-push'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(survey.ci.runCommands.some((run) => (
+    run.command === 'uses: docker/build-push-action@v6'
+    && !run.safe
+    && run.runtimeSafetyReason === 'GitHub workflow step pushes Docker images'
+  )));
+  assert(survey.runtimeSafetyHints.some((hint) => hint.reason.includes('Docker images')));
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 

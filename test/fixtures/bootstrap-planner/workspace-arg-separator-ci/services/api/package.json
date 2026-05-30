@@ -1,0 +1,7 @@
+{
+  "name": "api-service",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  }
+}
