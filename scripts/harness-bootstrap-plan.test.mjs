@@ -672,6 +672,18 @@ test('screens compact make -f package wrappers through included makefiles', () =
   assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
 });
 
+test('screens make -f recipes against the caller directory', () => {
+  const survey = surveyRepository(resolve(fixturesRoot, 'make-file-caller-cwd-package'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+
+  assert(!survey.commands.some((run) => run.command === 'npm run check'));
+  assert(survey.runtimeSafetyHints.some((hint) => (
+    hint.path === 'ops/ci.mk'
+    && hint.reason === 'make target "test" may mutate external state'
+  )));
+  assert(plan.triggeredModules.some((module) => module.id === 'runtime-safety'));
+});
+
 test('screens env-prefixed package make targets', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'package-env-make-target'));
   const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });

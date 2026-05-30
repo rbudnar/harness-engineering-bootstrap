@@ -1,0 +1,7 @@
+{
+  "scripts": {
+    "test": "npm run deploy",
+    "deploy": "terraform apply -auto-approve",
+    "check": "make -f ops/ci.mk test"
+  }
+}

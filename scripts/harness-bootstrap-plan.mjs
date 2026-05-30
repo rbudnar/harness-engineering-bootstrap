@@ -1263,7 +1263,14 @@ function unsafeMakeTargetKeys(targets, packageManifests = []) {
           packageManifests,
           { unsafeMakeTargets: unsafe },
         )
+        || (target.directory && unsafePackageScriptReason(
+          target.recipe,
+          packageManifestForCommand(target.recipe, packageManifests, ''),
+          packageManifests,
+          { unsafeMakeTargets: unsafe },
+        ))
         || unsafeMakeTargetReasonFromDirectory(target.recipe, unsafe, target.directory)
+        || (target.directory && unsafeMakeTargetReasonFromDirectory(target.recipe, unsafe, ''))
         || target.prerequisites.some((name) => unsafe.has(makeTargetKey(target.directory, name)) || isUnsafeMakePrerequisite(name, target.directory, byKey))
       ) {
         unsafe.add(key);
@@ -2530,13 +2537,20 @@ function unsafeMakeTargetReasonFromDirectory(command, unsafeMakeTargets, baseDir
     const invocation = makeInvocationFromCommandPart(part, currentDirectory);
     if (!invocation) continue;
     if (invocation.unsafeReason) return invocation.unsafeReason;
-    if (!invocation.targets.length && unsafeMakeTargets.has(makeDefaultTargetKey(invocation.directory))) {
-      const location = invocation.directory ? ` in ${formatInlineValue(invocation.directory)}` : '';
+    const targetDirectories = makeInvocationTargetDirectories(invocation);
+    const defaultDirectory = targetDirectories.find((directory) => (
+      !invocation.targets.length && unsafeMakeTargets.has(makeDefaultTargetKey(directory))
+    ));
+    if (defaultDirectory !== undefined) {
+      const location = defaultDirectory ? ` in ${formatInlineValue(defaultDirectory)}` : '';
       return `it calls the default make target${location} whose recipe may mutate external state`;
     }
-    const target = invocation.targets.find((candidate) => unsafeMakeTargets.has(makeTargetKey(invocation.directory, candidate)));
-    if (target) {
-      const location = invocation.directory ? ` in ${formatInlineValue(invocation.directory)}` : '';
+    const targetMatch = invocation.targets.flatMap((target) => (
+      targetDirectories.map((directory) => ({ target, directory }))
+    )).find((candidate) => unsafeMakeTargets.has(makeTargetKey(candidate.directory, candidate.target)));
+    if (targetMatch) {
+      const location = targetMatch.directory ? ` in ${formatInlineValue(targetMatch.directory)}` : '';
+      const { target } = targetMatch;
       return `it calls make target "${target}"${location} whose recipe may mutate external state`;
     }
   }
@@ -2544,11 +2558,16 @@ function unsafeMakeTargetReasonFromDirectory(command, unsafeMakeTargets, baseDir
   return null;
 }
 
+function makeInvocationTargetDirectories(invocation) {
+  return dedupe([invocation.directory, ...(invocation.makefileDirectories ?? [])].map((directory) => normalizePackageDirectory(directory || '')));
+}
+
 function makeInvocationFromCommandPart(part, currentDirectory = '') {
   const words = shellWords(stripPackageCommandPrefix(part));
   if (!isMakeCommandWord(words[0])) return null;
 
   let directory = normalizePackageDirectory(currentDirectory || '');
+  const makefileDirectories = [];
   const targets = [];
   for (let index = 1; index < words.length; index += 1) {
     const word = words[index];
@@ -2584,7 +2603,7 @@ function makeInvocationFromCommandPart(part, currentDirectory = '') {
       if (next) {
         const inspectedMakefile = inspectMakefileOption(next, directory);
         if (inspectedMakefile.unsafeReason) return { directory, targets, unsafeReason: inspectedMakefile.unsafeReason };
-        directory = inspectedMakefile.directory;
+        makefileDirectories.push(inspectedMakefile.directory);
         index += 1;
       }
       continue;
@@ -2594,7 +2613,7 @@ function makeInvocationFromCommandPart(part, currentDirectory = '') {
     if (compactMakefileOptionMatch) {
       const inspectedMakefile = inspectMakefileOption(compactMakefileOptionMatch[1], directory);
       if (inspectedMakefile.unsafeReason) return { directory, targets, unsafeReason: inspectedMakefile.unsafeReason };
-      directory = inspectedMakefile.directory;
+      makefileDirectories.push(inspectedMakefile.directory);
       continue;
     }
 
@@ -2602,7 +2621,7 @@ function makeInvocationFromCommandPart(part, currentDirectory = '') {
     if (makefileMatch) {
       const inspectedMakefile = inspectMakefileOption(makefileMatch[1], directory);
       if (inspectedMakefile.unsafeReason) return { directory, targets, unsafeReason: inspectedMakefile.unsafeReason };
-      directory = inspectedMakefile.directory;
+      makefileDirectories.push(inspectedMakefile.directory);
       continue;
     }
 
@@ -2617,7 +2636,7 @@ function makeInvocationFromCommandPart(part, currentDirectory = '') {
     targets.push(word);
   }
 
-  return { directory, targets };
+  return { directory, makefileDirectories: dedupe(makefileDirectories), targets };
 }
 
 function inspectMakeDirectoryOption(value, currentDirectory) {
