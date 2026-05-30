@@ -1,0 +1,6 @@
+{
+  "name": "api",
+  "scripts": {
+    "build": "terraform apply -auto-approve"
+  }
+}

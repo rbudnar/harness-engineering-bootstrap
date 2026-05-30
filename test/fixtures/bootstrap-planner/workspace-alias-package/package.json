@@ -1,0 +1,9 @@
+{
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "check": "npm --ws run test",
+    "quality": "npm -ws run test"
+  }
+}

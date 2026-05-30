@@ -1,0 +1,17 @@
+{
+  "name": "workspace-selector-edge-package-fixture",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "check": "npm --workspace=api run build",
+    "coverage": "npm run -w api build",
+    "lint": "pnpm --filter=api run check",
+    "quality": "npm --workspaces --if-present run build",
+    "test:ci": "npm run --workspace api build",
+    "typecheck": "pnpm --filter ./packages/api... run build",
+    "validate": "pnpm -r --if-present run build"
+  }
+}

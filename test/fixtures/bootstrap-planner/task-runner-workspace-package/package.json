@@ -1,0 +1,11 @@
+{
+  "name": "task-runner-workspace-package-fixture",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "check": "turbo run lint",
+    "test": "turbo run test"
+  }
+}

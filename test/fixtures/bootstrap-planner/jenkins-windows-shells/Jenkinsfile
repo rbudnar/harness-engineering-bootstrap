@@ -1,0 +1,12 @@
+pipeline {
+  agent any
+  stages {
+    stage('deploy') {
+      steps {
+        bat 'kubectl apply -f k8s/service.yaml'
+        powershell 'kubectl create namespace preview'
+        pwsh 'terraform apply -auto-approve'
+      }
+    }
+  }
+}

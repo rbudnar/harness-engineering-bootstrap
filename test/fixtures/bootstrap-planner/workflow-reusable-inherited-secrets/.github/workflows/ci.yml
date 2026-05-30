@@ -1,0 +1,9 @@
+name: CI
+
+on:
+  pull_request:
+
+jobs:
+  delegated:
+    uses: org/repo/.github/workflows/bootstrap.yml@v1
+    secrets: inherit

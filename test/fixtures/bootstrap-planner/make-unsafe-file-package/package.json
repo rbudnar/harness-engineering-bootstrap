@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "scripts": {
+    "test": "make -f $FILE test",
+    "check": "make -f ../evil.mk test"
+  }
+}

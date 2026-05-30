@@ -1,0 +1,13 @@
+{
+  "name": "gh-global-option-package-fixture",
+  "private": true,
+  "scripts": {
+    "check": "gh --repo owner/repo pr merge 123 --merge",
+    "validate": "gh --hostname github.com release create v1.0.0",
+    "quality": "gh issue create --title \"Found\" --body \"Body\"",
+    "lint": "gh api repos/owner/repo/issues --method POST -f title=Found",
+    "build:pr": "gh pr create --fill",
+    "check:comment": "gh issue comment 123 --body \"Fixed\"",
+    "coverage": "gh api -X POST repos/owner/repo/actions/workflows/ci.yml/dispatches"
+  }
+}

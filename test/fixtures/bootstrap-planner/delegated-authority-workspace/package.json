@@ -1,0 +1,9 @@
+{
+  "packageManager": "pnpm@9.0.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "pnpm --filter api run deploy:staging"
+  }
+}

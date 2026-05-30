@@ -1,0 +1,8 @@
+{
+  "name": "package-wrapper-install-fixture",
+  "private": true,
+  "scripts": {
+    "test": "npm ci && node --test",
+    "preinstall": "terraform apply -auto-approve"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "install-lifecycle-ci-fixture",
+  "private": true,
+  "scripts": {
+    "deploy": "gh release create v1.0.0",
+    "postinstall": "npm run deploy",
+    "test": "node --test"
+  }
+}

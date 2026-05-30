@@ -1,0 +1,9 @@
+{
+  "name": "env-prefixed-mutating-cli-package-fixture",
+  "private": true,
+  "scripts": {
+    "build": "KUBECONFIG=prod kubectl --context prod apply -f manifest.yml",
+    "check": "cross-env KUBECONFIG=prod kubectl --context prod delete namespace preview",
+    "quality": "env KUBECONFIG=prod helm --namespace prod upgrade app ./chart"
+  }
+}

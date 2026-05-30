@@ -1,0 +1,7 @@
+{
+  "name": "delegated-prefix-package-fixture",
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix services/api run build"
+  }
+}

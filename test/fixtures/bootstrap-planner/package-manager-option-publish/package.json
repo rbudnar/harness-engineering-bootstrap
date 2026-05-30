@@ -1,0 +1,13 @@
+{
+  "private": true,
+  "scripts": {
+    "build": "npm --tag latest publish",
+    "check": "npm --access public publish",
+    "lint": "npm dist-tag add package@1.2.3 latest",
+    "quality": "pnpm --registry https://registry.npmjs.org publish",
+    "typecheck": "npm version patch",
+    "validate": "pnpm -w publish",
+    "coverage": "yarn --cwd . npm publish",
+    "test": "bun --cwd . publish"
+  }
+}

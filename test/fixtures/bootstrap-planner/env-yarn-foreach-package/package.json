@@ -1,0 +1,9 @@
+{
+  "packageManager": "yarn@4.9.1",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "check": "NODE_ENV=ci yarn workspaces foreach -A run build"
+  }
+}

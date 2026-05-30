@@ -1,0 +1,7 @@
+{
+  "name": "unsafe",
+  "private": true,
+  "scripts": {
+    "test": "docker push example.com/app"
+  }
+}

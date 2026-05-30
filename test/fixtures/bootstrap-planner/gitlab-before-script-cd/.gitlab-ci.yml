@@ -1,0 +1,5 @@
+test:
+  before_script:
+    - cd services/api
+  script:
+    - npm test

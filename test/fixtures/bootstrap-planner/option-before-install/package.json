@@ -1,0 +1,7 @@
+{
+  "name": "option-before-install-fixture",
+  "private": true,
+  "scripts": {
+    "check": "npm --prefix services/api ci && node --test"
+  }
+}

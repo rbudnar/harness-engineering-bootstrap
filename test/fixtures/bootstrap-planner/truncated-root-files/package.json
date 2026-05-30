@@ -1,0 +1,7 @@
+{
+  "name": "truncated-root-files-fixture",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  }
+}

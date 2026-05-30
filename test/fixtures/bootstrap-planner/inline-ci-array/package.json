@@ -1,0 +1,7 @@
+{
+  "name": "inline-ci-array-fixture",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  }
+}

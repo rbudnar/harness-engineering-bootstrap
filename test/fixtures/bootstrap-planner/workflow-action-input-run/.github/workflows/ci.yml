@@ -1,0 +1,8 @@
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: example/action@v1
+        with:
+          run: npm test
+      - run: node --test

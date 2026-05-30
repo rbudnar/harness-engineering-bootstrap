@@ -1,0 +1,7 @@
+{
+  "packageManager": "pnpm@9.1.0",
+  "scripts": {
+    "test": "vitest",
+    "check": "tsc --noEmit"
+  }
+}

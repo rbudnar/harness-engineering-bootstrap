@@ -1,0 +1,11 @@
+{
+  "name": "workspace-selector-package-fixture",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "pnpm --filter api run build",
+    "check": "yarn workspace api build"
+  }
+}

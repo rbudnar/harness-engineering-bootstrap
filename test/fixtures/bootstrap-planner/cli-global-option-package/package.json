@@ -1,0 +1,15 @@
+{
+  "scripts": {
+    "test": "docker --context prod push ghcr.io/example/app",
+    "check": "git -C ../other push origin main",
+    "build": "docker --context prod buildx build --push -t ghcr.io/example/app .",
+    "test:docker-host": "docker --host tcp://builder buildx build --push -t ghcr.io/example/app .",
+    "lint:docker-log": "docker --log-level debug push ghcr.io/example/app",
+    "check:aws": "aws --ca-bundle cert.pem s3 cp ./app.tgz s3://example/app.tgz",
+    "quality:git-worktree": "git --work-tree . push origin main",
+    "validate:pulumi": "pulumi --cwd infra up",
+    "build:config": "docker --config cfg push ghcr.io/example/app",
+    "check:terraform": "terraform -chdir=infra apply -auto-approve",
+    "quality:helm": "helm --kube-context prod upgrade app chart/"
+  }
+}

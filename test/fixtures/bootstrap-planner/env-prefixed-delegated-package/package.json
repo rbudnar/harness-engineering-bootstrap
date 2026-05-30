@@ -1,0 +1,9 @@
+{
+  "name": "env-prefixed-delegated-package-fixture",
+  "private": true,
+  "scripts": {
+    "test": "NODE_ENV=test npm run build",
+    "check": "cross-env NODE_ENV=test npm run build",
+    "build": "docker buildx build --push ."
+  }
+}

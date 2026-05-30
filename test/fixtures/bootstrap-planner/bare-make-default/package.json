@@ -1,0 +1,7 @@
+{
+  "name": "bare-make-default-fixture",
+  "private": true,
+  "scripts": {
+    "test": "make"
+  }
+}

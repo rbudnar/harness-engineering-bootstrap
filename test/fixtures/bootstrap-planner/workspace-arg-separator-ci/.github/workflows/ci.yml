@@ -1,0 +1,7 @@
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm test -- --workspace api
+      - run: npm test -- --prefix services/api
+      - run: pnpm test -- --recursive

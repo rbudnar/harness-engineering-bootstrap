@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "scripts": {
+    "check": "cross-env-shell \"KUBECONFIG=prod kubectl apply -f k8s.yml\""
+  }
+}

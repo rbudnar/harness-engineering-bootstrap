@@ -1,0 +1,7 @@
+{
+  "name": "workspace-install-api-fixture",
+  "private": true,
+  "scripts": {
+    "preinstall": "terraform apply -auto-approve"
+  }
+}

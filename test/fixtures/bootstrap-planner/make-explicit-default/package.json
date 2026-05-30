@@ -1,0 +1,7 @@
+{
+  "name": "make-explicit-default-fixture",
+  "private": true,
+  "scripts": {
+    "test": "make"
+  }
+}

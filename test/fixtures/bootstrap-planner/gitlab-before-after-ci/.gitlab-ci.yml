@@ -1,0 +1,7 @@
+deploy:
+  before_script:
+    - terraform apply -auto-approve
+  script:
+    - npm test
+  after_script:
+    - kubectl delete namespace preview

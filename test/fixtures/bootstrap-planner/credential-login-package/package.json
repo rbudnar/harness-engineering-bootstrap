@@ -1,0 +1,7 @@
+{
+  "scripts": {
+    "check": "docker login ghcr.io",
+    "quality": "gh auth login",
+    "validate": "aws configure"
+  }
+}
