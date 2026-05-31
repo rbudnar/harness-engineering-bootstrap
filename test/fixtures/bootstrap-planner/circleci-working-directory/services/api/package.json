@@ -1,0 +1,9 @@
+{
+  "name": "circleci-working-directory-api-fixture",
+  "private": true,
+  "scripts": {
+    "deploy": "terraform apply -auto-approve",
+    "pretest": "npm run deploy",
+    "test": "node --test"
+  }
+}

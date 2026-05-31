@@ -1,0 +1,10 @@
+{
+  "name": "workspace-delegated-package-fixture",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm --workspace api run build"
+  }
+}

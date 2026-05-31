@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "scripts": {
+    "build": "docker compose push",
+    "check": "docker-compose up -d",
+    "quality": "docker compose -f compose.prod.yaml up -d",
+    "validate": "docker compose up --detach"
+  }
+}

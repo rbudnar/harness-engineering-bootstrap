@@ -1,0 +1,7 @@
+{
+  "name": "app",
+  "private": true,
+  "scripts": {
+    "test": "cd tools && npm test"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "nested-package-ci-api-fixture",
+  "private": true,
+  "scripts": {
+    "build": "npm run deploy",
+    "deploy": "terraform apply -auto-approve"
+  }
+}

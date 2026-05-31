@@ -1,0 +1,12 @@
+{
+  "scripts": {
+    "check": "nx run api:deploy",
+    "test": "nx affected --target=deploy",
+    "quality": "npx --yes nx run api:deploy",
+    "build": "turbo run build deploy",
+    "typecheck": "nx affected --targets=deploy",
+    "lint": "nx run-many -t deploy",
+    "validate": "NODE_ENV=prod nx run @scope/api:deploy",
+    "coverage": "npm exec nx affected --target=deploy"
+  }
+}

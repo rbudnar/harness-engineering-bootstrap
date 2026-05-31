@@ -1,0 +1,7 @@
+{
+  "name": "relative-prefix-web-fixture",
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix ../api run build"
+  }
+}

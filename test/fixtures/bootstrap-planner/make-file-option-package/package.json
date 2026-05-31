@@ -1,0 +1,5 @@
+{
+  "scripts": {
+    "test": "make -f ci.mk test"
+  }
+}

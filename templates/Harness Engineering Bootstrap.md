@@ -36,7 +36,7 @@ This bootstrap document is intentionally more detailed than the files it creates
 
 Use it in this order:
 
-1. Survey the repository and produce a short setup plan.
+1. Survey the repository and produce a short, review-ready setup plan.
 2. Create the required core: `AGENTS.md`, `docs/README.md`, architecture docs, decision memory, testing docs, CI/CD docs, human guide, one exact unified quality-gate command, harness validation, and a minimal local metrics baseline.
 3. Add optional modules only when their trigger conditions are already present.
 4. Establish a baseline so future harness changes can be measured.
@@ -64,6 +64,7 @@ Triggered modules:
 - URL-fetchable context maps for remote agents or one-shot URL bootstrap
 - Agent-readable health report for mature harnesses with several validators/metrics
 - Harnessify/workflow-to-control skill or guide for repeated agent friction
+- Durable plan artifacts and single-agent phase separation for multi-session or review-loop-heavy bootstrap work
 - Agent runtime safety docs for repositories that let agents touch real systems, secrets, user data, or autonomous jobs
 - Behavioral drift sensors for long-running agents with stable behavioral anchors or repeated drift failures
 - Evidence packs for source-heavy research tasks where claims need traceable support
@@ -105,6 +106,18 @@ Every nontrivial control should map to at least one layer. If the map reveals a 
 
 ## Phase 0: Repository Survey and Bootstrap Plan
 
+If this repository has the HEB planner helper available, start with the read-only survey:
+
+```bash
+node scripts/harness-bootstrap-plan.mjs --repo <target-repo>
+node scripts/harness-bootstrap-plan.mjs --repo <target-repo> --json
+node scripts/harness-bootstrap-plan.mjs --repo <target-repo> --mode update --target-version v0.1.0
+```
+
+The helper is a planner, not a generator. It may emit markdown or JSON for later reuse, but it must not write target-repo files or silently accept optional modules.
+
+For repositories that are already bootstrapped, use update mode before applying a newer template version. HEB release tags use `v<VERSION>` while `VERSION` and metadata store the numeric value. The update plan should compare the accepted local harness against the target release notes, classify each upstream change as already satisfied, applicable, intentionally rejected as bloat, deferred, or blocked by missing local trigger evidence, and name the rollback path before merge.
+
 Before writing files, inspect:
 
 - Existing instruction files: `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.cursor/rules`, `.windsurf/rules`
@@ -140,6 +153,26 @@ Then produce a short setup plan:
 - Any bespoke scaffolding that should have a model/tool-upgrade reassessment trigger
 - Measurement script scope
 - Any questions for the human where the code cannot answer safely
+
+For durable bootstrap work, save the accepted plan as a first-class artifact. Use `docs/plans/active/<yyyy-mm-dd>-<slug>.md` when the plan belongs to the repository, or a local-only path such as `.harness/plans/<yyyy-mm-dd>-<slug>.md` for exploratory work that should not be committed.
+
+The plan header should include:
+
+- `status`, `owner`, `created`, `updated`
+- `next_action`, `validation_command`, and `stop_condition`
+- `supersedes`, `superseded_by`, and a retirement or revisit rule
+
+Accepted bootstraps should record template metadata in `docs/harness-version.json` or `.harness/harness-version.json`, including `templateVersion`, `sourceRelease`, install or update date, accepted changes, rejected or deferred release changes, validation evidence, and rollback notes when updating an existing bootstrap. Update the metadata only after the bootstrap or update PR passes validation. Rollback should be a normal PR revert plus restoration of the previous metadata and validation evidence.
+
+Each execution turn should run this preflight:
+
+1. Reload the active plan instead of trusting chat memory.
+2. Verify repo drift against the files, commands, or issues the plan depends on.
+3. Check the latest user request for changed scope.
+4. Continue only from the next unchecked action.
+5. Append a compact progress-log row before handing off or stopping.
+
+Even when one model does the whole job, keep phase roles separate: planner, executor, reviewer, and closer. A plan is not ready for implementation until a fresh reviewer can see required core, triggered modules, explicitly rejected modules, smaller-control rationale, validation steps, open questions, and the stop condition without asking the human to become the memory bus.
 
 Proceed after the plan is accepted, unless the human explicitly asked you to implement without a plan gate.
 
@@ -318,6 +351,8 @@ Include:
 - Mocking and fixture boundaries
 - Slow or external tests
 - Current coverage map if useful and mechanically maintainable
+
+For high-risk, reusable, or repeatedly corrected implementation-time decision surfaces, include the model before treating the work as review-ready. A decision surface is code or harness logic that classifies, parses, routes, migrates, authorizes, plans, or decides whether an action is safe. Examples include command classifiers, CI parsers, package-manager wrappers, migration planners, permission gates, resolvers, and release/update planners. For small one-off helpers, a focused local test can be enough. Promote to a compact fixture or regression matrix when the surface is safety-relevant, reused, cross-tool, or has produced same-family review findings; name false-safe and false-blocking outcomes, validate the input families the surface claims to handle, and revisit the matrix if it becomes noisy or no longer covers active behavior.
 
 ### `docs/ci-cd.md` - Automation and Release
 
@@ -873,6 +908,8 @@ Before declaring work complete, check whether the task exposed a repeated mistak
 
 If yes, update the smallest durable harness surface in the same PR: `docs/README.md`, decision memory, a contract, a script, a review rule, a skill, or a focused doc. If the right fix is unclear, record a marker in the PR body, review thread, issue, or configured feedback log, such as `harness:miss-adr`, `harness:missing-guide`, `harness:missing-sensor`, `harness:wrong-command`, or `harness:context-rot`.
 
+If review finds two issues in the same defect family, stop point-fixing examples. Name the missing model or decision surface, update the fixture/regression matrix, and fix the class before continuing. Do not defer in-scope defects as follow-up work merely because review churn is high.
+
 Do not solve repeated mistakes only in provider memory, scratchpads, plans, or PR comments.
 
 ## Provider Memory
@@ -1133,6 +1170,7 @@ When a repeated or high-risk failure appears, classify the fix:
 - Mechanically checkable mistake: add a script/CI check.
 - Review should have caught it: add or update the canonical review harness or the relevant tool-specific adapter.
 - Wrong migration scope or unverified handoff claim: add a semantic-scope guide, PR prompt, review rule, data contract, repo contract, or route.
+- Repeated same-family implementation defect: identify the missing model or decision surface and add or update a fixture/regression matrix before more point fixes.
 - Failure happened before code was written: add or improve a guide.
 - Failure escaped after code was written: add or improve a sensor.
 - Existing control fired but was ignored or too noisy: improve the control's output, lifecycle, or severity before adding another rule.
@@ -1869,6 +1907,7 @@ Do not treat baseline imperfections as automatic blockers. The goal is to make t
 - [ ] Add a compact decision index with status, area, applies-to, read-when, rule, and detail/anchor fields
 - [ ] Add a decision-router script when decision count, file length, or repeated misses justify it
 - [ ] Create or update `docs/testing.md`
+- [ ] For parsers, classifiers, planners, resolvers, migrations, command runners, or safety gates, define false-safe/false-blocking risks and a fixture matrix before review
 - [ ] Create or update `docs/ci-cd.md`
 - [ ] Create or update `docs/human-guide.md`
 - [ ] Add a control inventory for mature/high-churn repos, classifying guide/sensor and computational/inferential controls

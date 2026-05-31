@@ -1,0 +1,9 @@
+{
+  "name": "hyphenated-validation-scripts-fixture",
+  "private": true,
+  "scripts": {
+    "test-ci": "node --test",
+    "type-check": "tsc --noEmit",
+    "lint-fix": "eslint . --fix"
+  }
+}

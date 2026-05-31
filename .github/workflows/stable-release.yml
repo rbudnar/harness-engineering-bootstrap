@@ -1,0 +1,265 @@
+name: Stable Release
+
+on:
+  pull_request_target:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      bump-type:
+        description: Stable release action to run.
+        required: true
+        type: choice
+        options:
+          - current
+          - patch
+          - minor
+        default: current
+
+concurrency:
+  group: stable-release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Stable Release
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.pull_request.merged == true &&
+        github.event.pull_request.base.ref == github.event.repository.default_branch &&
+        (
+          contains(github.event.pull_request.labels.*.name, 'release:current') ||
+          contains(github.event.pull_request.labels.*.name, 'release:patch') ||
+          contains(github.event.pull_request.labels.*.name, 'release:minor')
+        )
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    env:
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      HAS_RELEASE_APP: ${{ secrets.HEB_RELEASE_APP_ID != '' && secrets.HEB_RELEASE_APP_PRIVATE_KEY != '' }}
+
+    steps:
+      - name: Determine release type
+        id: release-type
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_BUMP_TYPE: ${{ inputs.bump-type }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "type=$INPUT_BUMP_TYPE" >> "$GITHUB_OUTPUT"
+            echo "source_ref=$DEFAULT_BRANCH" >> "$GITHUB_OUTPUT"
+            echo "pr_number=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          RELEASE_LABELS=$(node -e '
+            const labels = JSON.parse(process.env.PR_LABELS || "[]");
+            const releaseLabels = ["release:current", "release:patch", "release:minor"].filter((label) => labels.includes(label));
+            if (releaseLabels.length !== 1) {
+              console.error(`Expected exactly one stable release label, found ${releaseLabels.length}: ${releaseLabels.join(", ") || "none"}`);
+              process.exit(2);
+            }
+            process.stdout.write(releaseLabels[0].replace("release:", ""));
+          ')
+          echo "type=$RELEASE_LABELS" >> "$GITHUB_OUTPUT"
+          echo "source_ref=$PR_MERGE_SHA" >> "$GITHUB_OUTPUT"
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Generate GitHub App token
+        id: app-token
+        if: env.HAS_RELEASE_APP == 'true'
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.HEB_RELEASE_APP_ID }}
+          private-key: ${{ secrets.HEB_RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Checkout release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release-type.outputs.source_ref }}
+          token: ${{ steps.app-token.outputs.token || github.token }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Prepare release commit and tag
+        id: version
+        env:
+          RELEASE_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          HEB_RELEASE_DEPLOY_KEY: ${{ secrets.HEB_RELEASE_DEPLOY_KEY }}
+          PR_NUMBER: ${{ steps.release-type.outputs.pr_number }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [ -n "$HEB_RELEASE_DEPLOY_KEY" ]; then
+            mkdir -p "$HOME/.ssh"
+            printf '%s\n' "$HEB_RELEASE_DEPLOY_KEY" > "$HOME/.ssh/heb-release"
+            chmod 600 "$HOME/.ssh/heb-release"
+            ssh-keyscan github.com >> "$HOME/.ssh/known_hosts"
+            export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/heb-release -o IdentitiesOnly=yes"
+            PUSH_REMOTE="git@github.com:${GITHUB_REPOSITORY}.git"
+          else
+            PUSH_REMOTE="https://x-access-token:${RELEASE_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          fi
+
+          git fetch "$PUSH_REMOTE" "$DEFAULT_BRANCH" --tags --force
+          RELEASE_SOURCE=FETCH_HEAD
+          RELEASE_TYPE="${{ steps.release-type.outputs.type }}"
+          SOURCE_REF="${{ steps.release-type.outputs.source_ref }}"
+          if [ -n "$PR_NUMBER" ]; then
+            FETCHED_HEAD="$(git rev-parse FETCH_HEAD)"
+            if [ "$FETCHED_HEAD" != "$SOURCE_REF" ]; then
+              SOURCE_VERSION="$(git show "$SOURCE_REF:VERSION" | tr -d '\r\n')"
+              EXPECTED_VERSION=$(SOURCE_VERSION="$SOURCE_VERSION" RELEASE_TYPE="$RELEASE_TYPE" node - <<'NODE'
+          const version = process.env.SOURCE_VERSION || '';
+          const bump = process.env.RELEASE_TYPE || '';
+          if (!/^\d+\.\d+\.\d+$/.test(version)) {
+            console.error(`Invalid source VERSION: ${version || 'empty'}`);
+            process.exit(1);
+          }
+          const [major, minor, patch] = version.split('.').map((value) => Number.parseInt(value, 10));
+          if (bump === 'current') process.stdout.write(version);
+          else if (bump === 'patch') process.stdout.write(`${major}.${minor}.${patch + 1}`);
+          else if (bump === 'minor') process.stdout.write(`${major}.${minor + 1}.0`);
+          else {
+            console.error(`Unsupported release type: ${bump}`);
+            process.exit(1);
+          }
+          NODE
+              )
+              EXPECTED_TAG="v$EXPECTED_VERSION"
+              if git rev-parse "$EXPECTED_TAG" >/dev/null 2>&1; then
+                TAG_TARGET="$(git rev-list -n 1 "$EXPECTED_TAG")"
+                TAG_BELONGS_TO_RELEASE=false
+                if [ "$RELEASE_TYPE" = "current" ] && [ "$TAG_TARGET" = "$SOURCE_REF" ]; then
+                  TAG_BELONGS_TO_RELEASE=true
+                elif [ "$RELEASE_TYPE" != "current" ] && git merge-base --is-ancestor "$SOURCE_REF" "$TAG_TARGET"; then
+                  TAG_BELONGS_TO_RELEASE=true
+                fi
+
+                if [ "$TAG_BELONGS_TO_RELEASE" = "true" ] && [ "$TAG_TARGET" = "$FETCHED_HEAD" ]; then
+                  echo "Default branch already advanced to expected release tag $EXPECTED_TAG; continuing idempotent rerun."
+                elif [ "$TAG_BELONGS_TO_RELEASE" = "true" ] && git merge-base --is-ancestor "$TAG_TARGET" "$FETCHED_HEAD"; then
+                  echo "Default branch advanced after expected release tag $EXPECTED_TAG; checking out the tag to recover the GitHub Release."
+                  RELEASE_SOURCE="$EXPECTED_TAG"
+                else
+                  echo "Default branch moved from triggering merge $SOURCE_REF to $FETCHED_HEAD, and $EXPECTED_TAG does not belong to that release path."
+                  exit 1
+                fi
+              else
+                echo "Default branch moved from triggering merge $SOURCE_REF to $FETCHED_HEAD, and expected release tag $EXPECTED_TAG does not exist."
+                exit 1
+              fi
+            fi
+          fi
+          git checkout --detach "$RELEASE_SOURCE"
+
+          node --test scripts/harness-bootstrap-plan.test.mjs
+          node --test scripts/prepare-stable-release.test.mjs
+          node scripts/template-fitness.mjs
+
+          CURRENT_VERSION="$(tr -d '\r\n' < VERSION)"
+          CURRENT_TAG="v$CURRENT_VERSION"
+          if [ "$RELEASE_TYPE" != "current" ] &&
+            git rev-parse "$CURRENT_TAG" >/dev/null 2>&1 &&
+            [ "$(git rev-list -n 1 "$CURRENT_TAG")" = "$(git rev-parse HEAD)" ]; then
+            UNRELEASED_HAS_CONTENT=$(node - <<'NODE'
+          const { readFileSync } = require('node:fs');
+          const changelog = readFileSync('CHANGELOG.md', 'utf8');
+          const start = changelog.indexOf('## Unreleased');
+          const headingEnd = start === -1 ? -1 : changelog.indexOf('\n', start);
+          const bodyStart = headingEnd === -1 ? changelog.length : headingEnd + 1;
+          const nextMatch = changelog.slice(bodyStart).match(/\r?\n## /);
+          const end = nextMatch ? bodyStart + nextMatch.index : changelog.length;
+          const body = start === -1 ? '' : changelog.slice(bodyStart, end);
+          const meaningful = body
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter((line) => line && !line.startsWith('###') && !line.startsWith('<!--'));
+          process.stdout.write(meaningful.length > 0 ? 'true' : 'false');
+          NODE
+            )
+            if [ "$UNRELEASED_HAS_CONTENT" = "false" ]; then
+              echo "Tag $CURRENT_TAG already exists and Unreleased is empty; treating this as an idempotent release rerun."
+              RELEASE_TYPE=current
+            fi
+          fi
+
+          node scripts/prepare-stable-release.mjs \
+            --bump "$RELEASE_TYPE" \
+            --date "$(date -u +%F)" \
+            --notes-output .release-notes.md
+
+          VERSION="$(tr -d '\r\n' < VERSION)"
+          TAG="v$VERSION"
+          CHANGED=true
+          if [ "$RELEASE_TYPE" = "current" ]; then
+            CHANGED=false
+          fi
+
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            TAG_TARGET="$(git rev-list -n 1 "$TAG")"
+            HEAD_COMMIT="$(git rev-parse HEAD)"
+            if [ "$CHANGED" = "true" ] || [ "$TAG_TARGET" != "$HEAD_COMMIT" ]; then
+              echo "Tag $TAG already exists at $TAG_TARGET, not completed release commit $HEAD_COMMIT; refusing to reuse it."
+              exit 1
+            fi
+            echo "Tag $TAG already points at $HEAD_COMMIT; commit/tag push already completed."
+            exit 0
+          fi
+
+          COMMIT_MESSAGE="chore: release $TAG"
+          if [ -n "$PR_NUMBER" ]; then
+            COMMIT_MESSAGE="$COMMIT_MESSAGE for #$PR_NUMBER"
+          fi
+
+          if [ "$CHANGED" = "true" ]; then
+            git add VERSION CHANGELOG.md
+            if git diff --cached --quiet; then
+              echo "Expected VERSION or CHANGELOG.md changes for $TAG, but none were staged."
+              exit 1
+            fi
+            git commit -m "$COMMIT_MESSAGE"
+            git tag -a "$TAG" -m "Release $TAG"
+            git push --atomic --follow-tags "$PUSH_REMOTE" "HEAD:$DEFAULT_BRANCH"
+          else
+            git tag -a "$TAG" -m "Release $TAG"
+            git push "$PUSH_REMOTE" "$TAG"
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+        run: |
+          if gh release view "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
+            echo "GitHub release ${{ steps.version.outputs.tag }} already exists; skipping creation."
+          else
+            gh release create "${{ steps.version.outputs.tag }}" \
+              --title "${{ steps.version.outputs.tag }}" \
+              --notes-file "${{ steps.version.outputs.notes_path }}"
+          fi
+
+      - name: Summary
+        run: |
+          echo "## Stable Release Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Version:** ${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Tag:** ${{ steps.version.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Release type:** ${{ steps.release-type.outputs.type }}" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "${{ steps.release-type.outputs.pr_number }}" ]; then
+            echo "- **PR:** #${{ steps.release-type.outputs.pr_number }}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- **Triggered by:** @${{ github.actor }}" >> "$GITHUB_STEP_SUMMARY"
+          fi

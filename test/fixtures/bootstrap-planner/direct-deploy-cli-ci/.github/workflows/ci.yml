@@ -1,0 +1,28 @@
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: vercel deploy --prod
+      - run: vercel --prod
+      - run: npx vercel --prod
+      - run: fly deploy
+      - run: npx wrangler deploy
+      - run: npx --call "wrangler deploy"
+      - run: npm exec -c "wrangler deploy"
+      - run: pnpm dlx firebase deploy
+      - run: firebase hosting:channel:deploy preview
+      - run: azd up --no-prompt
+      - run: az acr login --name example
+      - run: gcloud builds submit --tag gcr.io/project/app
+      - run: serverless deploy --stage prod
+      - run: serverless remove --stage prod
+      - run: sls deploy
+      - run: sls remove
+      - run: sam deploy
+      - run: sam delete
+      - run: cdk deploy
+      - run: cdk destroy
+      - run: amplify publish
+      - run: heroku container:push web
+      - run: supabase db push
+      - run: az webapp up

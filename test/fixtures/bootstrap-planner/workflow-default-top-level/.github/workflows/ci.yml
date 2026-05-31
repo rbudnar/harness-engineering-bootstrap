@@ -1,0 +1,14 @@
+name: CI
+
+on:
+  pull_request:
+
+defaults:
+  run:
+    working-directory: services/api
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm test

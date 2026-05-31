@@ -1,0 +1,8 @@
+{
+  "name": "tools",
+  "private": true,
+  "scripts": {
+    "test": "npm run deploy",
+    "deploy": "gh release create v1.0.0"
+  }
+}

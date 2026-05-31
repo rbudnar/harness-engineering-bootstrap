@@ -1,0 +1,8 @@
+{
+  "name": "prepublish-lifecycle-ci-fixture",
+  "private": true,
+  "scripts": {
+    "deploy": "terraform apply -auto-approve",
+    "prepublish": "npm run deploy"
+  }
+}

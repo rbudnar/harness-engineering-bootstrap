@@ -1,0 +1,11 @@
+{
+  "name": "package-manager-task-runner-shim-fixture",
+  "private": true,
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "build": "pnpm turbo run deploy",
+    "check": "pnpm -C services/api deploy",
+    "lint": "yarn nx affected --target=deploy",
+    "test": "pnpm nx run api:deploy"
+  }
+}

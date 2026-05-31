@@ -4,13 +4,58 @@ A practical bootstrap template for creating a self-maintaining, token-efficient 
 
 The goal is not to add more documentation. The goal is to help coding agents load the right context at the right time, keep always-on instructions small, enforce drift mechanically where possible, and grow the harness only when repeated misses or real dependencies justify it.
 
+## Getting Started
+
+Start with the bootstrap planner. It is read-only: it surveys a target repository and prints a review-ready harness plan, but it does not write files into that repository.
+
+Requirements: Git, Node.js 20 or newer, and no `npm install` step.
+
+From a checkout of this repository:
+
+```bash
+git clone https://github.com/rbudnar/harness-engineering-bootstrap.git
+cd harness-engineering-bootstrap
+node scripts/harness-bootstrap-plan.mjs --repo /absolute/path/to/target-repo
+```
+
+On Windows, the planner command looks like:
+
+```powershell
+node .\scripts\harness-bootstrap-plan.mjs --repo C:\Users\you\Documents\repos\target-repo
+```
+
+Read the generated plan before copying or creating anything. The most important sections are:
+
+- `Required Core`: the smallest always-on harness the repo appears to need.
+- `Triggered Optional Modules`: optional controls with local trigger evidence.
+- `Explicitly Rejected Modules`: things the planner intentionally did not recommend.
+- `Validation Steps`: commands or checks to run before accepting the harness.
+
+Apply only the items you accept in the target repo, usually starting with a thin `AGENTS.md` and any tiny provider adapters that point back to it. Use [the template](templates/Harness%20Engineering%20Bootstrap.md) as reference material while implementing the plan; do not copy every optional module by default.
+
+After changes in the target repo, rerun the planner and the target repo's validation commands. To capture machine-readable planner output:
+
+```bash
+node scripts/harness-bootstrap-plan.mjs --repo /absolute/path/to/target-repo --json
+```
+
+For a repository that is already bootstrapped, use update mode against the release tag you want to adopt:
+
+```bash
+node scripts/harness-bootstrap-plan.mjs --repo /absolute/path/to/target-repo --mode update --target-version v0.1.0
+```
+
 ## Contents
 
+- [Getting Started](#getting-started) - how to run the read-only bootstrap planner against a downstream repository.
 - [Template](templates/Harness%20Engineering%20Bootstrap.md) - the current bootstrap template.
 - [Dogfooding guide](docs/dogfooding.md) - how this repo keeps the template from becoming a fat harness.
 - [Template fitness check](scripts/template-fitness.mjs) - local and CI bloat guard for template changes.
+- [Bootstrap planner](scripts/harness-bootstrap-plan.mjs) - read-only repo survey that emits review-ready markdown or JSON.
 - [Changelog](CHANGELOG.md) - version history and major design changes.
+- [Release policy](docs/releases.md) - HEB version, tag, release-note, and update metadata contract.
 - [References](REFERENCES.md) - source material and related work used while developing the template.
+- [Version marker](VERSION) - current template version for tags and releases.
 
 ## What This Template Emphasizes
 
@@ -19,6 +64,7 @@ The goal is not to add more documentation. The goal is to help coding agents loa
 - Task-routed docs instead of broad context loading.
 - Decision memory, data contracts, and repo contracts.
 - Deterministic quality gates and harness validation.
+- A read-only bootstrap planner CLI for first-pass repo surveys and review-ready setup plans.
 - Minimal local metrics first; PR metrics and scheduled reporting only when triggered.
 - Guide/sensor and computational/inferential control taxonomy.
 - Programmatic state surfaces before raw context dumps.
@@ -46,6 +92,18 @@ To check an automation proposal file before accepting it:
 ```bash
 node scripts/template-fitness.mjs --suggestion path/to/suggestion.md
 ```
+
+For downstream bootstrapper runs, use [Getting Started](#getting-started) above.
+
+## Release And Update Path
+
+`VERSION`, `CHANGELOG.md`, `docs/releases.md`, and GitHub tags/releases are the template release source of truth. `VERSION` stores the numeric value such as `0.1.0`; release tags use the `v0.1.0` form.
+
+Stable releases are automated on merged PRs with exactly one release label: `release:current`, `release:patch`, or `release:minor`. Current releases publish the existing `VERSION` only when `CHANGELOG.md`'s `## Unreleased` section has no pending notes. Patch and minor releases promote `## Unreleased` notes, bump `VERSION`, commit directly to `main`, tag the release, and create a GitHub Release.
+
+Repositories that adopt this template should record accepted bootstrap metadata in `docs/harness-version.json` or `.harness/harness-version.json` so later planner runs can distinguish first-time bootstraps from template updates.
+
+For an already-bootstrapped repository, run the planner in update mode against the target tag before writing files. The plan should classify each upstream template change as already satisfied, applicable, intentionally rejected as bloat, deferred, or blocked, and it should name the rollback path before the update PR is merged.
 
 ## How To Use
 

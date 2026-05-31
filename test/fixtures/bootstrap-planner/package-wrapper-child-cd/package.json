@@ -1,0 +1,7 @@
+{
+  "name": "package-wrapper-child-cd-fixture",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ]
+}

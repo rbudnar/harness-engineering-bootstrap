@@ -1,0 +1,9 @@
+version: 2.1
+jobs:
+  test:
+    steps:
+      - checkout
+      - run:
+          name: Test API
+          working_directory: services/api
+          command: npm test

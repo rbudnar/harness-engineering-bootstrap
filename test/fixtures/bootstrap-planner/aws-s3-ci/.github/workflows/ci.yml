@@ -1,0 +1,10 @@
+name: CI
+
+on:
+  pull_request:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - run: aws s3 sync dist s3://example-bucket

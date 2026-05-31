@@ -1,0 +1,7 @@
+{
+  "name": "workflow-unknown-cd-preamble-fixture",
+  "private": true,
+  "scripts": {
+    "test": "echo root"
+  }
+}

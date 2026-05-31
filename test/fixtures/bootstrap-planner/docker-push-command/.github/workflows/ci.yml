@@ -1,0 +1,18 @@
+name: CI
+
+on:
+  pull_request:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - run: docker push ghcr.io/example/app
+      - run: docker image push ghcr.io/example/app
+      - run: docker -H tcp://daemon:2375 push ghcr.io/example/app
+      - run: docker manifest push ghcr.io/example/app:latest
+      - run: docker buildx build --output=type=registry ghcr.io/example/app:latest .
+      - run: docker buildx build --output type=registry ghcr.io/example/app:latest .
+      - run: docker buildx build --output=type=image,push=true,name=ghcr.io/example/app:latest .
+      - run: docker buildx build -o type=image,push=true,name=ghcr.io/example/app:latest .
+      - run: docker buildx imagetools create -t ghcr.io/example/app:latest ghcr.io/example/app@sha256:abc123

@@ -1,0 +1,8 @@
+{
+  "name": "terraform-validation-package-fixture",
+  "private": true,
+  "scripts": {
+    "validate": "terraform validate",
+    "check:fmt": "terraform fmt -check"
+  }
+}

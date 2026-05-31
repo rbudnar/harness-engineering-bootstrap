@@ -1,0 +1,9 @@
+{
+  "name": "basic-js-fixture",
+  "private": true,
+  "scripts": {
+    "build": "node src/index.js",
+    "lint": "node src/index.js",
+    "test": "node --test"
+  }
+}

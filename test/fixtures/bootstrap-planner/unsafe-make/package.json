@@ -1,0 +1,7 @@
+{
+  "name": "unsafe-make-fixture",
+  "private": true,
+  "scripts": {
+    "check": "make test"
+  }
+}

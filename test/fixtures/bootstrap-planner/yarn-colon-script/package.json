@@ -1,0 +1,11 @@
+{
+  "name": "yarn-colon-script-fixture",
+  "private": true,
+  "packageManager": "yarn@4.9.1",
+  "scripts": {
+    "test:unit": "node --test",
+    "typecheck:ci": "tsc --noEmit",
+    "test-ci": "node --test",
+    "quality": "yarn run test-ci"
+  }
+}

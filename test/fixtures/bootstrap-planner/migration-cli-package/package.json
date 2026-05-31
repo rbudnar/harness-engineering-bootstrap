@@ -1,0 +1,11 @@
+{
+  "scripts": {
+    "postinstall": "prisma migrate deploy",
+    "build": "npx prisma db push",
+    "check": "drizzle-kit push",
+    "lint": "knex migrate:latest",
+    "quality": "alembic upgrade head",
+    "typecheck": "python manage.py migrate",
+    "validate": "dotnet ef database update"
+  }
+}

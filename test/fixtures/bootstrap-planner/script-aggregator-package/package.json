@@ -1,0 +1,14 @@
+{
+  "private": true,
+  "scripts": {
+    "check": "npm-run-all deploy:*",
+    "coverage": "npm --silent run deploy",
+    "test": "npm-run-all unit deploy",
+    "lint": "run-s unit deploy",
+    "build": "run-p unit deploy",
+    "validate": "npm run-script deploy",
+    "unit": "echo ok",
+    "deploy": "terraform apply -auto-approve",
+    "deploy:prod": "terraform apply -auto-approve"
+  }
+}

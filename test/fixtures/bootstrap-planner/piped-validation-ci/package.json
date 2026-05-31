@@ -1,0 +1,7 @@
+{
+  "name": "piped-validation-ci-fixture",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  }
+}

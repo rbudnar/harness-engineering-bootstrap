@@ -1,0 +1,3 @@
+steps:
+  - bash: kubectl apply -f k8s/service.yaml
+  - pwsh: echo ok

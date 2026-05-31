@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "scripts": {
+    "validate": "az storage blob upload --container-name releases --name app.zip --file dist/app.zip"
+  }
+}

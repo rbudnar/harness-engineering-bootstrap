@@ -1,6 +1,78 @@
 # Changelog
 
-Dates reflect repository history, not formal package releases.
+Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for the full release-note contract.
+
+## Unreleased
+
+### Summary
+
+- Clarified the README front door so first-time downstream users can run the read-only bootstrap planner without hunting through repo-internal dogfooding notes.
+
+### Template Changes
+
+- Added a Getting Started section with requirements, clone/run commands, Windows usage, output sections to review, and the update-mode command.
+
+### Planner And Metadata
+
+### Migration
+
+### Validation
+
+- `node scripts/template-fitness.mjs`
+
+### Rollback
+
+## v0.1.0 - 2026-05-30
+
+### Summary
+
+- Initial versioned HEB release for bootstrapping thin, task-routed agent harnesses and testing version-aware updates in consuming repositories.
+- Defines the release policy needed before treating `--target-version` as a public update contract.
+- Adds automated stable GitHub Releases for merged PRs with explicit release labels.
+- Clarifies release-note classification and generated changelog formatting after PR review.
+
+### Template Changes
+
+- Added durable plan lifecycle guidance for active plan artifacts, execution preflight, single-agent phase separation, explicit rejection of untriggered modules, and progress-log handoff.
+- Added implementation-time decision-surface and defect-family guidance so repeated same-class review findings become modeled fixes with regression matrices instead of point patches.
+- Added `docs/releases.md` as the source for HEB versioning, tag format, release-note format, accepted metadata fields, and rollback expectations.
+- Added `deferred` to the release-note classification outcomes consuming repositories can record during update planning.
+- Documented stable release labels and ruleset bypass expectations so release automation stays intentional.
+- Clarified that `release:current` is exceptional bootstrap/recovery/admin machinery; normal ongoing stable releases use `release:patch` or `release:minor`.
+
+### Planner And Metadata
+
+- Added a read-only bootstrap planner CLI with markdown and JSON output, fixture tests, and CI coverage so agents can produce review-ready harness setup plans before writing target-repo files.
+- Added update-mode planning, template version metadata, rollback guidance, and a `VERSION` fitness check so already-bootstrapped repositories can move between template releases without manual chat relay.
+- Aligned planner update output with the release policy by naming `docs/releases.md`, `v<VERSION>` tags, and the accepted metadata fields.
+- Added a release-preparation helper that promotes `CHANGELOG.md` release notes, bumps `VERSION` for patch/minor releases, and emits GitHub Release notes.
+- Preserved a blank line after generated release headings so patch and minor release sections match the documented changelog shape.
+- Added a guard that blocks `release:current` when `CHANGELOG.md` still has pending `## Unreleased` notes.
+- Used a trusted merged-PR trigger for stable releases so fork-origin PRs can release after merge without checking out unmerged fork code.
+- Let release reruns recover a missing GitHub Release from an existing reachable tag after `main` has advanced.
+- Refuse to guess release semantics when `main` advances before the expected release tag exists.
+
+### Migration
+
+- First-time consumers can run the planner in bootstrap mode and record accepted metadata after validation.
+- Already-bootstrapped consumers should run update mode with `--target-version v0.1.0`, classify each release-note item, and record accepted, rejected, deferred, validation, and rollback metadata only after validation passes.
+- Use `release:current` to publish the current `VERSION` without a bump, or `release:patch` / `release:minor` to create the next stable release after merge.
+
+### Validation
+
+- `node --test scripts/prepare-stable-release.test.mjs`
+- `node --test scripts/harness-bootstrap-plan.test.mjs`
+- `node scripts/template-fitness.mjs`
+- `node scripts/harness-bootstrap-plan.mjs --repo .`
+- `node scripts/harness-bootstrap-plan.mjs --repo . --mode update --target-version v0.1.0`
+
+### Rollback
+
+- Before publishing a tag, abandon the release branch and leave `VERSION` plus metadata unchanged.
+- Delete a generated GitHub Release and tag, then revert the release commit when a patch or minor release created one.
+- After a consuming repo accepts the release, roll back by reverting the update PR, restoring previous `docs/harness-version.json` or `.harness/harness-version.json`, rerunning validation, and recording the rollback note.
+
+## Pre-release History
 
 ## 2026-05-30
 

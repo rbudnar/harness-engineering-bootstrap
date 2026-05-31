@@ -1,0 +1,7 @@
+steps:
+  - task: AzureCLI@2
+    inputs:
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        az deployment group create --resource-group rg --template-file infra/main.bicep

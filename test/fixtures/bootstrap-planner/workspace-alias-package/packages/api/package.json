@@ -1,0 +1,6 @@
+{
+  "scripts": {
+    "test": "npm run deploy",
+    "deploy": "echo deploy"
+  }
+}

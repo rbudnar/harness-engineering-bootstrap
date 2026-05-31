@@ -1,0 +1,7 @@
+{
+  "scripts": {
+    "check": "pulumi --stack prod up --yes",
+    "test": "pulumi -s prod destroy --yes",
+    "validate": "pulumi up --yes"
+  }
+}
