@@ -4,6 +4,8 @@ Use this template to set up a self-maintaining, token-efficient agent harness fo
 
 The harness goal is not "more docs." The goal is a repository that gives agents the right context at the right time, catches drift mechanically, grows when real context gaps appear, and improves based on measured evidence rather than feel.
 
+HEB uses open agent-facing formats as its substrate: `AGENTS.md` for repository instructions, thin provider adapters when needed, and Agent Skills-standard `SKILL.md` packages only for triggered reusable workflows. HEB is the governance layer that decides what belongs in those surfaces, when it should load, how it is validated, and when it should retire.
+
 ## Prerequisites
 
 - An existing repository with source code
@@ -43,7 +45,7 @@ Use it in this order:
 
 Required core:
 
-- Thin cross-agent entry point
+- Thin cross-agent entry point using `AGENTS.md`
 - Task-routed docs
 - Decision memory
 - Deterministic quality gate
@@ -120,12 +122,12 @@ For repositories that are already bootstrapped, use update mode before applying 
 
 Before writing files, inspect:
 
-- Existing instruction files: `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.cursor/rules`, `.windsurf/rules`
+- Existing instruction files: `AGENTS.md`, nested `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.cursor/rules`, `.windsurf/rules`
 - Existing docs: `README.md`, `docs/`, `CONTRIBUTING.md`, architecture notes, ADRs
 - Build and test commands from package files, Makefiles, CI workflows, scripts, and README
 - Source layout, module boundaries, generated files, migrations, deployment scripts
 - CI workflows and required secrets
-- Existing guides: agent instructions, skills, task templates, examples, generated references, architecture docs, `llms.txt`, and `llms-full.txt`
+- Existing guides: agent instructions, Agent Skills `SKILL.md` packages such as `.agents/skills/*/SKILL.md`, task templates, examples, generated references, architecture docs, `llms.txt`, and `llms-full.txt`
 - Existing sensors: tests, linters, type checks, structural checks, coverage, security scans, review bots, hooks, observability, browser checks, health reports, and runtime monitors
 - External data dependencies: SQL tables, warehouses, APIs, event streams, files, schemas, models
 - Cross-repository dependencies: shared packages, generated artifacts, copied logic, upstream implementations, deployment assumptions
@@ -842,6 +844,8 @@ Create one canonical shared instruction source and thin wrappers for tools that 
 
 Commit `AGENTS.md` at the repository root.
 
+Use the open `AGENTS.md` format: plain Markdown, no required frontmatter, and headings chosen for the repository's needs. Put shared repository guidance here, then use nested `AGENTS.md` files only when a subtree has real local policy. If a tool supports provider-specific files, keep those files as adapters that point back to `AGENTS.md`.
+
 Target 60-90 lines. It may be longer only if the repo has a strong reason, but keep it well below tool instruction-size limits.
 
 Include:
@@ -1208,6 +1212,34 @@ Checklist:
 Prefer harnessifying repeated workflows and misses over adding more root instructions.
 
 Skill-creation gate: before creating a new skill, at least two smaller controls should have been tried and shown insufficient, unless the workflow is clearly repeated, multi-step, and procedural. Smaller controls include semantic docs, ADRs, contracts, validators, PR template prompts, review rules, or examples. "Considered but not tried" is not enough evidence for a new skill unless the risk or cost of trying the smaller control is explicit.
+
+When a skill passes that gate, use the Agent Skills `SKILL.md` format instead of a provider-only prompt file:
+
+```text
+.agents/skills/<skill-name>/
+  SKILL.md
+  scripts/      # optional
+  references/   # optional
+  assets/       # optional
+```
+
+Minimum `SKILL.md` frontmatter:
+
+```markdown
+---
+name: <skill-name>
+description: Explain exactly when this skill should and should not trigger.
+---
+```
+
+Skill admission rules:
+
+- Trigger evidence: the workflow is repeated, procedural, multi-step, or expensive enough that a routed doc or validator is not enough.
+- Smaller control: record why a doc, ADR, contract, checklist, PR template prompt, or deterministic script alone would miss the workflow.
+- Validation: `name` matches the parent directory, `description` names the trigger and boundary, optional frontmatter fields stay within the Agent Skills spec, scripts have exact test commands, and references are loaded only on demand.
+- Retirement: delete, merge into docs, or demote the skill when a first-party tool replaces it, usage disappears, trigger overlap causes routing noise, or the workflow becomes simple enough for a smaller control.
+
+Do not create a skill merely to make optional template material portable. Skills are pulled context for real workflows, not a second always-on manual.
 
 ### Conflict Resolution
 
@@ -1856,6 +1888,7 @@ Cross-agent validation:
 - Instructions avoid tool-specific assumptions where possible.
 - Tool-specific assumptions are isolated and labeled.
 - Provider-native memory is treated as advisory and never as the only source for project facts.
+- Repo-local skills, when present, use `SKILL.md` standard frontmatter and stay routed optional capabilities rather than duplicate project facts.
 
 ## Phase 11: Establish the Baseline
 
@@ -1916,6 +1949,7 @@ Do not treat baseline imperfections as automatic blockers. The goal is to make t
 - [ ] Add internal data-store docs only when repo-owned persistence semantics are load-bearing
 - [ ] Add task contracts only for long-running, multi-agent, or handoff-heavy work
 - [ ] Add `docs/harnessify.md` or a harnessify/workflow-to-control skill only when repeated harness friction justifies it
+- [ ] If repo-local skills exist, validate their `SKILL.md` frontmatter, trigger descriptions, routed references, and retirement rule
 - [ ] Add agent-runtime safety docs only when agents can touch real systems, secrets, user data, shared credentials, or autonomous jobs
 - [ ] Add behavioral anchors only when long-running agents repeatedly drift from stable behavior rules
 - [ ] Add evidence packs only when source-heavy research needs traceable claims and freshness tracking
