@@ -69,6 +69,7 @@ const repoSkillRootPaths = ['.agents/skills'];
 const allowedSkillFrontmatterFields = new Set(['name', 'description', 'license', 'compatibility', 'metadata', 'allowed-tools']);
 const skillNameCharactersPattern = /^[\p{L}\p{N}-]+$/u;
 const uppercaseSkillNamePattern = /[\p{Lu}\p{Lt}]/u;
+const yamlTypedPlainScalarPattern = /^(?:[-+]?(?:\d+(?:\.\d+)?|\.\d+)(?:e[-+]?\d+)?|true|false|null|~)$/i;
 
 const failures = [];
 const warnings = [];
@@ -370,35 +371,39 @@ function parseQuotedYamlScalar(value) {
       }
 
       const suffix = trimmed.slice(cursor + 1).trim();
-      if (suffix && !suffix.startsWith('#')) return { valid: false, value: '' };
-      return { valid: true, value: scalar };
+      if (suffix && !suffix.startsWith('#')) return { valid: false, value: '', quoted: true };
+      return { valid: true, value: scalar, quoted: true };
     }
 
     scalar += char;
     cursor += 1;
   }
 
-  return { valid: false, value: '' };
+  return { valid: false, value: '', quoted: true };
 }
 
 function parseYamlScalar(value) {
   const trimmed = value.trim();
-  if (!trimmed || trimmed.startsWith('#')) return { valid: true, value: '' };
+  if (!trimmed || trimmed.startsWith('#')) return { valid: true, value: '', quoted: false };
 
   if (trimmed.startsWith('"') || trimmed.startsWith("'")) return parseQuotedYamlScalar(trimmed);
-  if (trimmed.endsWith('"') || trimmed.endsWith("'")) return { valid: false, value: '' };
+  if (trimmed.endsWith('"') || trimmed.endsWith("'")) return { valid: false, value: '', quoted: false };
 
   const commentIndex = trimmed.search(/\s#/);
   const withoutComment = commentIndex === -1 ? trimmed : trimmed.slice(0, commentIndex).trimEnd();
-  if (/:($|\s)/.test(withoutComment)) return { valid: false, value: '' };
-  return { valid: true, value: withoutComment };
+  if (/:($|\s)/.test(withoutComment)) return { valid: false, value: '', quoted: false };
+  return { valid: true, value: withoutComment, quoted: false };
+}
+
+function isYamlTypedPlainScalar(parsedScalar) {
+  return !parsedScalar.quoted && yamlTypedPlainScalarPattern.test(parsedScalar.value);
 }
 
 function parseSimpleFrontmatter(text) {
   const lines = markdownLines(text);
-  if (lines[0]?.trim() !== '---') return null;
+  if (lines[0] !== '---') return null;
 
-  const end = lines.findIndex((line, index) => index > 0 && line.trim() === '---');
+  const end = lines.findIndex((line, index) => index > 0 && line === '---');
   if (end === -1) return null;
 
   const fields = {};
@@ -424,13 +429,19 @@ function parseSimpleFrontmatter(text) {
         continue;
       }
 
+      const nestedKey = nestedMatch[1];
+      if (Object.hasOwn(fields[activeMap], nestedKey)) {
+        invalidLines.push(lineNumber);
+        continue;
+      }
+
       const nestedScalar = parseYamlScalar(nestedMatch[2]);
       if (!nestedScalar.valid) {
         invalidLines.push(lineNumber);
         continue;
       }
 
-      fields[activeMap][nestedMatch[1]] = nestedScalar.value;
+      fields[activeMap][nestedKey] = nestedScalar.value;
       continue;
     }
 
@@ -474,7 +485,7 @@ function parseSimpleFrontmatter(text) {
       fieldKinds[key] = 'scalar';
     } else if (value) {
       const scalar = parseYamlScalar(value);
-      if (!scalar.valid) {
+      if (!scalar.valid || isYamlTypedPlainScalar(scalar)) {
         invalidLines.push(lineNumber);
       }
 
