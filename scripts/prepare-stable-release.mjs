@@ -44,6 +44,8 @@ export function prepareStableRelease(options = {}) {
   const changelog = readFileSync(changelogPath, 'utf8');
 
   if (bump === 'current') {
+    const unreleased = findOptionalReleaseSection(changelog, 'Unreleased');
+    if (unreleased) assertUnreleasedIsEmpty(unreleased.body);
     const releaseSection = findReleaseSection(changelog, tag);
     assertReleaseSectionShape(releaseSection.body, tag);
     writeFileSync(resolve(cwd, notesOutput), ensureTrailingNewline(releaseSection.body.trim()));
@@ -56,7 +58,7 @@ export function prepareStableRelease(options = {}) {
   assertUnreleasedHasContent(unreleased.body);
 
   const nextHeading = `## ${tag} - ${date}`;
-  const nextSection = `${nextHeading}\n${ensureTrailingNewline(unreleased.body.trim())}`;
+  const nextSection = `${nextHeading}\n\n${ensureTrailingNewline(unreleased.body.trim())}`;
   const updatedChangelog = [
     changelog.slice(0, unreleased.start),
     `${unreleasedTemplate}\n`,
@@ -102,6 +104,15 @@ function findReleaseSection(changelog, releaseName) {
   };
 }
 
+function findOptionalReleaseSection(changelog, releaseName) {
+  try {
+    return findReleaseSection(changelog, releaseName);
+  } catch (error) {
+    if (error.message.includes('CHANGELOG.md must include')) return null;
+    throw error;
+  }
+}
+
 function assertReleaseSectionShape(body, releaseName) {
   for (const heading of requiredHeadings) {
     if (!body.includes(`### ${heading}`)) {
@@ -111,14 +122,22 @@ function assertReleaseSectionShape(body, releaseName) {
 }
 
 function assertUnreleasedHasContent(body) {
-  const meaningfulLines = body
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line && !line.startsWith('###') && !line.startsWith('<!--'));
-
-  if (meaningfulLines.length === 0) {
+  if (!hasMeaningfulReleaseContent(body)) {
     throw new Error('CHANGELOG.md Unreleased section must contain release notes before a patch or minor release.');
   }
+}
+
+function assertUnreleasedIsEmpty(body) {
+  if (hasMeaningfulReleaseContent(body)) {
+    throw new Error('CHANGELOG.md Unreleased section must be empty before a current release.');
+  }
+}
+
+function hasMeaningfulReleaseContent(body) {
+  return body
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .some((line) => line && !line.startsWith('###') && !line.startsWith('<!--'));
 }
 
 function ensureTrailingNewline(text) {

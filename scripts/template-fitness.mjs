@@ -352,13 +352,21 @@ function checkReleasePolicy() {
 
   const stableReleaseWorkflow = read('.github/workflows/stable-release.yml');
   const stableWorkflowAnchors = [
+    'pull_request_target:',
+    'github.event.pull_request.merged == true',
     "github.event.pull_request.base.ref == github.event.repository.default_branch",
+    'PR_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}',
     "DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}",
     'persist-credentials: false',
     'git fetch "$PUSH_REMOTE" "$DEFAULT_BRANCH" --tags --force',
-    'Default branch already advanced to release tag',
+    'RELEASE_SOURCE=FETCH_HEAD',
+    'EXPECTED_TAG="v$EXPECTED_VERSION"',
+    'TAG_BELONGS_TO_RELEASE',
+    'Default branch already advanced to expected release tag',
+    'git merge-base --is-ancestor "$SOURCE_REF" "$TAG_TARGET"',
+    'git merge-base --is-ancestor "$TAG_TARGET" "$FETCHED_HEAD"',
     'Default branch moved from triggering merge',
-    'git checkout --detach FETCH_HEAD',
+    'git checkout --detach "$RELEASE_SOURCE"',
     'git rev-list -n 1 "$CURRENT_TAG"',
     'not completed release commit',
     'UNRELEASED_HAS_CONTENT',

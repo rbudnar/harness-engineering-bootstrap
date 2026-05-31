@@ -51,19 +51,21 @@ HEB uses `0.MINOR.PATCH` while the template is pre-1.0:
 ### Rollback
 ```
 
-Release notes should describe update-visible changes, not every internal edit. When a change affects update mode, metadata, or validation, the release note should say how a consuming repo can classify it as already satisfied, applicable, intentionally rejected as bloat, or blocked.
+Release notes should describe update-visible changes, not every internal edit. When a change affects update mode, metadata, or validation, the release note should say how a consuming repo can classify it as already satisfied, applicable, intentionally rejected as bloat, deferred, or blocked.
 
 ## Stable Release Automation
 
 Merged PRs create stable releases only when they have exactly one stable release label:
 
-- `release:current`: tag and publish the current `VERSION` without changing files. Use this for the first release, re-publishing a missing GitHub Release, or an administrative release where the version was already prepared.
+- `release:current`: tag and publish the current `VERSION` without changing files. Use this only for the first release, re-publishing a missing GitHub Release, or an administrative release where the version was already prepared; normal ongoing stable releases should use `release:patch` or `release:minor`.
 - `release:patch`: bump `VERSION` by one patch version, promote `## Unreleased` to `## vX.Y.Z - YYYY-MM-DD`, commit those changes directly to `main`, tag `vX.Y.Z`, and create a GitHub Release.
 - `release:minor`: bump `VERSION` by one minor version and reset patch to zero, then follow the same changelog, commit, tag, and GitHub Release flow.
 
-No stable release label means no release. Multiple stable release labels should fail instead of guessing. Pre-1.0 breaking changes use `release:minor` and must spell out migration and rollback in the release notes.
+No stable release label means no release. Multiple stable release labels should fail instead of guessing. `release:current` requires the current `v<VERSION>` changelog section to contain the final release notes and requires `## Unreleased` to have no pending notes. Pre-1.0 breaking changes use `release:minor` and must spell out migration and rollback in the release notes.
 
-The workflow is allowed to make a direct post-merge release commit to `main`. With the current repository ruleset, a repo-scoped write deploy key stored as `HEB_RELEASE_DEPLOY_KEY` is the bypass actor for release pushes. If the repository switches to a custom release app, add `HEB_RELEASE_APP_ID` and `HEB_RELEASE_APP_PRIVATE_KEY` secrets; the workflow will use that app token for checkout and GitHub Release API calls, while the deploy key remains the branch-push bypass unless the ruleset is updated to trust the custom app instead.
+The workflow is allowed to make a direct post-merge release commit to `main`. It uses the `pull_request_target` `closed` event so fork-origin release PRs can use trusted repository credentials after merge, but it must only check out `pull_request.merge_commit_sha` after `merged == true`; do not change it to run release code from an unmerged PR head. With the current repository ruleset, a repo-scoped write deploy key stored as `HEB_RELEASE_DEPLOY_KEY` is the bypass actor for release pushes. If the repository switches to a custom release app, add `HEB_RELEASE_APP_ID` and `HEB_RELEASE_APP_PRIVATE_KEY` secrets; the workflow will use that app token for checkout and GitHub Release API calls, while the deploy key remains the branch-push bypass unless the ruleset is updated to trust the custom app instead.
+
+Avoid merging another release-labeled PR until the current release job has created its tag. If `main` advances before the expected release tag exists, the workflow fails rather than guessing which bump semantics should apply.
 
 ## Bootstrapped Repository Metadata
 
@@ -83,7 +85,7 @@ Update metadata only after the bootstrap or update PR passes validation. A consu
 ## Release Checklist
 
 1. Choose the release label from the pre-1.0 rules: `release:current`, `release:patch`, or `release:minor`.
-2. Update `## Unreleased` in `CHANGELOG.md` with the required release-note headings before using `release:patch` or `release:minor`.
+2. Update `## Unreleased` in `CHANGELOG.md` with the required release-note headings before using `release:patch` or `release:minor`; keep it empty when using `release:current`.
 3. Keep release docs, README examples, template guidance, and planner output aligned with the chosen tag format.
 4. Run `node --test scripts/harness-bootstrap-plan.test.mjs`.
 5. Run `node --test scripts/prepare-stable-release.test.mjs`.

@@ -63,11 +63,11 @@ node scripts/harness-bootstrap-plan.mjs --repo path/to/repo --mode update --targ
 
 `VERSION`, `CHANGELOG.md`, `docs/releases.md`, and GitHub tags/releases are the template release source of truth. `VERSION` stores the numeric value such as `0.1.0`; release tags use the `v0.1.0` form.
 
-Stable releases are automated on merged PRs with exactly one release label: `release:current`, `release:patch`, or `release:minor`. Patch and minor releases promote `CHANGELOG.md`'s `## Unreleased` notes, bump `VERSION`, commit directly to `main`, tag the release, and create a GitHub Release.
+Stable releases are automated on merged PRs with exactly one release label: `release:current`, `release:patch`, or `release:minor`. Current releases publish the existing `VERSION` only when `CHANGELOG.md`'s `## Unreleased` section has no pending notes. Patch and minor releases promote `## Unreleased` notes, bump `VERSION`, commit directly to `main`, tag the release, and create a GitHub Release.
 
 Repositories that adopt this template should record accepted bootstrap metadata in `docs/harness-version.json` or `.harness/harness-version.json` so later planner runs can distinguish first-time bootstraps from template updates.
 
-For an already-bootstrapped repository, run the planner in update mode against the target tag before writing files. The plan should classify each upstream template change as already satisfied, applicable, intentionally rejected as bloat, or blocked, and it should name the rollback path before the update PR is merged.
+For an already-bootstrapped repository, run the planner in update mode against the target tag before writing files. The plan should classify each upstream template change as already satisfied, applicable, intentionally rejected as bloat, deferred, or blocked, and it should name the rollback path before the update PR is merged.
 
 ## How To Use
 

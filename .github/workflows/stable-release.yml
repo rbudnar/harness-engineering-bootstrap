@@ -1,7 +1,7 @@
 name: Stable Release
 
 on:
-  pull_request:
+  pull_request_target:
     types: [closed]
   workflow_dispatch:
     inputs:
@@ -115,28 +115,61 @@ jobs:
           fi
 
           git fetch "$PUSH_REMOTE" "$DEFAULT_BRANCH" --tags --force
+          RELEASE_SOURCE=FETCH_HEAD
+          RELEASE_TYPE="${{ steps.release-type.outputs.type }}"
           SOURCE_REF="${{ steps.release-type.outputs.source_ref }}"
           if [ -n "$PR_NUMBER" ]; then
             FETCHED_HEAD="$(git rev-parse FETCH_HEAD)"
             if [ "$FETCHED_HEAD" != "$SOURCE_REF" ]; then
-              FETCHED_VERSION="$(git show FETCH_HEAD:VERSION | tr -d '\r\n')"
-              FETCHED_TAG="v$FETCHED_VERSION"
-              if git rev-parse "$FETCHED_TAG" >/dev/null 2>&1 &&
-                [ "$(git rev-list -n 1 "$FETCHED_TAG")" = "$FETCHED_HEAD" ]; then
-                echo "Default branch already advanced to release tag $FETCHED_TAG; continuing idempotent rerun."
+              SOURCE_VERSION="$(git show "$SOURCE_REF:VERSION" | tr -d '\r\n')"
+              EXPECTED_VERSION=$(SOURCE_VERSION="$SOURCE_VERSION" RELEASE_TYPE="$RELEASE_TYPE" node - <<'NODE'
+          const version = process.env.SOURCE_VERSION || '';
+          const bump = process.env.RELEASE_TYPE || '';
+          if (!/^\d+\.\d+\.\d+$/.test(version)) {
+            console.error(`Invalid source VERSION: ${version || 'empty'}`);
+            process.exit(1);
+          }
+          const [major, minor, patch] = version.split('.').map((value) => Number.parseInt(value, 10));
+          if (bump === 'current') process.stdout.write(version);
+          else if (bump === 'patch') process.stdout.write(`${major}.${minor}.${patch + 1}`);
+          else if (bump === 'minor') process.stdout.write(`${major}.${minor + 1}.0`);
+          else {
+            console.error(`Unsupported release type: ${bump}`);
+            process.exit(1);
+          }
+          NODE
+              )
+              EXPECTED_TAG="v$EXPECTED_VERSION"
+              if git rev-parse "$EXPECTED_TAG" >/dev/null 2>&1; then
+                TAG_TARGET="$(git rev-list -n 1 "$EXPECTED_TAG")"
+                TAG_BELONGS_TO_RELEASE=false
+                if [ "$RELEASE_TYPE" = "current" ] && [ "$TAG_TARGET" = "$SOURCE_REF" ]; then
+                  TAG_BELONGS_TO_RELEASE=true
+                elif [ "$RELEASE_TYPE" != "current" ] && git merge-base --is-ancestor "$SOURCE_REF" "$TAG_TARGET"; then
+                  TAG_BELONGS_TO_RELEASE=true
+                fi
+
+                if [ "$TAG_BELONGS_TO_RELEASE" = "true" ] && [ "$TAG_TARGET" = "$FETCHED_HEAD" ]; then
+                  echo "Default branch already advanced to expected release tag $EXPECTED_TAG; continuing idempotent rerun."
+                elif [ "$TAG_BELONGS_TO_RELEASE" = "true" ] && git merge-base --is-ancestor "$TAG_TARGET" "$FETCHED_HEAD"; then
+                  echo "Default branch advanced after expected release tag $EXPECTED_TAG; checking out the tag to recover the GitHub Release."
+                  RELEASE_SOURCE="$EXPECTED_TAG"
+                else
+                  echo "Default branch moved from triggering merge $SOURCE_REF to $FETCHED_HEAD, and $EXPECTED_TAG does not belong to that release path."
+                  exit 1
+                fi
               else
-                echo "Default branch moved from triggering merge $SOURCE_REF to $FETCHED_HEAD; refusing to publish a different commit range."
+                echo "Default branch moved from triggering merge $SOURCE_REF to $FETCHED_HEAD, and expected release tag $EXPECTED_TAG does not exist."
                 exit 1
               fi
             fi
           fi
-          git checkout --detach FETCH_HEAD
+          git checkout --detach "$RELEASE_SOURCE"
 
           node --test scripts/harness-bootstrap-plan.test.mjs
           node --test scripts/prepare-stable-release.test.mjs
           node scripts/template-fitness.mjs
 
-          RELEASE_TYPE="${{ steps.release-type.outputs.type }}"
           CURRENT_VERSION="$(tr -d '\r\n' < VERSION)"
           CURRENT_TAG="v$CURRENT_VERSION"
           if [ "$RELEASE_TYPE" != "current" ] &&

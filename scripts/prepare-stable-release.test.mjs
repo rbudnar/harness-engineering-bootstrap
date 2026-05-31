@@ -72,6 +72,7 @@ test('promotes Unreleased notes and bumps a patch release', () => {
     const changelog = readFileSync(resolve(root, 'CHANGELOG.md'), 'utf8');
     assert.match(changelog, /^## Unreleased/m);
     assert.match(changelog, /^## v0\.1\.1 - 2026-06-01/m);
+    assert.match(changelog, /^## v0\.1\.1 - 2026-06-01\r?\n\r?\n### Summary/m);
     assert.match(changelog, /Automated stable release workflow/);
     assert.equal(readFileSync(resolve(root, 'notes.md'), 'utf8').includes('### Rollback'), true);
   } finally {
@@ -117,6 +118,57 @@ test('uses the current version release notes without changing files', () => {
     assert.equal(result.changed, false);
     assert.equal(readFileSync(resolve(root, 'VERSION'), 'utf8'), '0.1.0\n');
     assert.match(readFileSync(resolve(root, 'notes.md'), 'utf8'), /First release/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('rejects current releases with pending Unreleased notes', () => {
+  const root = makeReleaseRepo({
+    version: '0.1.0',
+    changelog: [
+      '# Changelog',
+      '',
+      '## Unreleased',
+      '',
+      '### Summary',
+      '',
+      '- Pending fix.',
+      '',
+      '### Template Changes',
+      '',
+      '### Planner And Metadata',
+      '',
+      '### Migration',
+      '',
+      '### Validation',
+      '',
+      '### Rollback',
+      '',
+      '## v0.1.0 - 2026-05-30',
+      '',
+      '### Summary',
+      '',
+      '- First release.',
+      '',
+      '### Template Changes',
+      '',
+      '### Planner And Metadata',
+      '',
+      '### Migration',
+      '',
+      '### Validation',
+      '',
+      '### Rollback',
+      '',
+    ].join('\n'),
+  });
+
+  try {
+    assert.throws(
+      () => prepareStableRelease({ cwd: root, bump: 'current', date: '2026-06-01' }),
+      /Unreleased section must be empty before a current release/,
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
