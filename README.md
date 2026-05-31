@@ -4,8 +4,50 @@ A practical bootstrap template for creating a self-maintaining, token-efficient 
 
 The goal is not to add more documentation. The goal is to help coding agents load the right context at the right time, keep always-on instructions small, enforce drift mechanically where possible, and grow the harness only when repeated misses or real dependencies justify it.
 
+## Getting Started
+
+Start with the bootstrap planner. It is read-only: it surveys a target repository and prints a review-ready harness plan, but it does not write files into that repository.
+
+Requirements: Git, Node.js 20 or newer, and no `npm install` step.
+
+From a checkout of this repository:
+
+```bash
+git clone https://github.com/rbudnar/harness-engineering-bootstrap.git
+cd harness-engineering-bootstrap
+node scripts/harness-bootstrap-plan.mjs --repo /absolute/path/to/target-repo
+```
+
+On Windows, the planner command looks like:
+
+```powershell
+node .\scripts\harness-bootstrap-plan.mjs --repo C:\Users\you\Documents\repos\target-repo
+```
+
+Read the generated plan before copying or creating anything. The most important sections are:
+
+- `Required Core`: the smallest always-on harness the repo appears to need.
+- `Triggered Optional Modules`: optional controls with local trigger evidence.
+- `Explicitly Rejected Modules`: things the planner intentionally did not recommend.
+- `Validation Steps`: commands or checks to run before accepting the harness.
+
+Apply only the items you accept in the target repo, usually starting with a thin `AGENTS.md` and any tiny provider adapters that point back to it. Use [the template](templates/Harness%20Engineering%20Bootstrap.md) as reference material while implementing the plan; do not copy every optional module by default.
+
+After changes in the target repo, rerun the planner and the target repo's validation commands. To capture machine-readable planner output:
+
+```bash
+node scripts/harness-bootstrap-plan.mjs --repo /absolute/path/to/target-repo --json
+```
+
+For a repository that is already bootstrapped, use update mode against the release tag you want to adopt:
+
+```bash
+node scripts/harness-bootstrap-plan.mjs --repo /absolute/path/to/target-repo --mode update --target-version v0.1.0
+```
+
 ## Contents
 
+- [Getting Started](#getting-started) - how to run the read-only bootstrap planner against a downstream repository.
 - [Template](templates/Harness%20Engineering%20Bootstrap.md) - the current bootstrap template.
 - [Dogfooding guide](docs/dogfooding.md) - how this repo keeps the template from becoming a fat harness.
 - [Template fitness check](scripts/template-fitness.mjs) - local and CI bloat guard for template changes.
@@ -51,13 +93,7 @@ To check an automation proposal file before accepting it:
 node scripts/template-fitness.mjs --suggestion path/to/suggestion.md
 ```
 
-Run the bootstrap planner before testing the template against another repo:
-
-```bash
-node scripts/harness-bootstrap-plan.mjs --repo path/to/repo
-node scripts/harness-bootstrap-plan.mjs --repo path/to/repo --json
-node scripts/harness-bootstrap-plan.mjs --repo path/to/repo --mode update --target-version v0.1.0
-```
+For downstream bootstrapper runs, use [Getting Started](#getting-started) above.
 
 ## Release And Update Path
 
