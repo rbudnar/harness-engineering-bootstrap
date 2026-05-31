@@ -6,13 +6,19 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 
 ### Summary
 
+- Clarified the README front door so first-time downstream users can run the read-only bootstrap planner without hunting through repo-internal dogfooding notes.
+
 ### Template Changes
+
+- Added a Getting Started section with requirements, clone/run commands, Windows usage, output sections to review, and the update-mode command.
 
 ### Planner And Metadata
 
 ### Migration
 
 ### Validation
+
+- `node scripts/template-fitness.mjs`
 
 ### Rollback
 
