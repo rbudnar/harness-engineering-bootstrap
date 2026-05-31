@@ -7,6 +7,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 ### Summary
 
 - Clarified the README front door so first-time downstream users can run the read-only bootstrap planner without hunting through repo-internal dogfooding notes.
+- Updated the MCP specification reference to the current dated version (2025-11-25).
 
 ### Template Changes
 
@@ -73,10 +74,6 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - After a consuming repo accepts the release, roll back by reverting the update PR, restoring previous `docs/harness-version.json` or `.harness/harness-version.json`, rerunning validation, and recording the rollback note.
 
 ## Pre-release History
-
-## 2026-05-30
-
-- Updated the MCP specification reference to the current dated version (2025-11-25).
 
 ## 2026-05-25
 
