@@ -30,7 +30,7 @@ Source material and related work used while developing the harness engineering b
 - [Practical Security Guidance for Sandboxing Agentic Workflows and Managing Execution Risk](https://developer.nvidia.com/blog/practical-security-guidance-for-sandboxing-agentic-workflows-and-managing-execution-risk/)
 - [OpenTelemetry Traces](https://opentelemetry.io/docs/concepts/signals/traces/)
 - [OpenTelemetry Semantic Conventions for Generative AI Systems](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
-- [Model Context Protocol Specification](https://modelcontextprotocol.io/specification/2025-06-18)
+- [Model Context Protocol Specification](https://modelcontextprotocol.io/specification/2025-11-25)
 - [agentfuzz](https://pypi.org/project/agentfuzz/)
 - [Project Glasswing: what Mythos showed us](https://blog.cloudflare.com/cyber-frontier-models/)
 - [Context, Reasoning, and Hierarchy: A Cost-Performance Study of Compound LLM Agent Design in an Adversarial POMDP](https://arxiv.org/abs/2605.16205)
