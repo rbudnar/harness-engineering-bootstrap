@@ -305,6 +305,103 @@ function checkReleaseMarker() {
   }
 }
 
+function checkReleasePolicy() {
+  metric('\nRelease policy:');
+
+  const requiredFiles = ['docs/releases.md', 'CHANGELOG.md', 'README.md', '.github/workflows/stable-release.yml'];
+  for (const path of requiredFiles) {
+    if (exists(path)) metric(`- ${path}: present`);
+    else fail(`${path} is required for the HEB release contract.`);
+  }
+
+  if (
+    !exists('docs/releases.md') ||
+    !exists('CHANGELOG.md') ||
+    !exists('README.md') ||
+    !exists('.github/workflows/stable-release.yml') ||
+    !exists('VERSION')
+  ) return;
+
+  const version = read('VERSION').trim();
+  const tag = `v${version}`;
+  const releasePolicy = read('docs/releases.md');
+  const releasePolicyAnchors = [
+    '`VERSION` contains the numeric SemVer value without a leading `v`',
+    'Git tags and GitHub releases use `v<VERSION>`',
+    '## Pre-1.0 Semantics',
+    '## Release Notes',
+    '## Bootstrapped Repository Metadata',
+    '`templateVersion`',
+    '`sourceRelease`',
+    '`acceptedChanges`',
+    '`rejectedChanges`',
+    '`rollback`',
+    'release:current',
+    'release:patch',
+    'release:minor',
+    'HEB_RELEASE_DEPLOY_KEY',
+    'node --test scripts/harness-bootstrap-plan.test.mjs',
+    'node --test scripts/prepare-stable-release.test.mjs',
+    'node scripts/template-fitness.mjs',
+    'node scripts/harness-bootstrap-plan.mjs --repo . --mode update --target-version v<VERSION>',
+  ];
+
+  for (const text of releasePolicyAnchors) {
+    if (!releasePolicy.includes(text)) fail(`docs/releases.md must include release-policy anchor: ${text}`);
+  }
+
+  const stableReleaseWorkflow = read('.github/workflows/stable-release.yml');
+  const stableWorkflowAnchors = [
+    'pull_request_target:',
+    'github.event.pull_request.merged == true',
+    "github.event.pull_request.base.ref == github.event.repository.default_branch",
+    'PR_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}',
+    "DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}",
+    'persist-credentials: false',
+    'git fetch "$PUSH_REMOTE" "$DEFAULT_BRANCH" --tags --force',
+    'RELEASE_SOURCE=FETCH_HEAD',
+    'EXPECTED_TAG="v$EXPECTED_VERSION"',
+    'TAG_BELONGS_TO_RELEASE',
+    'Default branch already advanced to expected release tag',
+    'git merge-base --is-ancestor "$SOURCE_REF" "$TAG_TARGET"',
+    'git merge-base --is-ancestor "$TAG_TARGET" "$FETCHED_HEAD"',
+    'Default branch moved from triggering merge',
+    'git checkout --detach "$RELEASE_SOURCE"',
+    'git rev-list -n 1 "$CURRENT_TAG"',
+    'not completed release commit',
+    'UNRELEASED_HAS_CONTENT',
+    'RELEASE_TYPE=current',
+    'node scripts/prepare-stable-release.mjs',
+    'git diff --cached --quiet',
+  ];
+  for (const text of stableWorkflowAnchors) {
+    if (!stableReleaseWorkflow.includes(text)) fail(`.github/workflows/stable-release.yml must include stable-release safety anchor: ${text}`);
+  }
+
+  if (!read('README.md').includes('[Release policy](docs/releases.md)')) {
+    fail('README.md must link to docs/releases.md.');
+  }
+
+  const changelog = read('CHANGELOG.md');
+  const releaseSectionPattern = new RegExp(`(?:^|\\r?\\n)## ${escapeRegExp(tag)} - \\d{4}-\\d{2}-\\d{2}\\r?\\n([\\s\\S]*?)(?=\\r?\\n## |$)`);
+  const releaseSection = changelog.match(releaseSectionPattern)?.[1] || '';
+
+  if (!releaseSection) {
+    fail(`CHANGELOG.md must include a release section for ${tag}.`);
+    return;
+  }
+
+  for (const heading of ['Summary', 'Template Changes', 'Planner And Metadata', 'Migration', 'Validation', 'Rollback']) {
+    if (!releaseSection.includes(`### ${heading}`)) {
+      fail(`CHANGELOG.md release ${tag} must include "### ${heading}".`);
+    }
+  }
+}
+
+function escapeRegExp(text) {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function parseArgs(args) {
   const suggestionPaths = [];
 
@@ -421,6 +518,7 @@ function main() {
   checkAnchors();
   checkTemplateShape();
   checkReleaseMarker();
+  checkReleasePolicy();
 
   for (const suggestionPath of suggestionPaths) {
     checkSuggestion(suggestionPath);

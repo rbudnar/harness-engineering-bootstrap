@@ -536,6 +536,7 @@ export function renderMarkdownPlan(plan) {
     lines.push(`- Suggested branch: \`${plan.updatePlan.suggestedBranch}\``);
     lines.push(`- Release source: ${plan.updatePlan.releaseSource}`);
     lines.push(`- Version metadata: ${plan.updatePlan.versionMetadata.action}`);
+    lines.push(`- Metadata fields: ${formatList(plan.updatePlan.metadataFields)}`);
     lines.push('');
     lines.push('Upgrade steps:');
     for (const step of plan.updatePlan.steps) lines.push(`- ${step}`);
@@ -837,6 +838,16 @@ function buildUpdatePlan({ survey, operation, currentVersion, targetVersion, dat
         action: 'Add `docs/harness-version.json` with the accepted current and target release metadata during the update PR.',
         path: 'docs/harness-version.json',
       };
+  const metadataFields = [
+    'templateVersion',
+    'sourceRelease',
+    'installedAt or updatedAt',
+    'acceptedChanges',
+    'rejectedChanges',
+    'deferredChanges',
+    'rollback',
+    'validation',
+  ];
 
   return {
     applicable: true,
@@ -844,12 +855,13 @@ function buildUpdatePlan({ survey, operation, currentVersion, targetVersion, dat
     currentVersion,
     targetVersion,
     suggestedBranch: `codex/heb-update-${slugify(targetVersion || date || planSlug)}`,
-    releaseSource: 'Use GitHub releases/tags and CHANGELOG.md as the source of truth for template changes.',
+    releaseSource: 'Use docs/releases.md, CHANGELOG.md, and the GitHub release/tag `v<VERSION>` as the source of truth for template changes.',
     versionMetadata,
+    metadataFields,
     steps: [
       'Start from a clean branch and keep the update as a reviewable PR, not an in-place edit on the default branch.',
-      'Read the target release notes, CHANGELOG entry, and template diff before touching the consuming repo.',
-      'Classify each upstream template change as already satisfied, applicable fix, intentionally rejected as bloat, or blocked by missing local trigger.',
+      'Read docs/releases.md, the target release notes, CHANGELOG entry, and template diff before touching the consuming repo.',
+      'Classify each upstream template change as already satisfied, applicable fix, intentionally rejected as bloat, deferred, or blocked by missing local trigger.',
       'Apply only applicable fixes that preserve local repo decisions, adapters, validators, and deliberately absent optional modules.',
       'Update the version metadata only after validation passes and rejected/deferred template changes are recorded.',
       'Run the repo quality gate, the harness validator, this planner in update mode, and a fresh-context review before merge.',
