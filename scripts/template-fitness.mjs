@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -65,6 +65,11 @@ const suggestionClassifications = [
   'Reject as bloat',
 ];
 
+const repoSkillRootPaths = ['.agents/skills'];
+const allowedSkillFrontmatterFields = new Set(['name', 'description', 'license', 'compatibility', 'metadata', 'allowed-tools']);
+const skillNameCharactersPattern = /^[\p{L}\p{N}-]+$/u;
+const uppercaseSkillNamePattern = /[\p{Lu}\p{Lt}]/u;
+
 const failures = [];
 const warnings = [];
 const metrics = [];
@@ -99,6 +104,37 @@ function listFiles(dir) {
       return [];
     })
     .sort();
+}
+
+function hasExactChildFile(dir, expectedName) {
+  return readdirSync(dir, { withFileTypes: true })
+    .some((entry) => entry.isFile() && entry.name === expectedName);
+}
+
+function listSkillPackages(dir) {
+  return readdirSync(dir, { withFileTypes: true })
+    .flatMap((entry) => {
+      if (!entry.isDirectory()) return [];
+      const packageDir = join(dir, entry.name);
+      const skillFile = join(packageDir, 'SKILL.md');
+      return [{
+        packageDir,
+        skillFile: hasExactChildFile(packageDir, 'SKILL.md') ? skillFile : null,
+      }];
+    })
+    .sort((left, right) => left.packageDir.localeCompare(right.packageDir));
+}
+
+function listRepoSkillPackages() {
+  return repoSkillRootPaths.flatMap((skillRootPath) => {
+    const skillRoot = absolute(skillRootPath);
+    if (!existsSync(skillRoot)) return [];
+    if (!statSync(skillRoot).isDirectory()) {
+      fail(`${skillRootPath} must be a directory when repo-local skills are present.`);
+      return [];
+    }
+    return listSkillPackages(skillRoot);
+  }).sort();
 }
 
 function exists(path) {
@@ -302,6 +338,276 @@ function checkReleaseMarker() {
 
   if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
     fail('VERSION must contain a semver-like value such as 0.1.0 or 0.1.0-beta.1.');
+  }
+}
+
+function isEscapedDoubleQuote(value, index) {
+  let slashCount = 0;
+  for (let cursor = index - 1; cursor >= 0 && value[cursor] === '\\'; cursor -= 1) {
+    slashCount += 1;
+  }
+  return slashCount % 2 === 1;
+}
+
+function parseQuotedYamlScalar(value) {
+  const trimmed = value.trim();
+  const quote = trimmed[0];
+  let cursor = 1;
+  let scalar = '';
+
+  while (cursor < trimmed.length) {
+    const char = trimmed[cursor];
+    if (char === quote) {
+      if (quote === "'" && trimmed[cursor + 1] === "'") {
+        scalar += "'";
+        cursor += 2;
+        continue;
+      }
+      if (quote === '"' && isEscapedDoubleQuote(trimmed, cursor)) {
+        scalar += char;
+        cursor += 1;
+        continue;
+      }
+
+      const suffix = trimmed.slice(cursor + 1).trim();
+      if (suffix && !suffix.startsWith('#')) return { valid: false, value: '' };
+      return { valid: true, value: scalar };
+    }
+
+    scalar += char;
+    cursor += 1;
+  }
+
+  return { valid: false, value: '' };
+}
+
+function parseYamlScalar(value) {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.startsWith('#')) return { valid: true, value: '' };
+
+  if (trimmed.startsWith('"') || trimmed.startsWith("'")) return parseQuotedYamlScalar(trimmed);
+  if (trimmed.endsWith('"') || trimmed.endsWith("'")) return { valid: false, value: '' };
+
+  const commentIndex = trimmed.search(/\s#/);
+  const withoutComment = commentIndex === -1 ? trimmed : trimmed.slice(0, commentIndex).trimEnd();
+  if (/:($|\s)/.test(withoutComment)) return { valid: false, value: '' };
+  return { valid: true, value: withoutComment };
+}
+
+function parseSimpleFrontmatter(text) {
+  const lines = markdownLines(text);
+  if (lines[0]?.trim() !== '---') return null;
+
+  const end = lines.findIndex((line, index) => index > 0 && line.trim() === '---');
+  if (end === -1) return null;
+
+  const fields = {};
+  const fieldKinds = {};
+  const invalidLines = [];
+  let activeMap = null;
+  const frontmatterLines = lines.slice(1, end);
+
+  for (let offset = 0; offset < frontmatterLines.length; offset += 1) {
+    const line = frontmatterLines[offset];
+    const lineNumber = offset + 2;
+    if (!line.trim() || line.trimStart().startsWith('#')) continue;
+
+    if (/^\s/.test(line)) {
+      if (!activeMap) {
+        invalidLines.push(lineNumber);
+        continue;
+      }
+
+      const nestedMatch = line.match(/^\s+([A-Za-z0-9_.-]+):\s*(.*)$/);
+      if (!nestedMatch) {
+        invalidLines.push(lineNumber);
+        continue;
+      }
+
+      const nestedScalar = parseYamlScalar(nestedMatch[2]);
+      if (!nestedScalar.valid) {
+        invalidLines.push(lineNumber);
+        continue;
+      }
+
+      fields[activeMap][nestedMatch[1]] = nestedScalar.value;
+      continue;
+    }
+
+    activeMap = null;
+    const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (!match) {
+      invalidLines.push(lineNumber);
+      continue;
+    }
+
+    const [, key, rawValue] = match;
+    const value = rawValue.trim();
+    if (Object.hasOwn(fields, key)) {
+      invalidLines.push(lineNumber);
+      continue;
+    }
+
+    const blockScalar = value.match(/^([|>])(?:[+-]?\d*|\d+[+-]?)$/);
+    if (blockScalar) {
+      const blockLines = [];
+      let blockIndent = null;
+
+      while (offset + 1 < frontmatterLines.length) {
+        const nextLine = frontmatterLines[offset + 1];
+        if (!nextLine.trim()) {
+          blockLines.push('');
+          offset += 1;
+          continue;
+        }
+
+        const indentMatch = nextLine.match(/^(\s+)/);
+        if (!indentMatch) break;
+
+        const indent = indentMatch[1].length;
+        blockIndent ??= indent;
+        blockLines.push(nextLine.slice(Math.min(blockIndent, nextLine.length)));
+        offset += 1;
+      }
+
+      fields[key] = blockScalar[1] === '>' ? blockLines.join(' ').replace(/\s+/g, ' ').trim() : blockLines.join('\n').trim();
+      fieldKinds[key] = 'scalar';
+    } else if (value) {
+      const scalar = parseYamlScalar(value);
+      if (!scalar.valid) {
+        invalidLines.push(lineNumber);
+      }
+
+      fields[key] = scalar.value;
+      fieldKinds[key] = 'scalar';
+    } else {
+      fields[key] = {};
+      fieldKinds[key] = 'map';
+      activeMap = key;
+    }
+  }
+
+  return { fields, fieldKinds, invalidLines, body: lines.slice(end + 1).join('\n') };
+}
+
+function characterCount(value) {
+  return Array.from(value).length;
+}
+
+function normalizeSkillName(value) {
+  return value.normalize('NFKC');
+}
+
+function requireSkillScalar(parsed, displayPath, fieldName) {
+  if (!Object.hasOwn(parsed.fields, fieldName)) return null;
+  if (parsed.fieldKinds[fieldName] !== 'scalar') {
+    fail(`${displayPath} frontmatter "${fieldName}" must be a scalar string.`);
+    return null;
+  }
+  return parsed.fields[fieldName].trim();
+}
+
+function checkSkillStandards() {
+  const skillPackages = listRepoSkillPackages();
+
+  metric('\nRepo-local skills:');
+
+  if (!skillPackages.length) {
+    metric('- none found; optional skills remain absent');
+    return;
+  }
+
+  for (const { packageDir, skillFile } of skillPackages) {
+    const displayPath = skillFile ? relative(repoRoot, skillFile) : `${relative(repoRoot, packageDir)}/`;
+
+    metric(`- ${displayPath}`);
+
+    if (!skillFile) {
+      fail(`${displayPath} must include an uppercase SKILL.md file.`);
+      continue;
+    }
+
+    const parentDir = basename(dirname(skillFile));
+    const parsed = parseSimpleFrontmatter(readFileSync(skillFile, 'utf8'));
+
+    if (!parsed) {
+      fail(`${displayPath} must start with YAML frontmatter delimited by "---".`);
+      continue;
+    }
+
+    if (parsed.invalidLines.length) {
+      fail(`${displayPath} has unsupported or duplicate frontmatter syntax on line(s): ${parsed.invalidLines.join(', ')}.`);
+    }
+
+    for (const fieldName of Object.keys(parsed.fields)) {
+      if (!allowedSkillFrontmatterFields.has(fieldName)) {
+        fail(`${displayPath} has unsupported frontmatter field "${fieldName}"; use "metadata" for extension data.`);
+      }
+    }
+
+    const name = requireSkillScalar(parsed, displayPath, 'name');
+    const normalizedName = name ? normalizeSkillName(name) : null;
+    const normalizedParentDir = normalizeSkillName(parentDir);
+    const description = requireSkillScalar(parsed, displayPath, 'description');
+
+    if (!name) {
+      fail(`${displayPath} must include a frontmatter "name" field.`);
+    } else {
+      if (
+        characterCount(normalizedName) > 64 ||
+        !skillNameCharactersPattern.test(normalizedName) ||
+        uppercaseSkillNamePattern.test(normalizedName) ||
+        normalizedName.startsWith('-') ||
+        normalizedName.endsWith('-') ||
+        normalizedName.includes('--')
+      ) {
+        fail(`${displayPath} has invalid skill name "${name}"; use Unicode lowercase letters, numbers, and hyphens only.`);
+      }
+      if (normalizedName !== normalizedParentDir) {
+        fail(`${displayPath} frontmatter name "${name}" must match parent directory "${parentDir}".`);
+      }
+    }
+
+    if (!description) {
+      fail(`${displayPath} must include a non-empty frontmatter "description" field.`);
+    } else if (characterCount(description) > 1024) {
+      fail(`${displayPath} description is ${characterCount(description)} characters; limit is 1024.`);
+    }
+
+    const license = requireSkillScalar(parsed, displayPath, 'license');
+    if (Object.hasOwn(parsed.fields, 'license') && !license) {
+      fail(`${displayPath} frontmatter "license" must be non-empty when provided.`);
+    }
+
+    const compatibility = requireSkillScalar(parsed, displayPath, 'compatibility');
+    if (Object.hasOwn(parsed.fields, 'compatibility')) {
+      if (!compatibility) {
+        fail(`${displayPath} frontmatter "compatibility" must be non-empty when provided.`);
+      } else if (characterCount(compatibility) > 500) {
+        fail(`${displayPath} compatibility is ${characterCount(compatibility)} characters; limit is 500.`);
+      }
+    }
+
+    if (Object.hasOwn(parsed.fields, 'metadata')) {
+      if (parsed.fieldKinds.metadata !== 'map' || Array.isArray(parsed.fields.metadata)) {
+        fail(`${displayPath} frontmatter "metadata" must be a key-value mapping.`);
+      } else {
+        for (const [key, value] of Object.entries(parsed.fields.metadata)) {
+          if (!key.trim() || typeof value !== 'string') {
+            fail(`${displayPath} frontmatter "metadata" must map string keys to string values.`);
+          }
+        }
+      }
+    }
+
+    const allowedTools = requireSkillScalar(parsed, displayPath, 'allowed-tools');
+    if (Object.hasOwn(parsed.fields, 'allowed-tools') && !allowedTools) {
+      fail(`${displayPath} frontmatter "allowed-tools" must be a non-empty space-separated string when provided.`);
+    }
+
+    if (!parsed.body.trim()) {
+      fail(`${displayPath} must include Markdown instructions after the frontmatter.`);
+    }
   }
 }
 
@@ -519,6 +825,7 @@ function main() {
   checkTemplateShape();
   checkReleaseMarker();
   checkReleasePolicy();
+  checkSkillStandards();
 
   for (const suggestionPath of suggestionPaths) {
     checkSuggestion(suggestionPath);

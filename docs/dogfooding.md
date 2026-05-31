@@ -8,6 +8,7 @@ This repository dogfoods the Harness Engineering Bootstrap template as an anti-b
 - Provider-specific instruction files, if added, must be short redirects back to `AGENTS.md`.
 - Current provider adapters are `CLAUDE.md`, `GEMINI.md`, and `.github/copilot-instructions.md`.
 - Do not put template phases, bootstrap checklists, reference lists, or optional-module details in always-on files.
+- Repo-local skills, if added later, are pulled context under the Agent Skills `SKILL.md` format, not always-on guidance.
 - Default budget: `AGENTS.md` up to 80 lines, each provider adapter up to 40 lines, total always-on guidance up to 160 lines.
 
 ## Suggestion Admission
@@ -61,6 +62,7 @@ When automation opens a PR, it must:
 - Apply only accepted candidates that share one coherent template outcome; split unrelated accepted candidates into later runs or separate PRs.
 - Update the template and the dogfooding harness together when a new template rule changes this repo's own best-practice contract. Template rule changes must keep this dogfooding harness current in the same PR.
 - Prefer the smallest route, wording, or validator change that satisfies the proposal. Do not install a new optional module by default.
+- Add a repo-local skill only after the skill-creation gate passes, and keep its `SKILL.md` frontmatter valid so `template-fitness` can check it mechanically.
 - Keep automation authority limited to branch, PR, issue, comment, and label operations unless a proposal documents deterministic pre-action authorization or explicit human confirmation for broader writes.
 - Run `node scripts/template-fitness.mjs` and the suggestion gate for every accepted proposal file.
 - Run the PR readiness checklist: `node scripts/template-fitness.mjs`, plain `codex review --base origin/main` when Codex CLI is available, GitHub `template-fitness` checks, replies/resolutions for review threads, and a concise PR summary comment.
@@ -89,8 +91,6 @@ Use these headings when automation writes a suggestion file:
 `## Prediction` is required for accepted suggestions. It may be omitted when the classification is `Reject as bloat`.
 
 ## Quality Gate
-
-Run:
 
 ```bash
 node scripts/template-fitness.mjs
