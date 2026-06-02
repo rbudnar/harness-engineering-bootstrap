@@ -8,6 +8,7 @@ import { prepareStableRelease } from './prepare-stable-release.mjs';
 test('promotes Unreleased notes and bumps a patch release', () => {
   const root = makeReleaseRepo({
     version: '0.1.0',
+    packageVersion: '0.1.0',
     changelog: [
       '# Changelog',
       '',
@@ -69,6 +70,7 @@ test('promotes Unreleased notes and bumps a patch release', () => {
       changed: true,
     });
     assert.equal(readFileSync(resolve(root, 'VERSION'), 'utf8'), '0.1.1\n');
+    assert.equal(JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')).version, '0.1.1');
     const changelog = readFileSync(resolve(root, 'CHANGELOG.md'), 'utf8');
     assert.match(changelog, /^## Unreleased/m);
     assert.match(changelog, /^## v0\.1\.1 - 2026-06-01/m);
@@ -83,6 +85,7 @@ test('promotes Unreleased notes and bumps a patch release', () => {
 test('uses the current version release notes without changing files', () => {
   const root = makeReleaseRepo({
     version: '0.1.0',
+    packageVersion: '0.1.0',
     changelog: [
       '# Changelog',
       '',
@@ -117,6 +120,7 @@ test('uses the current version release notes without changing files', () => {
     assert.equal(result.tag, 'v0.1.0');
     assert.equal(result.changed, false);
     assert.equal(readFileSync(resolve(root, 'VERSION'), 'utf8'), '0.1.0\n');
+    assert.equal(JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')).version, '0.1.0');
     assert.match(readFileSync(resolve(root, 'notes.md'), 'utf8'), /First release/);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -207,10 +211,55 @@ test('rejects empty Unreleased notes for bump releases', () => {
   }
 });
 
-function makeReleaseRepo({ version, changelog }) {
+test('rejects package metadata drift before preparing a release', () => {
+  const root = makeReleaseRepo({
+    version: '0.1.0',
+    packageVersion: '0.2.0',
+    changelog: [
+      '# Changelog',
+      '',
+      '## Unreleased',
+      '',
+      '### Summary',
+      '',
+      '- Pending fix.',
+      '',
+      '### Template Changes',
+      '',
+      '### Planner And Metadata',
+      '',
+      '### Migration',
+      '',
+      '### Validation',
+      '',
+      '### Rollback',
+      '',
+    ].join('\n'),
+  });
+
+  try {
+    assert.throws(
+      () => prepareStableRelease({ cwd: root, bump: 'patch', date: '2026-06-01' }),
+      /package\.json version 0\.2\.0 must match VERSION 0\.1\.0/,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+function makeReleaseRepo({ version, packageVersion = null, changelog }) {
   const root = mkdtempSync(resolve(tmpdir(), 'heb-stable-release-'));
   mkdirSync(root, { recursive: true });
   writeFileSync(resolve(root, 'VERSION'), `${version}\n`);
+  if (packageVersion) {
+    writeFileSync(resolve(root, 'package.json'), `${JSON.stringify({
+      name: '@rbudnar/harness-engineering-bootstrap',
+      version: packageVersion,
+      bin: {
+        'harness-bootstrap': './scripts/harness-bootstrap-plan.mjs',
+      },
+    }, null, 2)}\n`);
+  }
   writeFileSync(resolve(root, 'CHANGELOG.md'), `${changelog}\n`);
   return root;
 }

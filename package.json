@@ -1,0 +1,37 @@
+{
+  "name": "@rbudnar/harness-engineering-bootstrap",
+  "version": "0.1.0",
+  "description": "Read-only bootstrap planner and template for thin, task-routed agent harnesses.",
+  "license": "CC0-1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepublishOnly": "node -e \"console.error('npm registry publishing is unsupported until a publishing issue approves package contents, provenance, rollback, and credentials.'); process.exit(1)\""
+  },
+  "bin": {
+    "harness-bootstrap": "scripts/harness-bootstrap-plan.mjs"
+  },
+  "files": [
+    "AGENTS.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "README.md",
+    "REFERENCES.md",
+    "VERSION",
+    "docs/",
+    "scripts/harness-bootstrap-plan.mjs",
+    "scripts/template-fitness.mjs",
+    "templates/"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rbudnar/harness-engineering-bootstrap.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rbudnar/harness-engineering-bootstrap/issues"
+  },
+  "homepage": "https://github.com/rbudnar/harness-engineering-bootstrap#readme"
+}

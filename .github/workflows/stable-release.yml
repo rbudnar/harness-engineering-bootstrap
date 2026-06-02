@@ -167,6 +167,7 @@ jobs:
           git checkout --detach "$RELEASE_SOURCE"
 
           node --test scripts/harness-bootstrap-plan.test.mjs
+          node --test scripts/package-entrypoint.test.mjs
           node --test scripts/prepare-stable-release.test.mjs
           node scripts/template-fitness.mjs
 
@@ -226,9 +227,9 @@ jobs:
           fi
 
           if [ "$CHANGED" = "true" ]; then
-            git add VERSION CHANGELOG.md
+            git add VERSION CHANGELOG.md package.json
             if git diff --cached --quiet; then
-              echo "Expected VERSION or CHANGELOG.md changes for $TAG, but none were staged."
+              echo "Expected VERSION, CHANGELOG.md, or package.json changes for $TAG, but none were staged."
               exit 1
             fi
             git commit -m "$COMMIT_MESSAGE"

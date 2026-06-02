@@ -340,6 +340,50 @@ function checkReleaseMarker() {
   if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
     fail('VERSION must contain a semver-like value such as 0.1.0 or 0.1.0-beta.1.');
   }
+
+  checkPackageMetadata(version);
+}
+
+function checkPackageMetadata(version) {
+  if (!exists('package.json')) {
+    fail('package.json is required for the packaged planner entrypoint.');
+    return;
+  }
+
+  let packageJson;
+  try {
+    packageJson = JSON.parse(read('package.json'));
+  } catch (error) {
+    fail(`package.json must be valid JSON: ${error.message}`);
+    return;
+  }
+
+  metric(`- package.json: ${packageJson.version || 'missing version'} (bin ${packageJson.bin?.['harness-bootstrap'] || 'missing'})`);
+
+  if (packageJson.version !== version) {
+    fail(`package.json version ${packageJson.version || '<missing>'} must match VERSION ${version}.`);
+  }
+  if (packageJson.name !== '@rbudnar/harness-engineering-bootstrap') {
+    fail('package.json name must stay @rbudnar/harness-engineering-bootstrap until a distribution issue changes it.');
+  }
+  if (packageJson.private !== true) {
+    fail('package.json must stay private while npm registry publishing is unsupported.');
+  }
+  const publishGuard = packageJson.scripts?.prepublishOnly || '';
+  if (!publishGuard.includes('npm registry publishing is unsupported') || !publishGuard.includes('process.exit(1)')) {
+    fail('package.json must keep a prepublishOnly guard that blocks unsupported npm registry publishing.');
+  }
+  if (packageJson.bin?.['harness-bootstrap'] !== 'scripts/harness-bootstrap-plan.mjs') {
+    fail('package.json must expose harness-bootstrap as scripts/harness-bootstrap-plan.mjs.');
+  }
+  if (
+    !packageJson.files?.includes('scripts/harness-bootstrap-plan.mjs') ||
+    !packageJson.files?.includes('scripts/template-fitness.mjs') ||
+    !packageJson.files?.includes('templates/') ||
+    !packageJson.files?.includes('VERSION')
+  ) {
+    fail('package.json files must include the planner script, template-fitness script, templates/, and VERSION for GitHub package-spec execution.');
+  }
 }
 
 function isEscapedDoubleQuote(value, index) {
@@ -644,6 +688,8 @@ function checkReleasePolicy() {
   const releasePolicy = read('docs/releases.md');
   const releasePolicyAnchors = [
     '`VERSION` contains the numeric SemVer value without a leading `v`',
+    '`package.json` uses the same numeric version when package metadata is present',
+    '`private: true` and `prepublishOnly` block unsupported npm registry publishing',
     'Git tags and GitHub releases use `v<VERSION>`',
     '## Pre-1.0 Semantics',
     '## Release Notes',
@@ -658,6 +704,7 @@ function checkReleasePolicy() {
     'release:minor',
     'HEB_RELEASE_DEPLOY_KEY',
     'node --test scripts/harness-bootstrap-plan.test.mjs',
+    'node --test scripts/package-entrypoint.test.mjs',
     'node --test scripts/prepare-stable-release.test.mjs',
     'node scripts/template-fitness.mjs',
     'node scripts/harness-bootstrap-plan.mjs --repo . --mode update --target-version v<VERSION>',
@@ -688,7 +735,9 @@ function checkReleasePolicy() {
     'not completed release commit',
     'UNRELEASED_HAS_CONTENT',
     'RELEASE_TYPE=current',
+    'node --test scripts/package-entrypoint.test.mjs',
     'node scripts/prepare-stable-release.mjs',
+    'git add VERSION CHANGELOG.md package.json',
     'git diff --cached --quiet',
   ];
   for (const text of stableWorkflowAnchors) {

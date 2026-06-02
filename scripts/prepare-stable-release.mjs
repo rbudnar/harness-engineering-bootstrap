@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -36,9 +36,11 @@ export function prepareStableRelease(options = {}) {
   const notesOutput = options.notesOutput || '.release-notes.md';
   const versionPath = resolve(cwd, 'VERSION');
   const changelogPath = resolve(cwd, 'CHANGELOG.md');
+  const packageJsonPath = resolve(cwd, 'package.json');
 
   const currentVersion = readFileSync(versionPath, 'utf8').trim();
   assertStableVersion(currentVersion, 'VERSION');
+  assertPackageVersionMatches(packageJsonPath, currentVersion);
   const nextVersion = bump === 'current' ? currentVersion : bumpVersion(currentVersion, bump);
   const tag = `v${nextVersion}`;
   const changelog = readFileSync(changelogPath, 'utf8');
@@ -67,6 +69,7 @@ export function prepareStableRelease(options = {}) {
   ].join('');
 
   writeFileSync(versionPath, `${nextVersion}\n`);
+  updatePackageVersion(packageJsonPath, nextVersion);
   writeFileSync(changelogPath, updatedChangelog);
   writeFileSync(resolve(cwd, notesOutput), ensureTrailingNewline(unreleased.body.trim()));
   writeGitHubOutputs({ version: nextVersion, tag, notesPath: notesOutput, changed: true });
@@ -83,6 +86,29 @@ function bumpVersion(version, bump) {
 function assertStableVersion(version, label) {
   if (!/^\d+\.\d+\.\d+$/.test(version)) {
     throw new Error(`${label} must be a stable numeric SemVer value such as 0.1.0.`);
+  }
+}
+
+function assertPackageVersionMatches(packageJsonPath, expectedVersion) {
+  if (!existsSync(packageJsonPath)) return;
+  const packageJson = readPackageJson(packageJsonPath);
+  if (packageJson.version !== expectedVersion) {
+    throw new Error(`package.json version ${packageJson.version || '<missing>'} must match VERSION ${expectedVersion}.`);
+  }
+}
+
+function updatePackageVersion(packageJsonPath, nextVersion) {
+  if (!existsSync(packageJsonPath)) return;
+  const packageJson = readPackageJson(packageJsonPath);
+  packageJson.version = nextVersion;
+  writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
+}
+
+function readPackageJson(packageJsonPath) {
+  try {
+    return JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+  } catch (error) {
+    throw new Error(`package.json must be valid JSON: ${error.message}`);
   }
 }
 

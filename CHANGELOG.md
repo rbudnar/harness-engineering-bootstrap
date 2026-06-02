@@ -8,6 +8,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 
 - Aligned HEB with the public `AGENTS.md` and Agent Skills `SKILL.md` standards while keeping optional skills trigger-gated.
 - Clarified the README front door so first-time downstream users can run the read-only bootstrap planner without hunting through repo-internal dogfooding notes.
+- Added private package metadata, npm publish guards, and a `harness-bootstrap` bin so the read-only planner can run from a checkout or GitHub package spec without publishing to npm.
 - Updated the MCP specification reference to the current dated version (2025-11-25).
 
 ### Template Changes
@@ -18,12 +19,14 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 ### Planner And Metadata
 
 - Added template-fitness validation for repo-local `SKILL.md` packages so future repository skills use valid standard frontmatter.
+- Added package metadata validation, release-preparation version sync, and release-workflow staging for `package.json`.
 
 ### Migration
 
 ### Validation
 
 - `node --test scripts/harness-bootstrap-plan.test.mjs`
+- `node --test scripts/package-entrypoint.test.mjs`
 - `node --test scripts/prepare-stable-release.test.mjs`
 - `node scripts/template-fitness.mjs`
 - `node scripts/harness-bootstrap-plan.mjs --repo .`
