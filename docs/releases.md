@@ -5,6 +5,8 @@ HEB versions exist to make template updates safer for consuming repositories. Th
 ## Version And Tag Format
 
 - `VERSION` contains the numeric SemVer value without a leading `v`, for example `0.1.0`.
+- `package.json` uses the same numeric version when package metadata is present.
+- `private: true` and `prepublishOnly` block unsupported npm registry publishing.
 - Git tags and GitHub releases use `v<VERSION>`, for example `v0.1.0`.
 - Planner examples should use the release tag form, for example `--target-version v0.1.0`.
 - Planner comparison may accept either `0.1.0` or `v0.1.0`, but docs and release notes should use the tag form when referring to a release.
@@ -58,8 +60,8 @@ Release notes should describe update-visible changes, not every internal edit. W
 Merged PRs create stable releases only when they have exactly one stable release label:
 
 - `release:current`: tag and publish the current `VERSION` without changing files. Use this only for the first release, re-publishing a missing GitHub Release, or an administrative release where the version was already prepared; normal ongoing stable releases should use `release:patch` or `release:minor`.
-- `release:patch`: bump `VERSION` by one patch version, promote `## Unreleased` to `## vX.Y.Z - YYYY-MM-DD`, commit those changes directly to `main`, tag `vX.Y.Z`, and create a GitHub Release.
-- `release:minor`: bump `VERSION` by one minor version and reset patch to zero, then follow the same changelog, commit, tag, and GitHub Release flow.
+- `release:patch`: bump `VERSION` and `package.json` by one patch version, promote `## Unreleased` to `## vX.Y.Z - YYYY-MM-DD`, commit those changes directly to `main`, tag `vX.Y.Z`, and create a GitHub Release.
+- `release:minor`: bump `VERSION` and `package.json` by one minor version and reset patch to zero, then follow the same changelog, commit, tag, and GitHub Release flow.
 
 No stable release label means no release. Multiple stable release labels should fail instead of guessing. `release:current` requires the current `v<VERSION>` changelog section to contain the final release notes and requires `## Unreleased` to have no pending notes. Pre-1.0 breaking changes use `release:minor` and must spell out migration and rollback in the release notes.
 
@@ -88,11 +90,12 @@ Update metadata only after the bootstrap or update PR passes validation. A consu
 2. Update `## Unreleased` in `CHANGELOG.md` with the required release-note headings before using `release:patch` or `release:minor`; keep it empty when using `release:current`.
 3. Keep release docs, README examples, template guidance, and planner output aligned with the chosen tag format.
 4. Run `node --test scripts/harness-bootstrap-plan.test.mjs`.
-5. Run `node --test scripts/prepare-stable-release.test.mjs`.
-6. Run `node scripts/template-fitness.mjs`.
-7. Run `node scripts/harness-bootstrap-plan.mjs --repo . --mode update --target-version v<VERSION>` as the template-repo update-mode smoke test.
-8. For a bootstrapper/manual consumer smoke test, run the planner against a separate target repository before publishing release notes as final.
-9. Merge the PR with exactly one stable release label and let `.github/workflows/stable-release.yml` create the release commit, tag, and GitHub Release.
+5. Run `node --test scripts/package-entrypoint.test.mjs`.
+6. Run `node --test scripts/prepare-stable-release.test.mjs`.
+7. Run `node scripts/template-fitness.mjs`.
+8. Run `node scripts/harness-bootstrap-plan.mjs --repo . --mode update --target-version v<VERSION>` as the template-repo update-mode smoke test.
+9. For a bootstrapper/manual consumer smoke test, run the planner against a separate target repository before publishing release notes as final.
+10. Merge the PR with exactly one stable release label and let `.github/workflows/stable-release.yml` create the release commit, tag, and GitHub Release.
 
 ## Consuming Repository Update Flow
 

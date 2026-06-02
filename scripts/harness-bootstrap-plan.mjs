@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -5199,11 +5199,25 @@ async function main() {
   process.stdout.write(args.json ? `${JSON.stringify(plan, null, 2)}\n` : renderMarkdownPlan(plan));
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (isDirectCliRun()) {
   main().catch((error) => {
     console.error(error.message);
     process.exit(1);
   });
+}
+
+function isDirectCliRun() {
+  if (!process.argv[1]) return false;
+
+  const modulePath = fileURLToPath(import.meta.url);
+  const argvPath = resolve(process.argv[1]);
+  if (import.meta.url === pathToFileURL(argvPath).href) return true;
+
+  try {
+    return realpathSync(modulePath) === realpathSync(argvPath);
+  } catch {
+    return false;
+  }
 }
 
 export { repoRoot };

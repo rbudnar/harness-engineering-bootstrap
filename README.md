@@ -8,11 +8,9 @@ HEB is a governance and routing layer built on open agent instruction formats. U
 
 ## Getting Started
 
-Start with the bootstrap planner. It is read-only: it surveys a target repository and prints a review-ready harness plan, but it does not write files into that repository.
+Start with the bootstrap planner. It is read-only: it surveys a target repository and prints a review-ready harness plan, but it does not write files into that repository. Run it from a checkout, or from a tagged GitHub package spec once that tag includes the package entrypoint.
 
 Requirements: Git, Node.js 20 or newer, and no `npm install` step.
-
-From a checkout of this repository:
 
 ```bash
 git clone https://github.com/rbudnar/harness-engineering-bootstrap.git
@@ -20,11 +18,13 @@ cd harness-engineering-bootstrap
 node scripts/harness-bootstrap-plan.mjs --repo /absolute/path/to/target-repo
 ```
 
-On Windows, the planner command looks like:
+GitHub tag usage avoids the public npm registry while still using the package bin:
 
-```powershell
-node .\scripts\harness-bootstrap-plan.mjs --repo C:\Users\you\Documents\repos\target-repo
+```bash
+npm exec --yes --package=github:rbudnar/harness-engineering-bootstrap#vX.Y.Z -c "harness-bootstrap --repo /absolute/path/to/target-repo"
 ```
+
+On Windows, direct checkout usage is `node .\scripts\harness-bootstrap-plan.mjs --repo C:\Users\you\Documents\repos\target-repo`. Public npm registry usage, such as `npm exec --package=@rbudnar/harness-engineering-bootstrap -c "harness-bootstrap --repo <repo>"`, is intentionally unsupported until a separate publishing issue approves package contents, provenance, rollback, and credentials.
 
 Read the generated plan before copying or creating anything. The most important sections are:
 
@@ -54,6 +54,7 @@ node scripts/harness-bootstrap-plan.mjs --repo /absolute/path/to/target-repo --m
 - [Dogfooding guide](docs/dogfooding.md) - how this repo keeps the template from becoming a fat harness.
 - [Template fitness check](scripts/template-fitness.mjs) - local and CI bloat guard for template changes.
 - [Bootstrap planner](scripts/harness-bootstrap-plan.mjs) - read-only repo survey that emits review-ready markdown or JSON.
+- [Package metadata](package.json) - local and GitHub-ref bin entrypoint for the read-only planner.
 - [Changelog](CHANGELOG.md) - version history and major design changes.
 - [Release policy](docs/releases.md) - HEB version, tag, release-note, and update metadata contract.
 - [References](REFERENCES.md) - source material and related work used while developing the template.
