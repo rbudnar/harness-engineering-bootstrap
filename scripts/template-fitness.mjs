@@ -384,6 +384,14 @@ function checkPackageMetadata(version) {
   ) {
     fail('package.json files must include the planner script, template-fitness script, templates/, and VERSION for GitHub package-spec execution.');
   }
+
+  const readme = read('README.md');
+  if (!readme.includes('harness-bootstrap init --repo')) {
+    fail('README.md must document the dry-run harness-bootstrap init package entrypoint.');
+  }
+  if (!readme.includes('`--write` is intentionally unsupported')) {
+    fail('README.md must document that package write mode is intentionally unsupported.');
+  }
 }
 
 function isEscapedDoubleQuote(value, index) {

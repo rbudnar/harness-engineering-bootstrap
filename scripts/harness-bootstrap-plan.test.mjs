@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
   buildBootstrapPlan,
+  parseArgs,
   renderMarkdownPlan,
   repoRoot,
   surveyRepository,
@@ -3413,6 +3414,54 @@ test('supports explicit update mode for unversioned bootstraps', () => {
   assert(plan.updatePlan.metadataFields.includes('validation'));
   assert.match(plan.planArtifact.validationCommand, /--mode update --target-version 0\.2\.0/);
   assert.match(plan.planArtifact.validationCommand, /--date 2026-05-28/);
+});
+
+test('parses init as a dry-run bootstrap command', () => {
+  const parsed = parseArgs(['init', '--repo', 'target', '--json', '--date', '2026-05-28']);
+
+  assert.equal(parsed.command, 'init');
+  assert.equal(parsed.mode, 'bootstrap');
+  assert.equal(parsed.repo, 'target');
+  assert.equal(parsed.json, true);
+});
+
+test('rejects write mode until a future scaffolder issue authorizes it', () => {
+  assert.throws(
+    () => parseArgs(['init', '--repo', 'target', '--write']),
+    /--write is not implemented yet/,
+  );
+  assert.throws(
+    () => parseArgs(['--repo', 'target', '--write=true']),
+    /--write is not implemented yet/,
+  );
+});
+
+test('keeps init separate from update mode', () => {
+  assert.throws(
+    () => parseArgs(['init', '--mode', 'update']),
+    /init is for first-time dry-run bootstrap plans/,
+  );
+});
+
+test('init subcommand emits a bootstrap plan without target writes', () => {
+  const fixture = resolve(fixturesRoot, 'existing-bootstrapped');
+  const output = execFileSync(
+    process.execPath,
+    [
+      'scripts/harness-bootstrap-plan.mjs',
+      'init',
+      '--repo',
+      fixture,
+      '--json',
+      '--date',
+      '2026-05-28',
+    ],
+    { cwd: repoRoot, encoding: 'utf8' },
+  );
+  const plan = JSON.parse(output);
+
+  assert.equal(plan.operation, 'bootstrap');
+  assert.match(plan.planArtifact.validationCommand, /--mode bootstrap/);
 });
 
 test('does not mistake an application VERSION file for HEB metadata', () => {

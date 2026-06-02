@@ -18,13 +18,13 @@ cd harness-engineering-bootstrap
 node scripts/harness-bootstrap-plan.mjs --repo /absolute/path/to/target-repo
 ```
 
-GitHub tag usage avoids the public npm registry while still using the package bin:
+GitHub tag usage avoids the public npm registry while still using the dry-run package bin:
 
 ```bash
-npm exec --yes --package=github:rbudnar/harness-engineering-bootstrap#vX.Y.Z -c "harness-bootstrap --repo /absolute/path/to/target-repo"
+npm exec --yes --package=github:rbudnar/harness-engineering-bootstrap#vX.Y.Z -c "harness-bootstrap init --repo /absolute/path/to/target-repo"
 ```
 
-On Windows, direct checkout usage is `node .\scripts\harness-bootstrap-plan.mjs --repo C:\Users\you\Documents\repos\target-repo`. Public npm registry usage, such as `npm exec --package=@rbudnar/harness-engineering-bootstrap -c "harness-bootstrap --repo <repo>"`, is intentionally unsupported until a separate publishing issue approves package contents, provenance, rollback, and credentials.
+On Windows, direct checkout usage is `node .\scripts\harness-bootstrap-plan.mjs init --repo C:\Users\you\Documents\repos\target-repo`. `init` prints a plan only; `--write` is intentionally unsupported until a separate issue approves write-mode evidence, rollback, and generated-file scope. Public npm registry usage, such as `npm exec --package=@rbudnar/harness-engineering-bootstrap -c "harness-bootstrap init --repo <repo>"`, is also unsupported until a publishing issue approves package contents, provenance, rollback, and credentials.
 
 Read the generated plan before copying or creating anything. The most important sections are:
 
