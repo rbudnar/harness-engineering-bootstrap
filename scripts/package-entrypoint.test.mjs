@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -56,9 +57,12 @@ test('package init subcommand matches direct bootstrap mode without writing targ
     );
     runNpm(['install', '--prefix', installRoot, '--ignore-scripts', '--no-audit', '--no-fund', tarballPath]);
     const packaged = runInstalledBin(installRoot, initArgs);
+    const help = runInstalledBin(installRoot, ['--help']);
 
     assert.equal(JSON.parse(packaged).operation, 'bootstrap');
     assert.deepEqual(normalizePlannerOutput(JSON.parse(packaged)), normalizePlannerOutput(JSON.parse(direct)));
+    assert.match(help, /^Usage: harness-bootstrap \[init\]/);
+    assert.match(help, /Direct checkout: node scripts\/harness-bootstrap-plan\.mjs \[init\]/);
     assert.deepEqual(snapshotTree(tempRoot), before);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
@@ -133,8 +137,12 @@ function snapshotTree(root, prefix = '') {
       const absolutePath = resolve(root, relativePath);
       const stats = statSync(absolutePath);
       if (stats.isDirectory()) return [`${relativePath}/`, ...snapshotTree(root, relativePath)];
-      return [`${relativePath}:${stats.size}`];
+      return [`${relativePath}:${stats.size}:${fileHash(absolutePath)}`];
     });
+}
+
+function fileHash(path) {
+  return createHash('sha256').update(readFileSync(path)).digest('hex');
 }
 
 function npmCliPath() {

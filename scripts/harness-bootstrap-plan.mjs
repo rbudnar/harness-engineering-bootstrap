@@ -5179,7 +5179,8 @@ function dedupeObjects(items, keyFn) {
 }
 
 function printHelp() {
-  console.log(`Usage: node scripts/harness-bootstrap-plan.mjs [init] [--repo <path>] [--json] [--date YYYY-MM-DD]
+  console.log(`Usage: harness-bootstrap [init] [--repo <path>] [--json] [--date YYYY-MM-DD]
+Direct checkout: node scripts/harness-bootstrap-plan.mjs [init] [--repo <path>] [--json] [--date YYYY-MM-DD]
 
 Read-only survey and bootstrap plan generator.
 
