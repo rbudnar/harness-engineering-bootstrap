@@ -623,6 +623,7 @@ export function renderMarkdownPlan(plan) {
 
 export function parseArgs(args) {
   const parsed = {
+    command: 'plan',
     repo: process.cwd(),
     json: false,
     date: undefined,
@@ -634,7 +635,10 @@ export function parseArgs(args) {
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
-    if (arg === '--help' || arg === '-h') {
+    if (arg === 'init') {
+      if (parsed.command !== 'plan') throw new Error('Only one command is supported: init.');
+      parsed.command = 'init';
+    } else if (arg === '--help' || arg === '-h') {
       parsed.help = true;
     } else if (arg === '--repo') {
       const next = args[i + 1];
@@ -665,9 +669,16 @@ export function parseArgs(args) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) throw new Error('--date must use YYYY-MM-DD.');
       parsed.date = next;
       i += 1;
+    } else if (arg === '--write' || arg.startsWith('--write=')) {
+      throw new Error('--write is not implemented yet. This release is dry-run only; run without --write to print a review-ready plan.');
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
+  }
+
+  if (parsed.command === 'init') {
+    if (parsed.mode === 'update') throw new Error('init is for first-time dry-run bootstrap plans; use --mode update without init for updates.');
+    parsed.mode = 'bootstrap';
   }
 
   return parsed;
@@ -5168,9 +5179,12 @@ function dedupeObjects(items, keyFn) {
 }
 
 function printHelp() {
-  console.log(`Usage: node scripts/harness-bootstrap-plan.mjs [--repo <path>] [--json] [--date YYYY-MM-DD]
+  console.log(`Usage: node scripts/harness-bootstrap-plan.mjs [init] [--repo <path>] [--json] [--date YYYY-MM-DD]
 
 Read-only survey and bootstrap plan generator.
+
+Commands:
+  init                Print a first-time bootstrap plan. Dry-run only; --write is not implemented.
 
 Options:
   --repo <path>       Repository to survey. Defaults to the current directory.

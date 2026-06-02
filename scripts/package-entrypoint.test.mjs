@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -29,6 +29,37 @@ test('package bin produces the same read-only plan as the direct planner script'
     const packaged = runInstalledBin(installRoot, args);
 
     assert.deepEqual(normalizePlannerOutput(JSON.parse(packaged)), normalizePlannerOutput(JSON.parse(direct)));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+    rmSync(packRoot, { recursive: true, force: true });
+    rmSync(installRoot, { recursive: true, force: true });
+  }
+});
+
+test('package init subcommand matches direct bootstrap mode without writing target files', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-bin-init-fixture-'));
+  const packRoot = mkdtempSync(resolve(tmpdir(), 'heb-bin-init-pack-'));
+  const installRoot = mkdtempSync(resolve(tmpdir(), 'heb-bin-init-install-'));
+
+  try {
+    cpSync(resolve(fixturesRoot, 'basic-js'), tempRoot, { recursive: true });
+    const before = snapshotTree(tempRoot);
+    const packed = JSON.parse(runNpm(['pack', '--json', '--pack-destination', packRoot], { cwd: repoRoot }));
+    const tarballPath = resolve(packRoot, packed[0].filename);
+
+    const directArgs = ['--repo', tempRoot, '--json', '--mode', 'bootstrap', '--date', '2026-05-28'];
+    const initArgs = ['init', '--repo', tempRoot, '--json', '--date', '2026-05-28'];
+    const direct = execFileSync(
+      process.execPath,
+      [resolve(repoRoot, 'scripts', 'harness-bootstrap-plan.mjs'), ...directArgs],
+      { encoding: 'utf8' },
+    );
+    runNpm(['install', '--prefix', installRoot, '--ignore-scripts', '--no-audit', '--no-fund', tarballPath]);
+    const packaged = runInstalledBin(installRoot, initArgs);
+
+    assert.equal(JSON.parse(packaged).operation, 'bootstrap');
+    assert.deepEqual(normalizePlannerOutput(JSON.parse(packaged)), normalizePlannerOutput(JSON.parse(direct)));
+    assert.deepEqual(snapshotTree(tempRoot), before);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
     rmSync(packRoot, { recursive: true, force: true });
@@ -92,6 +123,18 @@ function runInstalledBin(installRoot, args) {
     });
   }
   return execFileSync(command, args, { encoding: 'utf8' });
+}
+
+function snapshotTree(root, prefix = '') {
+  return readdirSync(resolve(root, prefix))
+    .sort((left, right) => left.localeCompare(right))
+    .flatMap((entry) => {
+      const relativePath = prefix ? `${prefix}/${entry}` : entry;
+      const absolutePath = resolve(root, relativePath);
+      const stats = statSync(absolutePath);
+      if (stats.isDirectory()) return [`${relativePath}/`, ...snapshotTree(root, relativePath)];
+      return [`${relativePath}:${stats.size}`];
+    });
 }
 
 function npmCliPath() {
