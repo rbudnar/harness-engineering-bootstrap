@@ -1,6 +1,6 @@
 # Measurement Layer Reference
 
-Use this reference only after Phase 8 of the main template says measurement detail is triggered. This is routed detail, not required always-on guidance and not a reason to create PR metrics, health reports, feedback logs, or evals by default.
+Use this reference only after Phase 8 of the main template accepts deeper measurement based on local trigger evidence. This is routed detail, not required always-on guidance and not a reason to create PR metrics, health reports, feedback logs, or evals by default.
 
 ## Admission Gate
 

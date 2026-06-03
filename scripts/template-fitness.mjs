@@ -189,6 +189,15 @@ function findMarkdownLineIndex(text, predicate, startAt = 0) {
   return -1;
 }
 
+function hasMarkdownRoute(text, targetPath) {
+  const escapedTarget = targetPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const inlineLinkPattern = new RegExp(`\\]\\((?:\\./)?${escapedTarget}(?:#[^)]+)?\\)`, 'i');
+  const referenceLinkPattern = new RegExp(`^\\s*\\[[^\\]]+\\]:\\s*(?:\\./)?${escapedTarget}(?:#\\S+)?\\s*$`, 'i');
+  return findMarkdownLineIndex(text, (line) => (
+    inlineLinkPattern.test(line) || referenceLinkPattern.test(line)
+  )) !== -1;
+}
+
 function checkAlwaysOn() {
   let totalLines = 0;
   let totalBytes = 0;
@@ -290,7 +299,7 @@ function checkTemplateShape() {
   if (findMarkdownLineIndex(template, (line) => line.trim() === 'Triggered modules:') === -1) {
     fail(`${templatePath} must include "Triggered modules:" before Core Principles for template-shape validation.`);
   }
-  if (!template.includes('(references/measurement-layer.md)')) {
+  if (!hasMarkdownRoute(template, 'references/measurement-layer.md')) {
     fail(`${templatePath} must route deeper measurement-layer detail to ${measurementReferencePath}.`);
   }
   if (!exists(measurementReferencePath)) {
