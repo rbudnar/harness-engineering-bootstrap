@@ -189,6 +189,15 @@ function findMarkdownLineIndex(text, predicate, startAt = 0) {
   return -1;
 }
 
+function hasMarkdownRoute(text, targetPath) {
+  const escapedTarget = targetPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const inlineLinkPattern = new RegExp(`\\]\\((?:\\./)?${escapedTarget}(?:#[^)]+)?\\)`, 'i');
+  const referenceLinkPattern = new RegExp(`^\\s*\\[[^\\]]+\\]:\\s*(?:\\./)?${escapedTarget}(?:#\\S+)?\\s*$`, 'i');
+  return findMarkdownLineIndex(text, (line) => (
+    inlineLinkPattern.test(line) || referenceLinkPattern.test(line)
+  )) !== -1;
+}
+
 function checkAlwaysOn() {
   let totalLines = 0;
   let totalBytes = 0;
@@ -267,6 +276,7 @@ function countTriggeredModuleBullets(template) {
 
 function checkTemplateShape() {
   const templatePath = 'templates/Harness Engineering Bootstrap.md';
+  const measurementReferencePath = 'templates/references/measurement-layer.md';
   const readmePath = 'README.md';
   const dogfoodPath = 'docs/dogfooding.md';
 
@@ -289,12 +299,23 @@ function checkTemplateShape() {
   if (findMarkdownLineIndex(template, (line) => line.trim() === 'Triggered modules:') === -1) {
     fail(`${templatePath} must include "Triggered modules:" before Core Principles for template-shape validation.`);
   }
+  if (!hasMarkdownRoute(template, 'references/measurement-layer.md')) {
+    fail(`${templatePath} must route deeper measurement-layer detail to ${measurementReferencePath}.`);
+  }
+  if (!exists(measurementReferencePath)) {
+    fail(`${measurementReferencePath} must exist when measurement detail is routed out of the main template.`);
+  } else {
+    const measurementReference = read(measurementReferencePath);
+    if (!measurementReference.includes('## Admission Gate') || !measurementReference.includes('## Optional Regression Eval')) {
+      fail(`${measurementReferencePath} must preserve measurement admission and optional eval guidance.`);
+    }
+  }
 
   const checklistItems = (getSection(template, '## Bootstrap Checklist').match(/^- \[ \]/gm) ?? []).length;
   const triggeredModules = countTriggeredModuleBullets(template);
 
   metric('\nTemplate shape:');
-  metric(`- ${templatePath}: ${templateLines} lines (warn at 2100, fail above 2300)`);
+  metric(`- ${templatePath}: ${templateLines} lines (warn at 1800, fail above 2000)`);
   metric(`- bootstrap checklist items: ${checklistItems} (warn above 90, fail above 100)`);
   if (triggeredModules === null) {
     fail('Could not count triggered-module bullets; restore "Triggered modules:" and "## Core Principles" before relying on this metric.');
@@ -302,10 +323,10 @@ function checkTemplateShape() {
     metric(`- triggered-module bullets: ${triggeredModules} (limit 30)`);
   }
 
-  if (templateLines > 2300) {
-    fail(`${templatePath} has ${templateLines} lines; budget is 2300. Split, tighten, or justify the budget change.`);
-  } else if (templateLines > 2100) {
-    warn(`${templatePath} has ${templateLines} lines and is approaching the 2300-line bloat budget.`);
+  if (templateLines > 2000) {
+    fail(`${templatePath} has ${templateLines} lines; budget is 2000. Split, tighten, or justify the budget change.`);
+  } else if (templateLines > 1800) {
+    warn(`${templatePath} has ${templateLines} lines and is approaching the 2000-line bloat budget.`);
   }
 
   if (checklistItems > 100) {

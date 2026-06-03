@@ -16,6 +16,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 
 - Documented HEB as a governance layer over `AGENTS.md`, with optional procedural capabilities packaged as Agent Skills-standard `SKILL.md` directories only when smaller controls are insufficient.
 - Added a Getting Started section with requirements, clone/run commands, Windows usage, output sections to review, and the update-mode command.
+- Split deeper measurement-layer implementation guidance into a routed template reference and tightened the main-template line budget.
 
 ### Planner And Metadata
 
