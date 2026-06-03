@@ -102,7 +102,7 @@ To validate a proposal file from automation, run:
 node scripts/template-fitness.mjs --suggestion path/to/suggestion.md
 ```
 
-The gate checks always-on size, anti-bloat anchors, template growth budget, checklist size, triggered-module count, and suggestion admission fields.
+The gate checks always-on size, anti-bloat anchors, the tightened main-template growth budget, checklist size, triggered-module count, and suggestion admission fields.
 
 ## Bootstrap Planner Dogfood
 
