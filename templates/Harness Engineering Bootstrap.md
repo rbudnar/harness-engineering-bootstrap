@@ -4,7 +4,7 @@ Use this template to set up a self-maintaining, token-efficient agent harness fo
 
 The harness goal is not "more docs." The goal is a repository that gives agents the right context at the right time, catches drift mechanically, grows when real context gaps appear, and improves based on measured evidence rather than feel.
 
-HEB uses open agent-facing formats as its substrate: `AGENTS.md` for repository instructions, thin provider adapters when needed, and Agent Skills-standard `SKILL.md` packages only for triggered reusable workflows. HEB is the governance layer that decides what belongs in those surfaces, when it should load, how it is validated, and when it should retire.
+HEB uses open agent-facing formats as its substrate: `AGENTS.md` for repository instructions, thin provider adapters when needed, and Agent Skills specification-aligned `SKILL.md` packages only for triggered reusable workflows. HEB is the governance layer that decides what belongs in those surfaces, when it should load, how it is validated, and when it should retire.
 
 ## Prerequisites
 
@@ -1216,7 +1216,7 @@ Skill-creation gate: before creating a new skill, at least two smaller controls 
 
 Good skill candidates are procedural workflows already backed by triggered docs, such as contract-memory work across `docs/data-contracts/` and `docs/repo-contracts/`. Keep the skill as a route into the workflow and examples, not a duplicate copy of the full optional module.
 
-When a skill passes that gate, use the Agent Skills `SKILL.md` format instead of a provider-only prompt file:
+When a skill passes that gate, align it with the [public Agent Skills specification](https://agentskills.io/specification) instead of creating a provider-only prompt file:
 
 ```text
 .agents/skills/<skill-name>/
@@ -1239,7 +1239,7 @@ Skill admission rules:
 
 - Trigger evidence: the workflow is repeated, procedural, multi-step, or expensive enough that a routed doc or validator is not enough.
 - Smaller control: record why a doc, ADR, contract, checklist, PR template prompt, or deterministic script alone would miss the workflow.
-- Validation: `name` matches the parent directory, `description` names the trigger and boundary, optional frontmatter fields stay within the Agent Skills spec, scripts have exact test commands, and references are loaded only on demand.
+- Validation: `name` matches the parent directory, `description` names the trigger and boundary, optional frontmatter fields stay within the Agent Skills specification, scripts have exact test commands, and references are loaded only on demand.
 - Retirement: delete, merge into docs, or demote the skill when a first-party tool replaces it, usage disappears, trigger overlap causes routing noise, or the workflow becomes simple enough for a smaller control.
 
 Do not create a skill merely to make optional template material portable. Skills are pulled context for real workflows, not a second always-on manual.
