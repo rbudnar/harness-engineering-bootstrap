@@ -24,7 +24,7 @@ If the repository lacks tests, CI, linting, or type checks, bootstrap those basi
 > - Low always-on token cost
 > - Cross-agent consistency
 > - Mechanical enforcement over verbal reminders
-> - Explicit data and cross-repo contracts when triggered
+> - Explicit contract memory for external data and cross-repo assumptions when triggered
 > - Self-growth from repeated agent mistakes and missing context
 > - Rot prevention and measurable improvement over time
 >
@@ -56,8 +56,7 @@ Required core:
 
 Triggered modules:
 
-- Data contracts for external data semantics
-- Repo contracts for cross-repo assumptions
+- Contract memory for external data semantics and cross-repo assumptions (`docs/data-contracts/` and `docs/repo-contracts/`)
 - Internal data-store docs for repo-owned persistence formats, migrations, locks, and schemas
 - References for private, version-sensitive, or repeatedly misunderstood procedures
 - Path-scoped instructions for subtrees with real local policy
@@ -413,6 +412,8 @@ Default to zero optional modules. Optional modules are admitted only when they p
 - Retirement or revisit rule: the module has an owner and source of truth plus a condition for weakening, deleting, or revisiting it.
 
 If any item is missing, do not add the module yet. Record the trigger rule or follow-up marker instead. If several modules are triggered at once, prioritize the one or two that reduce the highest-risk repeated failure or largest token waste, and record the rest as follow-up.
+
+Contract memory is a signature optional module, not a default directory. Use data contracts when agents need external data semantics; use repo contracts when correctness depends on another repository or system. Otherwise record the trigger rule and reject empty contract scaffolding.
 
 ### `docs/references/`
 
@@ -1212,6 +1213,8 @@ Checklist:
 Prefer harnessifying repeated workflows and misses over adding more root instructions.
 
 Skill-creation gate: before creating a new skill, at least two smaller controls should have been tried and shown insufficient, unless the workflow is clearly repeated, multi-step, and procedural. Smaller controls include semantic docs, ADRs, contracts, validators, PR template prompts, review rules, or examples. "Considered but not tried" is not enough evidence for a new skill unless the risk or cost of trying the smaller control is explicit.
+
+Good skill candidates are procedural workflows already backed by triggered docs, such as contract-memory work across `docs/data-contracts/` and `docs/repo-contracts/`. Keep the skill as a route into the workflow and examples, not a duplicate copy of the full optional module.
 
 When a skill passes that gate, use the Agent Skills `SKILL.md` format instead of a provider-only prompt file:
 
