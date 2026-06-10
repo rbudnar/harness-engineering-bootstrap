@@ -11,6 +11,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - Added private package metadata, npm publish guards, and a `harness-bootstrap` bin so the read-only planner can run from a checkout or GitHub package spec without publishing to npm.
 - Added `harness-bootstrap init` as a dry-run first-time bootstrap command while keeping `--write` explicitly unsupported.
 - Added a trigger-gated `contract-memory` Agent Skill prototype as the first progressive-disclosure optional module.
+- Added compact trigger-gated examples for data and repo contract shapes.
 - Pointed repo-local skill guidance at the public Agent Skills specification for both this repo and downstream template consumers.
 - Updated the MCP specification reference to the current dated version (2025-11-25).
 
