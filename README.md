@@ -57,7 +57,7 @@ node scripts/harness-bootstrap-plan.mjs --repo /absolute/path/to/target-repo --m
 - [Package metadata](package.json) - local and GitHub-ref bin entrypoint for the read-only planner.
 - [Changelog](CHANGELOG.md) - version history and major design changes.
 - [Release policy](docs/releases.md) - HEB version, tag, release-note, and update metadata contract.
-- [References](REFERENCES.md) and [contract memory skill](.agents/skills/contract-memory/SKILL.md) - source material plus the first progressive-disclosure skill prototype.
+- [References](REFERENCES.md) and [contract memory skill](.agents/skills/contract-memory/SKILL.md) - source material plus compact trigger-gated data/repo contract examples.
 - [Version marker](VERSION) - current template version for tags and releases.
 
 ## What This Template Emphasizes
@@ -66,7 +66,7 @@ node scripts/harness-bootstrap-plan.mjs --repo /absolute/path/to/target-repo --m
 - Thin Claude, Gemini, and Copilot adapters that route back to the same source of truth.
 - Compatibility with the open `AGENTS.md` format and Agent Skills specification-aligned `SKILL.md` packages.
 - Task-routed docs instead of broad context loading.
-- Decision memory and trigger-gated contract memory for external data and cross-repo assumptions.
+- Signature, trigger-gated contract memory for external data and cross-repo assumptions.
 - Deterministic quality gates and harness validation.
 - A read-only bootstrap planner CLI for first-pass repo surveys and review-ready setup plans.
 - Minimal local metrics first; PR metrics and scheduled reporting only when triggered.

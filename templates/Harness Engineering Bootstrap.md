@@ -413,7 +413,7 @@ Default to zero optional modules. Optional modules are admitted only when they p
 
 If any item is missing, do not add the module yet. Record the trigger rule or follow-up marker instead. If several modules are triggered at once, prioritize the one or two that reduce the highest-risk repeated failure or largest token waste, and record the rest as follow-up.
 
-Contract memory is a signature optional module, not a default directory. Use data contracts when agents need external data semantics; use repo contracts when correctness depends on another repository or system. Otherwise record the trigger rule and reject empty contract scaffolding.
+Contract memory is a signature optional module, not a default directory. Use data contracts when agents need external data semantics; use repo contracts when correctness depends on another repository or system. Route example drafting through the contract-memory skill or equivalent compact examples. Otherwise record the trigger rule and reject empty contract scaffolding.
 
 ### `docs/references/`
 
