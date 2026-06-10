@@ -405,6 +405,9 @@ function checkPackageMetadata(version) {
   ) {
     fail('package.json files must include the planner script, template-fitness script, templates/, and VERSION for GitHub package-spec execution.');
   }
+  if (listRepoSkillPackages().length && !packageJson.files?.includes('.agents/skills/')) {
+    fail('package.json files must include .agents/skills/ when repo-local skills are present.');
+  }
 
   const readme = read('README.md');
   if (!readme.includes('harness-bootstrap init --repo')) {

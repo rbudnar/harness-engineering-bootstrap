@@ -5,7 +5,7 @@ Source material and related work used while developing the harness engineering b
 - https://openai.com/index/harness-engineering/
 - [AGENTS.md open format](https://agents.md/)
 - [Agentic AI Foundation](https://aaif.io/)
-- [Agent Skills specification](https://agentskills.io/specification)
+- [Agent Skills specification](https://agentskills.io/specification) - canonical package format for repo-local `SKILL.md` skills.
 - [OpenAI Codex: custom instructions with AGENTS.md](https://developers.openai.com/codex/guides/agents-md)
 - [OpenAI Codex: Agent Skills](https://developers.openai.com/codex/skills)
 - [Evaluating AGENTS.md: Are Repository-Level Context Files Helpful for Coding Agents?](https://arxiv.org/abs/2602.11988)

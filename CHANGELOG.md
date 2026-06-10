@@ -10,6 +10,8 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - Clarified the README front door so first-time downstream users can run the read-only bootstrap planner without hunting through repo-internal dogfooding notes.
 - Added private package metadata, npm publish guards, and a `harness-bootstrap` bin so the read-only planner can run from a checkout or GitHub package spec without publishing to npm.
 - Added `harness-bootstrap init` as a dry-run first-time bootstrap command while keeping `--write` explicitly unsupported.
+- Added a trigger-gated `contract-memory` Agent Skill prototype as the first progressive-disclosure optional module.
+- Pointed repo-local skill guidance at the public Agent Skills specification for both this repo and downstream template consumers.
 - Updated the MCP specification reference to the current dated version (2025-11-25).
 
 ### Template Changes
@@ -17,10 +19,12 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - Documented HEB as a governance layer over `AGENTS.md`, with optional procedural capabilities packaged as Agent Skills-standard `SKILL.md` directories only when smaller controls are insufficient.
 - Added a Getting Started section with requirements, clone/run commands, Windows usage, output sections to review, and the update-mode command.
 - Split deeper measurement-layer implementation guidance into a routed template reference and tightened the main-template line budget.
+- Added a compact contract-memory skill and routed contract shapes for data/repo contract work without making contract folders mandatory.
 
 ### Planner And Metadata
 
 - Added template-fitness validation for repo-local `SKILL.md` packages so future repository skills use valid standard frontmatter.
+- Included repo-local skills in the GitHub package file list when skills are present and advertised from packaged docs.
 - Added package metadata validation, release-preparation version sync, and release-workflow staging for `package.json`.
 
 ### Migration

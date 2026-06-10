@@ -12,6 +12,7 @@
     "harness-bootstrap": "scripts/harness-bootstrap-plan.mjs"
   },
   "files": [
+    ".agents/skills/",
     "AGENTS.md",
     "CHANGELOG.md",
     "LICENSE",

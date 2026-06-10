@@ -4,7 +4,7 @@ A practical bootstrap template for creating a self-maintaining, token-efficient 
 
 The goal is not to add more documentation. The goal is to help coding agents load the right context at the right time, keep always-on instructions small, enforce drift mechanically where possible, and grow the harness only when repeated misses or real dependencies justify it.
 
-HEB is a governance and routing layer built on open agent instruction formats. Use `AGENTS.md` as the canonical repository instruction file, with provider-specific files as thin adapters. When a repeated procedural workflow truly needs a reusable capability, package it as an Agent Skills-standard `SKILL.md` directory instead of expanding always-on guidance.
+HEB is a governance and routing layer built on open agent instruction formats. Use `AGENTS.md` as the canonical repository instruction file, with provider-specific files as thin adapters. When a repeated procedural workflow truly needs a reusable capability, package it as a `SKILL.md` directory aligned with the [Agent Skills specification](https://agentskills.io/specification) instead of expanding always-on guidance.
 
 ## Getting Started
 
@@ -57,16 +57,16 @@ node scripts/harness-bootstrap-plan.mjs --repo /absolute/path/to/target-repo --m
 - [Package metadata](package.json) - local and GitHub-ref bin entrypoint for the read-only planner.
 - [Changelog](CHANGELOG.md) - version history and major design changes.
 - [Release policy](docs/releases.md) - HEB version, tag, release-note, and update metadata contract.
-- [References](REFERENCES.md) - source material and related work used while developing the template.
+- [References](REFERENCES.md) and [contract memory skill](.agents/skills/contract-memory/SKILL.md) - source material plus the first progressive-disclosure skill prototype.
 - [Version marker](VERSION) - current template version for tags and releases.
 
 ## What This Template Emphasizes
 
 - Thin cross-agent entry points such as `AGENTS.md`.
 - Thin Claude, Gemini, and Copilot adapters that route back to the same source of truth.
-- Compatibility with the open `AGENTS.md` format and Agent Skills `SKILL.md` packages.
+- Compatibility with the open `AGENTS.md` format and Agent Skills specification-aligned `SKILL.md` packages.
 - Task-routed docs instead of broad context loading.
-- Decision memory, data contracts, and repo contracts.
+- Decision memory and trigger-gated contract memory for external data and cross-repo assumptions.
 - Deterministic quality gates and harness validation.
 - A read-only bootstrap planner CLI for first-pass repo surveys and review-ready setup plans.
 - Minimal local metrics first; PR metrics and scheduled reporting only when triggered.
