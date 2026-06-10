@@ -96,6 +96,8 @@ Use these headings when automation writes a suggestion file:
 node scripts/template-fitness.mjs
 ```
 
+Run `node scripts/harness-doctor.mjs` as a warning-mode rot audit when changing durable memory, routes, contracts, or references. Doctor warnings are not failures until a later issue proves the signal is low-noise.
+
 To validate a proposal file from automation, run:
 
 ```bash

@@ -167,6 +167,7 @@ jobs:
           git checkout --detach "$RELEASE_SOURCE"
 
           node --test scripts/harness-bootstrap-plan.test.mjs
+          node --test scripts/harness-doctor.test.mjs
           node --test scripts/package-entrypoint.test.mjs
           node --test scripts/prepare-stable-release.test.mjs
           node scripts/template-fitness.mjs

@@ -13,6 +13,7 @@ jobs:
         with:
           node-version: '20'
       - run: node --test scripts/harness-bootstrap-plan.test.mjs
+      - run: node --test scripts/harness-doctor.test.mjs
       - run: node --test scripts/package-entrypoint.test.mjs
       - run: node --test scripts/prepare-stable-release.test.mjs
       - run: node scripts/template-fitness.mjs

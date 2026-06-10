@@ -1326,6 +1326,42 @@ Add a harness validator that checks:
 
 Run this validator in the repo's exact unified quality-gate command and CI.
 
+### Freshness Metadata And Memory Doctor
+
+Use durable metadata only for load-bearing harness memory, not every Markdown file. Start with warning-mode audits before enforcing freshness or supersession as a PR failure.
+
+Recommended frontmatter fields for active decisions, split ADR files, data contracts, repo contracts, source-heavy evidence packs, and other durable artifacts once they become load-bearing:
+
+```yaml
+---
+status: active | draft | deprecated | superseded
+owner: <team or role>
+source_of_truth: <canonical source or owner-reviewed route>
+last_reviewed: YYYY-MM-DD
+review_after: YYYY-MM-DD
+provenance: <manual audit, generated check, owner review, fixture, or source citation>
+supersedes: <artifact id/path or none>
+superseded_by: <artifact id/path or none>
+---
+```
+
+Freshness metadata admission rules:
+
+- Trigger evidence: the artifact guides future work, encodes an external assumption, or is cited by a validator, review rule, index, or task router.
+- Smaller control: a short route update or local test is not enough because stale or superseded memory would still mislead future agents.
+- Validation: a warning-mode doctor or harness validator can identify missing metadata, stale review dates, broken routes, and supersession gaps.
+- Retirement: remove or demote metadata when the artifact is no longer load-bearing, a generated source covers it, or warnings prove noisy.
+
+Add a warning-mode command such as `node scripts/harness-doctor.mjs` before adding hard failures. The first doctor should prioritize actionable findings:
+
+- Missing lifecycle metadata only in directories the template treats as load-bearing, such as split ADRs and `docs/data-contracts/` or `docs/repo-contracts/`.
+- Stale `review_after` dates when metadata already exists.
+- Broken internal Markdown links and index routes.
+- Optional-module detail leaking into always-on instruction files.
+- Obvious duplicate guidance across always-on adapters.
+
+The doctor should exit `0` when warnings are present. Promote any warning to a failing check only after at least one audit cycle shows low noise and an active decision records the promotion.
+
 ### Optional Contract Coverage Checks
 
 Add only when signal is reliable:
