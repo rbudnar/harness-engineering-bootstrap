@@ -2775,13 +2775,14 @@ function harnessValidationEvidenceForRun(source, command, commandsByCommand, har
     }
 
     const wrapped = wrappedCommandForPart(part, commandsByCommand);
+    const wrappedDirectory = wrappedCommandBaseDirectory(wrapped, currentDirectory);
     const wrappedValidationParts = wrapped?.scriptBody
       ? harnessValidationCommandParts(
         wrapped.scriptBody,
         commandsByCommand,
         new Set([part]),
         harnessValidationControls,
-        currentDirectory,
+        wrappedDirectory,
       )
       : [];
     for (const wrappedPart of wrappedValidationParts) {
@@ -3002,7 +3003,13 @@ function harnessValidationCommandParts(command, commandsByCommand = new Map(), v
     const wrapped = wrappedCommandForPart(part, commandsByCommand);
     if (!wrapped?.scriptBody || visited.has(part)) continue;
     visited.add(part);
-    parts.push(...harnessValidationCommandParts(wrapped.scriptBody, commandsByCommand, visited, harnessValidationControls, currentDirectory));
+    parts.push(...harnessValidationCommandParts(
+      wrapped.scriptBody,
+      commandsByCommand,
+      visited,
+      harnessValidationControls,
+      wrappedCommandBaseDirectory(wrapped, currentDirectory),
+    ));
   }
   return parts;
 }
@@ -3017,6 +3024,17 @@ function wrappedCommandForPart(part, commandsByCommand) {
   }
 
   return null;
+}
+
+function wrappedCommandBaseDirectory(wrapped, fallbackDirectory = '') {
+  if (wrapped?.directory !== undefined && wrapped.directory !== null) {
+    return normalizePackageDirectory(wrapped.directory || '');
+  }
+  if (wrapped?.source && /(^|[/\\])package\.json$/i.test(wrapped.source)) {
+    const directory = normalizePackageDirectory(dirname(wrapped.source));
+    return directory === '.' ? '' : directory;
+  }
+  return normalizePackageDirectory(fallbackDirectory || '');
 }
 
 function packageScriptWrapperCommandCandidates(part) {
@@ -3059,6 +3077,13 @@ function packageScriptCommandsByCommand(packageManifests = []) {
           command,
           scriptBody: String(body ?? ''),
         });
+        for (const alias of packageScriptWorkspaceCommandAliases(manager, name, manifest)) {
+          commandsByCommand.set(alias, {
+            source: manifest.path,
+            command: alias,
+            scriptBody: String(body ?? ''),
+          });
+        }
         if (manager === 'yarn' && name !== 'test' && !manifest.directory) {
           const yarnCommand = `yarn ${name}`;
           commandsByCommand.set(yarnCommand, {
@@ -3072,6 +3097,55 @@ function packageScriptCommandsByCommand(packageManifests = []) {
   }
 
   return commandsByCommand;
+}
+
+function packageScriptWorkspaceCommandAliases(packageManager, name, manifest) {
+  const selectors = packageScriptWorkspaceSelectors(manifest);
+  if (!selectors.length) return [];
+
+  return selectors.flatMap((selector) => {
+    const value = quotePath(selector);
+    if (packageManager === 'npm') {
+      return name === 'test'
+        ? [
+          `npm test --workspace ${value}`,
+          `npm --workspace ${value} test`,
+        ]
+        : [
+          `npm run ${name} --workspace ${value}`,
+          `npm --workspace ${value} run ${name}`,
+        ];
+    }
+    if (packageManager === 'pnpm') {
+      return name === 'test'
+        ? [
+          `pnpm --filter ${value} test`,
+          `pnpm --filter=${value} test`,
+        ]
+        : [
+          `pnpm --filter ${value} run ${name}`,
+          `pnpm --filter=${value} run ${name}`,
+        ];
+    }
+    if (packageManager === 'yarn') {
+      return name === 'test'
+        ? [`yarn workspace ${value} test`]
+        : [
+          `yarn workspace ${value} run ${name}`,
+          `yarn workspace ${value} ${name}`,
+        ];
+    }
+    return [];
+  });
+}
+
+function packageScriptWorkspaceSelectors(manifest) {
+  if (!manifest?.directory) return [];
+  return dedupe([
+    manifest.json?.name,
+    manifest.directory,
+    basename(manifest.directory),
+  ].filter(Boolean));
 }
 
 function sampleValues(items, limit = 5) {
@@ -3189,7 +3263,7 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
   const incompleteScanReason = options.incompleteScan && commandNeedsCompleteScan(command)
     ? 'it depends on package, workspace, or make targets that may be omitted by the truncated repository scan'
     : null;
-  const safe = !workingDirectoryReason
+  const safe = (!workingDirectoryReason || harnessValidationSafe)
     && !runtimeSafetyReason
     && !makeTargetReason
     && !packageScriptReason
