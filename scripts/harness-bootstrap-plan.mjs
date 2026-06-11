@@ -3109,8 +3109,7 @@ function isRelativeHarnessValidationPayloadPath(payloadPath) {
 function normalizeHarnessValidationPayloadPath(value) {
   return stripYamlQuotes(String(value ?? ''))
     .replace(/\\/g, '/')
-    .replace(/^\.\/+/, '')
-    .toLowerCase();
+    .replace(/^\.\/+/, '');
 }
 
 function harnessValidationCommandParts(command, commandsByCommand = new Map(), visited = new Set(), harnessValidationControls = null, baseDirectory = '') {

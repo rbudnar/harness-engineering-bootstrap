@@ -145,6 +145,37 @@ test('does not count bare doctor commands when the control lives under scripts',
   }
 });
 
+test('does not count doctor commands whose path case does not match the control', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-case-mismatch-validation-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'scripts'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'scripts', 'harness-doctor.mjs'), 'console.log("ok");\n');
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'quality.yml'), [
+      'name: Quality',
+      'on: [pull_request]',
+      'jobs:',
+      '  check:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: node Scripts/harness-doctor.mjs',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-06-11' });
+    const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
+    const caseMismatchRun = survey.ci.runCommands.find((run) => run.command === 'node Scripts/harness-doctor.mjs');
+
+    assert.equal(caseMismatchRun.safe, false);
+    assert.equal(harnessValidation.status, 'partial');
+    assert.deepEqual(harnessValidation.evidence, ['scripts/harness-doctor.mjs']);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('does not count doctor commands that point --repo at another tree', () => {
   const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-wrong-repo-validation-'));
   try {
