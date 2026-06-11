@@ -2988,6 +2988,7 @@ function harnessValidationPayloadPathCandidates(payloadPath, payloadIsPath, curr
   if (!payloadIsPath || !normalizedDirectory || !isRelativeHarnessValidationPayloadPath(payloadPath)) {
     return [payloadPath];
   }
+  if (cdTargetEscapesRepo(payloadPath, normalizedDirectory)) return [];
   return [resolvePackageDirectory(payloadPath, normalizedDirectory)];
 }
 
