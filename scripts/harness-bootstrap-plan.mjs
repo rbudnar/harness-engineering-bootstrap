@@ -5607,6 +5607,7 @@ function isSafeValidationCommandPart(part) {
   if (hasEnvChdirOption(shellWords(part)) || hasUnsupportedSubshellSyntax(part)) return false;
   const normalizedPart = stripPackageCommandPrefix(part);
   const lower = normalizedPart.toLowerCase();
+  if (isHarnessValidationNoOpCommandPart(normalizedPart)) return false;
   if (dangerousCommandPatterns.some((pattern) => pattern.test(lower))) return false;
   if (hasDangerousRmCommand(normalizedPart) || hasTerraformFmtWriteCommand(normalizedPart)) return false;
   if (hasPackageValidationWriteFlags(normalizedPart)) return false;
@@ -5636,6 +5637,15 @@ function isSafeValidationCommandPart(part) {
   ];
 
   return validationPatterns.some((pattern) => pattern.test(lower));
+}
+
+function isHarnessValidationNoOpCommandPart(part) {
+  const words = shellWords(part);
+  if (!words.length || !hasHarnessValidationNoOpArgument(words)) return false;
+  const commandWord = words[0]?.toLowerCase();
+  if (isHarnessValidationExecutableWord(commandWord)) return true;
+  if (!isHarnessValidationRunner(commandWord)) return false;
+  return words.some((word) => isHarnessValidationExecutableWord(stripYamlQuotes(word)));
 }
 
 function hasPackageValidationWriteFlags(command) {

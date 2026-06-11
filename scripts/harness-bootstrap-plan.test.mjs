@@ -124,15 +124,21 @@ test('does not count no-op harness-doctor help commands as automated validation'
       '    runs-on: ubuntu-latest',
       '    steps:',
       '      - run: node scripts/harness-doctor.mjs --help',
+      '      - run: harness-doctor --version',
       '',
     ].join('\n'));
 
     const survey = surveyRepository(tempRoot);
     const plan = buildBootstrapPlan(survey, { date: '2026-06-11' });
     const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
+    const validationCommands = plan.validationSteps
+      .map((step) => step.command)
+      .filter(Boolean);
 
     assert.equal(harnessValidation.status, 'partial');
     assert.deepEqual(harnessValidation.evidence, ['scripts/harness-doctor.mjs']);
+    assert(!validationCommands.includes('node scripts/harness-doctor.mjs --help'));
+    assert(!validationCommands.includes('harness-doctor --version'));
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }
