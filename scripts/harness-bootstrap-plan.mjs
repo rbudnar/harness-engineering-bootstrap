@@ -2756,11 +2756,56 @@ function harnessValidationAutomationEvidence(survey) {
 function isHarnessValidationCommand(command) {
   const value = String(command ?? '');
   if (/(^|\s)--test(?:\s|$)|\.test\./i.test(value)) return false;
-  return /\b(template-fitness|validate-harness|harness-audit|harness-doctor)\b/i.test(value);
+  const wrapperPayload = shellWrapperPayload(value);
+  if (wrapperPayload !== null) return isHarnessValidationCommand(wrapperPayload);
+
+  if (packageExecutorPayloads(value).some((payload) => isHarnessValidationCommand(payload))) {
+    return true;
+  }
+
+  const words = shellWords(stripPackageCommandPrefix(value));
+  if (!words.length) return false;
+  const commandWord = words[0]?.toLowerCase();
+
+  if (isHarnessValidationExecutableWord(commandWord)) return true;
+  if (!isHarnessValidationRunner(commandWord)) return false;
+
+  const payloadWord = harnessValidationRunnerPayloadWord(words);
+  return isHarnessValidationExecutableWord(payloadWord);
 }
 
 function isHarnessValidationScriptBody(body) {
   return harnessValidationCommandParts(body).length > 0;
+}
+
+function isHarnessValidationRunner(word) {
+  return ['node', 'tsx', 'ts-node', 'python', 'python3', 'bash', 'sh', 'pwsh', 'powershell'].includes(String(word ?? '').toLowerCase());
+}
+
+function harnessValidationRunnerPayloadWord(words) {
+  for (let index = 1; index < words.length; index += 1) {
+    const word = words[index];
+    if (!word || word === '--') continue;
+    if (runnerOptionConsumesNext(word) && words[index + 1]) {
+      index += 1;
+      continue;
+    }
+    if (String(word).startsWith('-')) continue;
+    return stripYamlQuotes(word);
+  }
+  return null;
+}
+
+function runnerOptionConsumesNext(option) {
+  const lower = String(option ?? '').toLowerCase();
+  if (lower.includes('=')) return false;
+  return ['-r', '--require', '--loader', '--import', '--experimental-loader', '--conditions', '--env-file', '-c', '-lc', '-command', '-file'].includes(lower);
+}
+
+function isHarnessValidationExecutableWord(word) {
+  const value = stripYamlQuotes(String(word ?? '')).replace(/\\/g, '/').toLowerCase();
+  const name = value.split('/').pop() ?? '';
+  return /^(template-fitness|validate-harness|harness-audit|harness-doctor)(?:\.(?:mjs|cjs|js|ts|py|sh|ps1|cmd|bat))?$/.test(name);
 }
 
 function harnessValidationCommandParts(command, commandsByCommand = new Map(), visited = new Set()) {
