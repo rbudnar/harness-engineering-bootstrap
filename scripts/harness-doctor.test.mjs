@@ -484,6 +484,28 @@ test('reports always-on leakage on the matched marker line', () => {
   }
 });
 
+test('reports plural optional-module headings in always-on files', () => {
+  const root = makeRepo({
+    'AGENTS.md': [
+      '# Agent Instructions',
+      '',
+      'Keep this file short and route details elsewhere.',
+      '',
+      '## Data Contracts',
+      '',
+      'Optional-module detail belongs in routed docs.',
+    ].join('\n'),
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    const warning = report.warnings.find((item) => item.code === 'always-on-leakage');
+    assert.equal(warning?.line, 5);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('ignores non-load-bearing frontmatter metadata', () => {
   const root = makeRepo({
     'AGENTS.md': '# Agent Instructions\n',

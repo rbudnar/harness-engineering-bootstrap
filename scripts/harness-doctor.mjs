@@ -383,7 +383,7 @@ function checkDurableMetadata({ root, markdownFiles, warnings, asOf }) {
 
 function checkAlwaysOnLeakage({ root, files, warnings }) {
   const lineLeakagePatterns = [
-    /^##\s+(Data Contract|Repo Contract|Evidence Pack|Agent Runtime Safety)\b/i,
+    /^##\s+(Data Contracts?|Repo Contracts?|Evidence Packs?|Agent Runtime Safety)\b/i,
     /^###\s+Compact Example\b/i,
     /\bTrigger conditions:\s*/i,
   ];
