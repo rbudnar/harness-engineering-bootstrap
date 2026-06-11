@@ -144,6 +144,46 @@ test('does not count no-op harness-doctor help commands as automated validation'
   }
 });
 
+test('does not count package wrappers that forward no-op doctor args as automated validation', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-forwarded-noop-validation-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'scripts'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'scripts', 'harness-doctor.mjs'), 'console.log("ok");\n');
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        doctor: 'node scripts/harness-doctor.mjs',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'quality.yml'), [
+      'name: Quality',
+      'on: [pull_request]',
+      'jobs:',
+      '  check:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: npm run doctor -- --help',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-06-11' });
+    const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
+    const noOpRun = survey.ci.runCommands.find((run) => run.command === 'npm run doctor -- --help');
+    const validationCommands = plan.validationSteps
+      .map((step) => step.command)
+      .filter(Boolean);
+
+    assert.equal(noOpRun.safe, false);
+    assert.equal(harnessValidation.status, 'partial');
+    assert.deepEqual(harnessValidation.evidence, ['scripts/harness-doctor.mjs']);
+    assert(!validationCommands.includes('npm run doctor -- --help'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('does not emit stale package or make doctor wrappers without existing controls', () => {
   const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-stale-wrapper-validation-'));
   try {

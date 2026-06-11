@@ -2803,6 +2803,7 @@ function harnessValidationEvidenceForRun(source, command, commandsByCommand, har
         wrappedDirectory,
       )
       : [];
+    if (wrappedValidationParts.length && hasNoOpForwardedPackageScriptArgs(part)) continue;
     for (const wrappedPart of wrappedValidationParts) {
       evidence.push(`${source}: ${formatInlineValue(part)} -> ${formatInlineValue(wrappedPart)}`);
     }
@@ -3028,13 +3029,15 @@ function harnessValidationCommandParts(command, commandsByCommand = new Map(), v
     const wrapped = wrappedCommandForPart(part, commandsByCommand, currentDirectory);
     if (!wrapped?.scriptBody || visited.has(part)) continue;
     visited.add(part);
-    parts.push(...harnessValidationCommandParts(
+    const wrappedParts = harnessValidationCommandParts(
       wrapped.scriptBody,
       commandsByCommand,
       visited,
       harnessValidationControls,
       wrappedCommandBaseDirectory(wrapped, currentDirectory),
-    ));
+    );
+    if (wrappedParts.length && hasNoOpForwardedPackageScriptArgs(part)) continue;
+    parts.push(...wrappedParts);
   }
   return parts;
 }
@@ -5608,6 +5611,7 @@ function isSafeValidationCommandPart(part) {
   const normalizedPart = stripPackageCommandPrefix(part);
   const lower = normalizedPart.toLowerCase();
   if (isHarnessValidationNoOpCommandPart(normalizedPart)) return false;
+  if (hasNoOpForwardedPackageScriptArgs(normalizedPart)) return false;
   if (dangerousCommandPatterns.some((pattern) => pattern.test(lower))) return false;
   if (hasDangerousRmCommand(normalizedPart) || hasTerraformFmtWriteCommand(normalizedPart)) return false;
   if (hasPackageValidationWriteFlags(normalizedPart)) return false;
@@ -5646,6 +5650,10 @@ function isHarnessValidationNoOpCommandPart(part) {
   if (isHarnessValidationExecutableWord(commandWord)) return true;
   if (!isHarnessValidationRunner(commandWord)) return false;
   return words.some((word) => isHarnessValidationExecutableWord(stripYamlQuotes(word)));
+}
+
+function hasNoOpForwardedPackageScriptArgs(part) {
+  return hasHarnessValidationNoOpArgument(forwardedPackageScriptArgs(part));
 }
 
 function hasPackageValidationWriteFlags(command) {
