@@ -93,7 +93,7 @@ test('counts PowerShell file doctor commands as automated validation', () => {
       '  check:',
       '    runs-on: windows-latest',
       '    steps:',
-      '      - run: pwsh -File scripts/harness-doctor.ps1',
+      '      - run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/harness-doctor.ps1',
       '',
     ].join('\n'));
 
@@ -103,7 +103,7 @@ test('counts PowerShell file doctor commands as automated validation', () => {
 
     assert.equal(harnessValidation.status, 'present');
     assert(harnessValidation.evidence.includes('scripts/harness-doctor.ps1'));
-    assert(harnessValidation.evidence.includes('.github/workflows/quality.yml: pwsh -File scripts/harness-doctor.ps1'));
+    assert(harnessValidation.evidence.includes('.github/workflows/quality.yml: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/harness-doctor.ps1'));
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }

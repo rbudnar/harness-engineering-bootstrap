@@ -2859,7 +2859,31 @@ function runnerPayloadOption(option) {
 function runnerOptionConsumesNext(option) {
   const lower = String(option ?? '').toLowerCase();
   if (lower.includes('=')) return false;
-  return ['-r', '--require', '--loader', '--import', '--experimental-loader', '--conditions', '--env-file', '-c', '-lc', '-command'].includes(lower);
+  return [
+    '-r',
+    '--require',
+    '--loader',
+    '--import',
+    '--experimental-loader',
+    '--conditions',
+    '--env-file',
+    '-c',
+    '-lc',
+    '-command',
+    '/command',
+    '-configurationname',
+    '/configurationname',
+    '-encodedcommand',
+    '/encodedcommand',
+    '-executionpolicy',
+    '/executionpolicy',
+    '-inputformat',
+    '/inputformat',
+    '-outputformat',
+    '/outputformat',
+    '-workingdirectory',
+    '/workingdirectory',
+  ].includes(lower);
 }
 
 function isHarnessValidationExecutableWord(word) {
