@@ -2766,7 +2766,12 @@ function hasHarnessValidationAutomationEvidence(command) {
   return Boolean(
     command.workingDirectory
     && command.harnessValidationSafe
-    && Array.isArray(command.harnessValidationEvidence),
+    && Array.isArray(command.harnessValidationEvidence)
+    && !command.packageScriptReason
+    && !command.packageScriptRuntimeSafetyReason
+    && !command.makeTargetRuntimeSafetyReason
+    && !command.runtimeSafetyReason
+    && command.inspectOnlyReason?.startsWith('it declares working-directory '),
   );
 }
 
@@ -3080,7 +3085,12 @@ function packageScriptWrapperCommandCandidates(part, currentDirectory = '') {
   const manager = words[0]?.toLowerCase();
   if (!['npm', 'pnpm', 'yarn', 'bun'].includes(manager)) return [];
 
-  if (packageWorkspacesFromCommand(part).length) return [part];
+  const workspaces = packageWorkspacesFromCommand(part);
+  if (workspaces.length) {
+    return workspaces.flatMap((workspace) => (
+      packageScriptWorkspaceCommandAliasesForSelector(manager, scriptName, workspace)
+    ));
+  }
 
   const directories = scopedPackageDirectoryValues(part);
   const currentScope = normalizePackageDirectoryOrRoot(currentDirectory || '');
@@ -3141,56 +3151,58 @@ function packageScriptWorkspaceCommandAliases(packageManager, name, manifest) {
   const selectors = packageScriptWorkspaceSelectors(manifest);
   if (!selectors.length) return [];
 
-  return selectors.flatMap((selector) => {
-    const value = quotePath(selector);
-    if (packageManager === 'npm') {
-      return name === 'test'
-        ? [
-          `npm test --workspace ${value}`,
-          `npm test --workspace=${value}`,
-          `npm test -w ${value}`,
-          `npm test -w=${value}`,
-          `npm --workspace ${value} test`,
-          `npm --workspace=${value} test`,
-          `npm -w ${value} test`,
-          `npm -w=${value} test`,
-        ]
-        : [
-          `npm run ${name} --workspace ${value}`,
-          `npm run ${name} --workspace=${value}`,
-          `npm run ${name} -w ${value}`,
-          `npm run ${name} -w=${value}`,
-          `npm --workspace ${value} run ${name}`,
-          `npm --workspace=${value} run ${name}`,
-          `npm -w ${value} run ${name}`,
-          `npm -w=${value} run ${name}`,
-        ];
-    }
-    if (packageManager === 'pnpm') {
-      return name === 'test'
-        ? [
-          `pnpm --filter ${value} test`,
-          `pnpm --filter=${value} test`,
-          `pnpm -F ${value} test`,
-          `pnpm -F=${value} test`,
-        ]
-        : [
-          `pnpm --filter ${value} run ${name}`,
-          `pnpm --filter=${value} run ${name}`,
-          `pnpm -F ${value} run ${name}`,
-          `pnpm -F=${value} run ${name}`,
-        ];
-    }
-    if (packageManager === 'yarn') {
-      return name === 'test'
-        ? [`yarn workspace ${value} test`]
-        : [
-          `yarn workspace ${value} run ${name}`,
-          `yarn workspace ${value} ${name}`,
-        ];
-    }
-    return [];
-  });
+  return selectors.flatMap((selector) => packageScriptWorkspaceCommandAliasesForSelector(packageManager, name, selector));
+}
+
+function packageScriptWorkspaceCommandAliasesForSelector(packageManager, name, selector) {
+  const value = quotePath(selector);
+  if (packageManager === 'npm') {
+    return name === 'test'
+      ? [
+        `npm test --workspace ${value}`,
+        `npm test --workspace=${value}`,
+        `npm test -w ${value}`,
+        `npm test -w=${value}`,
+        `npm --workspace ${value} test`,
+        `npm --workspace=${value} test`,
+        `npm -w ${value} test`,
+        `npm -w=${value} test`,
+      ]
+      : [
+        `npm run ${name} --workspace ${value}`,
+        `npm run ${name} --workspace=${value}`,
+        `npm run ${name} -w ${value}`,
+        `npm run ${name} -w=${value}`,
+        `npm --workspace ${value} run ${name}`,
+        `npm --workspace=${value} run ${name}`,
+        `npm -w ${value} run ${name}`,
+        `npm -w=${value} run ${name}`,
+      ];
+  }
+  if (packageManager === 'pnpm') {
+    return name === 'test'
+      ? [
+        `pnpm --filter ${value} test`,
+        `pnpm --filter=${value} test`,
+        `pnpm -F ${value} test`,
+        `pnpm -F=${value} test`,
+      ]
+      : [
+        `pnpm --filter ${value} run ${name}`,
+        `pnpm --filter=${value} run ${name}`,
+        `pnpm -F ${value} run ${name}`,
+        `pnpm -F=${value} run ${name}`,
+      ];
+  }
+  if (packageManager === 'yarn') {
+    return name === 'test'
+      ? [`yarn workspace ${value} test`]
+      : [
+        `yarn workspace ${value} run ${name}`,
+        `yarn workspace ${value} ${name}`,
+      ];
+  }
+  return [];
 }
 
 function packageScriptWorkspaceSelectors(manifest) {
@@ -3317,13 +3329,14 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
   const incompleteScanReason = options.incompleteScan && commandNeedsCompleteScan(command)
     ? 'it depends on package, workspace, or make targets that may be omitted by the truncated repository scan'
     : null;
+  const safeValidationCommand = isSafeValidationCommand(command);
   const safe = !workingDirectoryReason
     && !runtimeSafetyReason
     && !makeTargetReason
     && !packageScriptReason
     && !incompleteScanReason
     && (
-      isSafeValidationCommand(command)
+      (safeValidationCommand && !hasHarnessValidationCommandText(command))
       || harnessValidationSafe
     );
   return {
@@ -3347,6 +3360,10 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
         || incompleteScanReason
         || 'it is not a known-safe validation command or it may mutate external state',
   };
+}
+
+function hasHarnessValidationCommandText(command) {
+  return harnessValidationCommandParts(command).length > 0;
 }
 
 function packageScriptRunsHarnessValidation(command, packageManifest, packageManifests = [], currentDirectory = '') {

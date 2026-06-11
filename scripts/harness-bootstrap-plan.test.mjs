@@ -303,6 +303,44 @@ test('counts workflow working-directory doctor commands as automated validation'
   }
 });
 
+test('does not count unsafe working-directory package wrappers as doctor automation', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-working-directory-unsafe-wrapper-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'packages', 'app', 'scripts'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'packages', 'app', 'package.json'), JSON.stringify({
+      scripts: {
+        quality: 'node scripts/harness-doctor.mjs && kubectl apply -f k8s/prod.yaml',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, 'packages', 'app', 'scripts', 'harness-doctor.mjs'), 'console.log("ok");\n');
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'quality.yml'), [
+      'name: Quality',
+      'on: [pull_request]',
+      'jobs:',
+      '  check:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - working-directory: packages/app',
+      '        run: npm run quality',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-06-11' });
+    const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
+    const qualityRun = survey.ci.runCommands.find((run) => run.command === 'npm run quality');
+
+    assert.equal(qualityRun.safe, false);
+    assert(qualityRun.packageScriptReason);
+    assert.equal(harnessValidation.status, 'partial');
+    assert.deepEqual(harnessValidation.evidence, ['packages/app/scripts/harness-doctor.mjs']);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('does not credit doctor paths that escape the repository from a package directory', () => {
   const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-escaping-path-validation-'));
   try {
@@ -394,6 +432,7 @@ test('counts workspace-selected package doctor scripts as automated validation',
       '    runs-on: ubuntu-latest',
       '    steps:',
       '      - run: npm run doctor --workspace app',
+      '      - run: npm run doctor --workspace app --if-present',
       '      - run: npm run doctor -w app',
       '      - run: pnpm --filter app run doctor',
       '      - run: pnpm -F app run doctor',
@@ -407,6 +446,7 @@ test('counts workspace-selected package doctor scripts as automated validation',
     assert.equal(harnessValidation.status, 'present');
     assert(harnessValidation.evidence.includes('packages/app/scripts/harness-doctor.mjs'));
     assert(harnessValidation.evidence.includes('.github/workflows/quality.yml: npm run doctor --workspace app -> node scripts/harness-doctor.mjs'));
+    assert(harnessValidation.evidence.includes('.github/workflows/quality.yml: npm run doctor --workspace app --if-present -> node scripts/harness-doctor.mjs'));
     assert(harnessValidation.evidence.includes('.github/workflows/quality.yml: npm run doctor -w app -> node scripts/harness-doctor.mjs'));
     assert(harnessValidation.evidence.includes('.github/workflows/quality.yml: pnpm --filter app run doctor -> node scripts/harness-doctor.mjs'));
     assert(harnessValidation.evidence.includes('.github/workflows/quality.yml: pnpm -F app run doctor -> node scripts/harness-doctor.mjs'));
@@ -436,9 +476,12 @@ test('does not count stale automation commands that do not match an existing con
     const survey = surveyRepository(tempRoot);
     const plan = buildBootstrapPlan(survey, { date: '2026-06-11' });
     const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
+    const staleRun = survey.ci.runCommands.find((run) => run.command === 'node scripts/harness-doctor.mjs');
 
+    assert.equal(staleRun.safe, false);
     assert.equal(harnessValidation.status, 'partial');
     assert.deepEqual(harnessValidation.evidence, ['scripts/template-fitness.mjs']);
+    assert(!validationStepsText(plan).includes('node scripts/harness-doctor.mjs'));
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }
