@@ -2745,7 +2745,7 @@ function harnessValidationAutomationEvidence(survey, harnessValidationControls =
   const commandsByCommand = new Map(survey.commands.map((command) => [command.command, command]));
   const evidence = [];
 
-  for (const run of survey.ci.runCommands.filter((command) => command.safe)) {
+  for (const run of survey.ci.runCommands.filter(hasHarnessValidationAutomationEvidence)) {
     if (Array.isArray(run.harnessValidationEvidence)) {
       evidence.push(...run.harnessValidationEvidence);
       continue;
@@ -2759,6 +2759,15 @@ function harnessValidationAutomationEvidence(survey, harnessValidationControls =
   }
 
   return dedupe(evidence);
+}
+
+function hasHarnessValidationAutomationEvidence(command) {
+  if (command.safe) return true;
+  return Boolean(
+    command.workingDirectory
+    && command.harnessValidationSafe
+    && Array.isArray(command.harnessValidationEvidence),
+  );
 }
 
 function harnessValidationEvidenceForRun(source, command, commandsByCommand, harnessValidationControls = [], baseDirectory = '') {
@@ -3307,7 +3316,7 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
   const incompleteScanReason = options.incompleteScan && commandNeedsCompleteScan(command)
     ? 'it depends on package, workspace, or make targets that may be omitted by the truncated repository scan'
     : null;
-  const safe = (!workingDirectoryReason || harnessValidationSafe)
+  const safe = !workingDirectoryReason
     && !runtimeSafetyReason
     && !makeTargetReason
     && !packageScriptReason
@@ -3327,6 +3336,7 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
     runtimeSafetyReason,
     safe,
     ...(harnessValidationEvidence.length ? { harnessValidationEvidence } : {}),
+    ...(harnessValidationSafe ? { harnessValidationSafe } : {}),
     inspectOnlyReason: safe
       ? null
       : workingDirectoryReason

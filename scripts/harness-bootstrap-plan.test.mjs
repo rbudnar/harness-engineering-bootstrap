@@ -292,10 +292,12 @@ test('counts workflow working-directory doctor commands as automated validation'
     const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
     const doctorRun = survey.ci.runCommands.find((run) => run.command === 'node scripts/harness-doctor.mjs');
 
-    assert.equal(doctorRun.safe, true);
+    assert.equal(doctorRun.safe, false);
+    assert.match(doctorRun.inspectOnlyReason, /working-directory/);
     assert.equal(harnessValidation.status, 'present');
     assert(harnessValidation.evidence.includes('packages/app/scripts/harness-doctor.mjs'));
     assert(harnessValidation.evidence.includes('.github/workflows/quality.yml: node scripts/harness-doctor.mjs'));
+    assert(!validationStepsText(plan).includes('node scripts/harness-doctor.mjs'));
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }
