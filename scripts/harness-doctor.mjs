@@ -517,7 +517,7 @@ function extractMarkdownLinks(text) {
   const lines = normalized.split('\n');
   let inFence = false;
   const htmlCommentState = { inComment: false };
-  let listIndents = [];
+  let listContexts = [];
   let offset = 0;
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
@@ -528,12 +528,12 @@ function extractMarkdownLinks(text) {
       offset += line.length + 1;
       continue;
     }
-    if (!inFence && isIndentedCodeLine(uncommentedLine, { listIndents })) {
+    if (!inFence && isIndentedCodeLine(uncommentedLine, { listContexts })) {
       offset += line.length + 1;
       continue;
     }
     if (!inFence) {
-      listIndents = updateListIndents(uncommentedLine, listIndents);
+      listContexts = updateListContexts(uncommentedLine, listContexts);
       const linkLine = maskInlineCodeSpans(uncommentedLine);
       const definition = parseReferenceDefinition(linkLine, offset, lineIndex + 1);
       if (definition) referenceDefinitions.set(normalizeReferenceLabel(definition.label), definition);
@@ -608,27 +608,41 @@ function maskHtmlComments(line, state) {
 
 function isIndentedCodeLine(line, context = {}) {
   if (!/^( {4}|\t)/.test(line)) return false;
-  const listItem = parseMarkdownListItem(line);
-  if (listItem && context.listIndents?.some((indent) => indent < listItem.indent)) return false;
+  const indent = indentationWidth(line.match(/^[ \t]*/)?.[0] ?? '');
+  const parent = deepestListParent(indent, context.listContexts ?? []);
+  if (parent && indent < parent.contentIndent + 4) return false;
   return true;
 }
 
-function updateListIndents(line, current) {
+function updateListContexts(line, current) {
   const listItem = parseMarkdownListItem(line);
   if (!listItem) {
     if (!line.trim()) return current;
+    const indent = indentationWidth(line.match(/^[ \t]*/)?.[0] ?? '');
+    const parent = deepestListParent(indent, current);
+    if (parent && indent < parent.contentIndent + 4) return current;
     return [];
   }
   return [
-    ...current.filter((indent) => indent < listItem.indent),
-    listItem.indent,
+    ...current.filter((item) => item.indent < listItem.indent),
+    listItem,
   ];
 }
 
 function parseMarkdownListItem(line) {
-  const match = /^([ \t]*)(?:[-+*]|\d+[.)])\s+/.exec(line);
+  const match = /^([ \t]*)([-+*]|\d+[.)])([ \t]+)/.exec(line);
   if (!match) return null;
-  return { indent: indentationWidth(match[1]) };
+  const indent = indentationWidth(match[1]);
+  return {
+    indent,
+    contentIndent: indent + match[2].length + indentationWidth(match[3]),
+  };
+}
+
+function deepestListParent(indent, contexts) {
+  return contexts
+    .filter((item) => item.indent < indent)
+    .sort((left, right) => right.indent - left.indent)[0];
 }
 
 function indentationWidth(value) {

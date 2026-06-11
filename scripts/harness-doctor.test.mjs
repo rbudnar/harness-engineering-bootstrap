@@ -792,6 +792,39 @@ test('checks visible nested-list link targets', () => {
   }
 });
 
+test('checks visible list-continuation link targets', () => {
+  const root = makeRepo({
+    'AGENTS.md': '# Agent Instructions\n',
+    'README.md': '# Project\n\n- Routes:\n    [Guide](docs/missing.md)\n',
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert(report.warnings.some((warning) => (
+      warning.code === 'broken-link'
+      && warning.path === 'README.md'
+      && warning.line === 4
+      && warning.message.includes('docs/missing.md')
+    )));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('ignores links in list-contained indented code blocks', () => {
+  const root = makeRepo({
+    'AGENTS.md': '# Agent Instructions\n',
+    'README.md': '# Project\n\n- Routes:\n      [Guide](docs/missing.md)\n',
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert(!report.warnings.some((warning) => warning.code === 'broken-link'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('includes untracked non-ignored harness files in git repositories', () => {
   const root = makeRepo({
     'AGENTS.md': '# Agent Instructions\n',
