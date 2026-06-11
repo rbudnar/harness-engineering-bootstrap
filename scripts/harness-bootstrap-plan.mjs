@@ -73,6 +73,13 @@ const prioritySurveyPaths = [
   'docs/decisions.md',
   'scripts/check.sh',
   'scripts/template-fitness.mjs',
+  'scripts/harness-doctor.mjs',
+  'scripts/harness-doctor.cjs',
+  'scripts/harness-doctor.js',
+  'scripts/harness-doctor.ts',
+  'scripts/harness-doctor.py',
+  'scripts/harness-doctor.sh',
+  'scripts/harness-doctor.ps1',
   'scripts/validate-harness.py',
   'scripts/validate-docs.py',
   '.github/workflows/template-fitness.yml',
@@ -3467,6 +3474,12 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
     workingDirectory ?? '',
     options.harnessControls ?? [],
   );
+  const staleHarnessValidationWrapperReason = staleHarnessValidationWrapperReasonForCommand(
+    command,
+    harnessValidationCommandsByCommand,
+    options.harnessControls ?? [],
+    workingDirectory ?? '',
+  );
   const incompleteScanReason = options.incompleteScan && commandNeedsCompleteScan(command)
     ? 'it depends on package, workspace, or make targets that may be omitted by the truncated repository scan'
     : null;
@@ -3476,6 +3489,7 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
     && !makeTargetReason
     && !packageScriptReason
     && !harnessValidationRepoTargetReason
+    && !staleHarnessValidationWrapperReason
     && !incompleteScanReason
     && (
       (safeValidationCommand && !hasHarnessValidationCommandText(command))
@@ -3500,9 +3514,50 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
         || makeTargetReason
         || packageScriptReason
         || harnessValidationRepoTargetReason
+        || staleHarnessValidationWrapperReason
         || incompleteScanReason
         || 'it is not a known-safe validation command or it may mutate external state',
   };
+}
+
+function staleHarnessValidationWrapperReasonForCommand(command, commandsByCommand = new Map(), harnessValidationControls = [], baseDirectory = '', visited = new Set()) {
+  let currentDirectory = normalizePackageDirectory(baseDirectory || '');
+  for (const part of splitShellCommandParts(command)) {
+    const cdCommand = inspectCdCommand(part, currentDirectory);
+    if (cdCommand.isCd) {
+      if (cdCommand.unsafeReason) return null;
+      currentDirectory = cdCommand.directory;
+      continue;
+    }
+
+    const wrapped = wrappedCommandForPart(part, commandsByCommand, currentDirectory);
+    if (!wrapped?.scriptBody) continue;
+    const wrappedDirectory = wrappedCommandBaseDirectory(wrapped, currentDirectory);
+    const visitKey = `${wrapped.source ?? ''}\0${part}\0${wrappedDirectory}`;
+    if (visited.has(visitKey)) continue;
+    visited.add(visitKey);
+
+    if (hasHarnessValidationCommandText(wrapped.scriptBody)
+      && !harnessValidationCommandParts(
+        wrapped.scriptBody,
+        commandsByCommand,
+        new Set([part]),
+        harnessValidationControls,
+        wrappedDirectory,
+      ).length) {
+      return 'it wraps a harness doctor or validator command that does not match an existing control';
+    }
+
+    const nestedReason = staleHarnessValidationWrapperReasonForCommand(
+      wrapped.scriptBody,
+      commandsByCommand,
+      harnessValidationControls,
+      wrappedDirectory,
+      visited,
+    );
+    if (nestedReason) return nestedReason;
+  }
+  return null;
 }
 
 function hasHarnessValidationCommandText(command) {

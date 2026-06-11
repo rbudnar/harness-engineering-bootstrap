@@ -295,6 +295,42 @@ test('does not emit stale package or make doctor wrappers without existing contr
   }
 });
 
+test('keeps stale CI doctor package wrappers inspect-only without existing controls', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-stale-ci-wrapper-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        quality: 'node scripts/harness-doctor.mjs',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'quality.yml'), [
+      'name: Quality',
+      'on: [pull_request]',
+      'jobs:',
+      '  check:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: npm run quality',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-06-11' });
+    const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
+    const qualityRun = survey.ci.runCommands.find((run) => run.command === 'npm run quality');
+
+    assert.equal(qualityRun.safe, false);
+    assert.match(qualityRun.inspectOnlyReason, /wraps a harness doctor or validator/);
+    assert.equal(harnessValidation.status, 'missing');
+    assert(!survey.commands.some((command) => command.command === 'npm run quality'));
+    assert(!validationStepsText(plan).includes('npm run quality'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('treats an unwired harness-doctor as partial validation', () => {
   const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-unwired-doctor-validation-'));
   try {
@@ -4872,6 +4908,30 @@ test('scans root metadata before truncating large repository walks', () => {
   assert.equal(survey.versionState.installedVersion, '0.1.0');
   assert(survey.packageFiles.includes('package.json'));
   assert(survey.commands.some((run) => run.command === 'npm test'));
+});
+
+test('prioritizes root harness-doctor controls before truncating large repository walks', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-truncated-doctor-control-'));
+  try {
+    mkdirSync(resolve(tempRoot, 'scripts'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'bulk'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'scripts', 'harness-doctor.mjs'), 'console.log("ok");\n');
+    for (let index = 0; index < 20; index += 1) {
+      writeFileSync(resolve(tempRoot, 'bulk', `file-${index}.txt`), 'x');
+    }
+
+    const survey = surveyRepository(tempRoot, { maxFiles: 2 });
+    const plan = buildBootstrapPlan(survey, { date: '2026-06-11' });
+    const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
+
+    assert.equal(survey.files.truncated, true);
+    assert(survey.harnessControls.includes('scripts/harness-doctor.mjs'));
+    assert.equal(harnessValidation.status, 'partial');
+    assert.deepEqual(harnessValidation.evidence, ['scripts/harness-doctor.mjs']);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test('ignores committed Yarn caches before truncating large repository walks', () => {
