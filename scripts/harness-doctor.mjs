@@ -386,6 +386,8 @@ function checkAlwaysOnLeakage({ root, files, warnings }) {
     /^##\s+(Data Contracts?|Repo Contracts?|Evidence Packs?|Agent Runtime Safety)\b/i,
     /^###\s+Compact Example\b/i,
     /\bTrigger conditions:\s*/i,
+    /\bTrigger evidence:\s*/i,
+    /\bSmaller control:\s*/i,
   ];
   const windowLeakagePattern = /\bSource of truth:\s*[\s\S]{0,160}\bLast reviewed:\s*/i;
 

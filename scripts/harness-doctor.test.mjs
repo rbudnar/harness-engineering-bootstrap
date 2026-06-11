@@ -557,6 +557,29 @@ test('reports plural optional-module headings in always-on files', () => {
   }
 });
 
+test('reports optional-module admission labels in always-on files', () => {
+  const root = makeRepo({
+    'AGENTS.md': [
+      '# Agent Instructions',
+      '',
+      'Keep this file short and route details elsewhere.',
+      '',
+      'Trigger evidence: copied optional module criteria.',
+      'Smaller control: a route would be enough.',
+      'Validation: run a routed validator.',
+      'Retirement: delete when no longer useful.',
+    ].join('\n'),
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    const warning = report.warnings.find((item) => item.code === 'always-on-leakage');
+    assert.equal(warning?.line, 5);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('ignores non-load-bearing frontmatter metadata', () => {
   const root = makeRepo({
     'AGENTS.md': '# Agent Instructions\n',

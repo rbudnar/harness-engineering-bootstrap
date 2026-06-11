@@ -1178,6 +1178,7 @@ function collectPackageScriptsFromManifest(manifest, packageManager, packageMani
       return {
         source: manifest.path,
         command,
+        scriptBody: String(scripts[name] ?? ''),
         unsafeReason: unsafePackageScriptReason(command, manifest, packageManifests, {
           unsafeMakeTargets,
           incompleteScan: options.incompleteScan,
@@ -1187,7 +1188,7 @@ function collectPackageScriptsFromManifest(manifest, packageManager, packageMani
     })
     .filter((script) => !script.unsafeReason)
     .filter((script) => isSafeValidationCommand(script.command))
-    .map(({ source, command }) => ({ source, command }));
+    .map(({ source, command, scriptBody }) => ({ source, command, scriptBody }));
 }
 
 function packageScriptsObject(value) {
@@ -2717,11 +2718,22 @@ function isHarnessValidationControlPath(path) {
 }
 
 function harnessValidationAutomationEvidence(survey) {
-  return dedupe(
-    survey.commands
-      .filter((command) => isHarnessValidationCommand(command.command))
-      .map((command) => `${command.source}: ${formatInlineValue(command.command)}`),
-  );
+  const commandsByCommand = new Map(survey.commands.map((command) => [command.command, command]));
+  const evidence = [];
+
+  for (const run of survey.ci.runCommands.filter((command) => command.safe)) {
+    if (isHarnessValidationCommand(run.command)) {
+      evidence.push(`${run.source}: ${formatInlineValue(run.command)}`);
+      continue;
+    }
+
+    const wrapped = commandsByCommand.get(run.command);
+    if (wrapped?.scriptBody && isHarnessValidationCommand(wrapped.scriptBody)) {
+      evidence.push(`${run.source}: ${formatInlineValue(run.command)} -> ${formatInlineValue(wrapped.scriptBody)}`);
+    }
+  }
+
+  return dedupe(evidence);
 }
 
 function isHarnessValidationCommand(command) {
