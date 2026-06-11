@@ -515,30 +515,34 @@ function extractMarkdownLinks(text) {
   const linkLines = [];
   const normalized = text.replace(/\r\n/g, '\n');
   const lines = normalized.split('\n');
-  let inFence = false;
+  let activeFence = null;
   const htmlCommentState = { inComment: false };
   let listContexts = [];
   let offset = 0;
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const line = lines[lineIndex];
-    const uncommentedLine = inFence ? line : maskHtmlComments(line, htmlCommentState);
-    if (/^\s*(```|~~~)/.test(uncommentedLine)) {
-      inFence = !inFence;
+    const uncommentedLine = activeFence ? line : maskHtmlComments(line, htmlCommentState);
+    const fence = parseMarkdownFence(uncommentedLine);
+    if (activeFence) {
+      if (closesMarkdownFence(fence, activeFence)) activeFence = null;
       offset += line.length + 1;
       continue;
     }
-    if (!inFence && isIndentedCodeLine(uncommentedLine, { listContexts })) {
+    if (fence) {
+      activeFence = fence;
       offset += line.length + 1;
       continue;
     }
-    if (!inFence) {
-      listContexts = updateListContexts(uncommentedLine, listContexts);
-      const linkLine = maskInlineCodeSpans(uncommentedLine);
-      const definition = parseReferenceDefinition(linkLine, offset, lineIndex + 1);
-      if (definition) referenceDefinitions.set(normalizeReferenceLabel(definition.label), definition);
-      linkLines.push({ line: linkLine, offset, lineNumber: lineIndex + 1, isReferenceDefinition: Boolean(definition) });
+    if (isIndentedCodeLine(uncommentedLine, { listContexts })) {
+      offset += line.length + 1;
+      continue;
     }
+    listContexts = updateListContexts(uncommentedLine, listContexts);
+    const linkLine = maskInlineCodeSpans(uncommentedLine);
+    const definition = parseReferenceDefinition(linkLine, offset, lineIndex + 1);
+    if (definition) referenceDefinitions.set(normalizeReferenceLabel(definition.label), definition);
+    linkLines.push({ line: linkLine, offset, lineNumber: lineIndex + 1, isReferenceDefinition: Boolean(definition) });
     offset += line.length + 1;
   }
 
@@ -604,6 +608,19 @@ function maskHtmlComments(line, state) {
     index = end + 3;
   }
   return masked;
+}
+
+function parseMarkdownFence(line) {
+  const match = /^( {0,3})(`{3,}|~{3,})/.exec(line);
+  if (!match) return null;
+  return {
+    marker: match[2][0],
+    length: match[2].length,
+  };
+}
+
+function closesMarkdownFence(fence, activeFence) {
+  return Boolean(fence && fence.marker === activeFence.marker && fence.length >= activeFence.length);
 }
 
 function isIndentedCodeLine(line, context = {}) {
@@ -825,18 +842,22 @@ function parseBodyMetadata(text) {
   const lineByField = {};
   const fieldKind = {};
   let validationLine = null;
-  let inFence = false;
+  let activeFence = null;
   let inHeaderMetadata = true;
   const htmlCommentState = { inComment: false };
 
   for (let index = 0; index < lines.length; index += 1) {
-    const uncommentedLine = inFence ? lines[index] : maskHtmlComments(lines[index], htmlCommentState);
+    const uncommentedLine = activeFence ? lines[index] : maskHtmlComments(lines[index], htmlCommentState);
     const line = uncommentedLine.trim();
-    if (/^\s*(```|~~~)/.test(uncommentedLine)) {
-      inFence = !inFence;
+    const fence = parseMarkdownFence(uncommentedLine);
+    if (activeFence) {
+      if (closesMarkdownFence(fence, activeFence)) activeFence = null;
       continue;
     }
-    if (inFence) continue;
+    if (fence) {
+      activeFence = fence;
+      continue;
+    }
     if (isIndentedCodeLine(uncommentedLine)) continue;
     if (/^##\s+Validation\b/i.test(line)) validationLine = index + 1;
     if (/^##\s+/.test(line)) inHeaderMetadata = false;
