@@ -1242,6 +1242,7 @@ function collectMakeTargets(root, fileSet, unsafeTargets = collectUnsafeMakeTarg
     .map((target) => ({
       source: target.path,
       command: target.directory ? `make -C ${quotePath(target.directory)} ${target.name}` : `make ${target.name}`,
+      directory: target.directory,
       scriptBody: target.recipe,
     }));
 }
@@ -2808,7 +2809,7 @@ function harnessValidationEvidenceForRun(source, command, commandsByCommand, har
       ? harnessValidationCommandParts(
         wrapped.scriptBody,
         commandsByCommand,
-        new Set([part]),
+        new Set([wrappedCommandVisitKey(part, wrapped, wrappedDirectory)]),
         harnessValidationControls,
         wrappedDirectory,
       )
@@ -3131,14 +3132,16 @@ function harnessValidationCommandParts(command, commandsByCommand = new Map(), v
     }
 
     const wrapped = wrappedCommandForPart(part, commandsByCommand, currentDirectory);
-    if (!wrapped?.scriptBody || visited.has(part)) continue;
-    visited.add(part);
+    const wrappedDirectory = wrappedCommandBaseDirectory(wrapped, currentDirectory);
+    const visitKey = wrappedCommandVisitKey(part, wrapped, wrappedDirectory);
+    if (!wrapped?.scriptBody || visited.has(visitKey)) continue;
+    visited.add(visitKey);
     const wrappedParts = harnessValidationCommandParts(
       wrapped.scriptBody,
       commandsByCommand,
       visited,
       harnessValidationControls,
-      wrappedCommandBaseDirectory(wrapped, currentDirectory),
+      wrappedDirectory,
     );
     if (wrappedParts.length && hasNoOpForwardedPackageScriptArgs(part)) continue;
     parts.push(...wrappedParts);
@@ -3164,13 +3167,15 @@ function harnessValidationCommandRepoTargetReason(command, commandsByCommand = n
     if (reason) return reason;
 
     const wrapped = wrappedCommandForPart(part, commandsByCommand, currentDirectory);
-    if (!wrapped?.scriptBody || visited.has(part)) continue;
-    visited.add(part);
+    const wrappedDirectory = wrappedCommandBaseDirectory(wrapped, currentDirectory);
+    const visitKey = wrappedCommandVisitKey(part, wrapped, wrappedDirectory);
+    if (!wrapped?.scriptBody || visited.has(visitKey)) continue;
+    visited.add(visitKey);
     const wrappedReason = harnessValidationCommandRepoTargetReason(
       wrapped.scriptBody,
       commandsByCommand,
       visited,
-      wrappedCommandBaseDirectory(wrapped, currentDirectory),
+      wrappedDirectory,
       harnessValidationControls,
     );
     if (wrappedReason) return wrappedReason;
@@ -3208,6 +3213,10 @@ function wrappedCommandBaseDirectory(wrapped, fallbackDirectory = '') {
     return directory === '.' ? '' : directory;
   }
   return normalizePackageDirectory(fallbackDirectory || '');
+}
+
+function wrappedCommandVisitKey(part, wrapped, directory) {
+  return `${wrapped?.source ?? ''}\0${normalizePackageDirectory(directory || '')}\0${part}`;
 }
 
 function hasPackageWrapperContext(part, currentDirectory = '') {
@@ -3533,7 +3542,7 @@ function staleHarnessValidationWrapperReasonForCommand(command, commandsByComman
     const wrapped = wrappedCommandForPart(part, commandsByCommand, currentDirectory);
     if (!wrapped?.scriptBody) continue;
     const wrappedDirectory = wrappedCommandBaseDirectory(wrapped, currentDirectory);
-    const visitKey = `${wrapped.source ?? ''}\0${part}\0${wrappedDirectory}`;
+    const visitKey = wrappedCommandVisitKey(part, wrapped, wrappedDirectory);
     if (visited.has(visitKey)) continue;
     visited.add(visitKey);
 
@@ -3541,7 +3550,7 @@ function staleHarnessValidationWrapperReasonForCommand(command, commandsByComman
       && !harnessValidationCommandParts(
         wrapped.scriptBody,
         commandsByCommand,
-        new Set([part]),
+        new Set([visitKey]),
         harnessValidationControls,
         wrappedDirectory,
       ).length) {
