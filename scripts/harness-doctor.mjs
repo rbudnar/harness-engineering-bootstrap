@@ -51,6 +51,7 @@ export function runDoctor(options = {}) {
   const asOf = parseDateOnly(options.date ?? today());
   if (!asOf) throw new Error(`Invalid audit date: ${options.date}`);
   const files = listRepositoryFiles(root);
+  const fileSet = new Set(files);
   const markdownFiles = files.filter((file) => extname(file).toLowerCase() === '.md');
   const alwaysOnFiles = listAlwaysOnAuditFiles(files);
   const linkFiles = [...new Set([...markdownFiles, ...alwaysOnFiles])].sort();
@@ -58,7 +59,7 @@ export function runDoctor(options = {}) {
   const observations = [];
 
   checkRequiredRoutes({ root, files, warnings, observations });
-  checkMarkdownLinks({ root, markdownFiles: linkFiles, warnings });
+  checkMarkdownLinks({ root, markdownFiles: linkFiles, fileSet, warnings });
   checkDurableMetadata({ root, markdownFiles, warnings, asOf });
   checkAlwaysOnLeakage({ root, files: alwaysOnFiles, warnings });
   checkDuplicateAlwaysOnGuidance({ root, files: alwaysOnFiles, warnings });
@@ -246,14 +247,14 @@ function checkRequiredRoutes({ root, files, warnings, observations }) {
   }
 }
 
-function checkMarkdownLinks({ root, markdownFiles, warnings }) {
+function checkMarkdownLinks({ root, markdownFiles, fileSet, warnings }) {
   for (const file of markdownFiles) {
     const text = readText(root, file);
     const links = extractMarkdownLinks(text);
     for (const link of links) {
       const resolved = resolveInternalLinkTarget({ root, fromFile: file, href: link.href });
       if (!resolved) continue;
-      if (!existsSync(resolve(root, resolved))) {
+      if (!fileSet.has(resolved)) {
         warnings.push({
           code: 'broken-link',
           path: file,

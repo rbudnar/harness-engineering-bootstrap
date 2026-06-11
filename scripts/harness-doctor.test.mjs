@@ -137,6 +137,25 @@ test('ignores internal links that normalize outside the repo root', () => {
   }
 });
 
+test('reports case-only broken Markdown links on case-insensitive filesystems', () => {
+  const root = makeRepo({
+    'AGENTS.md': '# Agent Instructions\n',
+    'README.md': '# Project\n\nSee [Foo](docs/Foo.md).\n',
+    'docs/foo.md': '# Foo\n',
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert(report.warnings.some((warning) => (
+      warning.code === 'broken-link'
+      && warning.path === 'README.md'
+      && warning.message.includes('docs/Foo.md')
+    )));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('ignores non-load-bearing frontmatter metadata', () => {
   const root = makeRepo({
     'AGENTS.md': '# Agent Instructions\n',
