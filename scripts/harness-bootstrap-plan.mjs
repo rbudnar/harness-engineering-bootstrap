@@ -781,9 +781,9 @@ function buildRequiredCore(survey) {
         : 'missing',
       evidence: survey.harnessControls.filter((path) => /template-fitness|validate-harness|harness-audit/i.test(path)),
       action: survey.harnessControls.some((path) => /template-fitness|validate-harness|harness-audit/i.test(path))
-        ? 'Keep harness validation wired into local checks or CI.'
-        : 'Add a minimal harness validator only after the first required harness files exist.',
-      smallerControl: 'Start with size/route checks before adding semantic validators.',
+        ? 'Keep harness validation wired into the canonical quality gate and CI or equivalent automation so it runs without a human remembering it.'
+        : 'Add a minimal warning-mode harness doctor or validator after the first required harness files exist, then wire it into the canonical quality gate and CI or equivalent automation before accepting the bootstrap.',
+      smallerControl: 'Start with warning-mode size, route, link, and leakage checks before adding semantic validators; do not rely on manual reminders for recurring harness drift checks.',
     },
     {
       id: 'metrics-baseline',
@@ -915,6 +915,7 @@ function buildValidationSteps(survey, options = {}) {
     steps.push({ text: 'For this template repo, keep `node scripts/template-fitness.mjs` green.' });
   }
 
+  steps.push({ text: 'Before accepting the bootstrap, verify the harness doctor or validator is wired into the repo\'s canonical quality gate and CI or equivalent automation so future runs do not depend on human memory.' });
   steps.push({ text: 'Get a fresh-context review before implementation and again before closing the bootstrap PR.' });
 
   return dedupeObjects(steps, (step) => step.command ? `${step.label}\0${step.command}` : step.text);
@@ -944,7 +945,7 @@ function buildOpenQuestions(survey, requiredCore, modules) {
   }
 
   if (!survey.ci.files.length) {
-    questions.push('Is CI intentionally absent, or should harness validation include adding a basic CI check?');
+    questions.push('Is CI intentionally absent? If not, add a basic CI check that runs harness validation automatically; if yes, name the equivalent automated runner before accepting the bootstrap.');
   }
 
   return questions;

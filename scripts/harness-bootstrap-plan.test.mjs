@@ -28,6 +28,11 @@ test('surveys a small JavaScript repo and renders the review-ready plan contract
     ['npm ci\nnpm test', 'npm run build', 'npm run lint', 'npm test'],
   );
   assert.equal(plan.requiredCore.find((item) => item.id === 'thin-agent-entrypoint').status, 'present');
+  assert.match(
+    plan.requiredCore.find((item) => item.id === 'harness-validation').action,
+    /canonical quality gate and CI or equivalent automation/,
+  );
+  assert.match(validationStepsText(plan), /wired into the repo's canonical quality gate and CI or equivalent automation/);
   assert.match(markdown, /## Review And Handoff Contract/);
   assert.match(markdown, /Planner/);
   assert.match(markdown, /Explicitly Rejected Modules/);
@@ -359,6 +364,9 @@ test('json CLI output is reusable by the future scaffolder surface', () => {
   assert.equal(plan.planArtifact.created, '2026-05-28');
   assert.equal(plan.survey.repoName, 'basic-js');
   assert(plan.requiredCore.some((item) => item.id === 'quality-gate'));
+  assert(plan.validationSteps.some((step) => (
+    step.text?.includes('future runs do not depend on human memory')
+  )));
   assert(plan.reviewContract.some((item) => item.role === 'Reviewer'));
 });
 

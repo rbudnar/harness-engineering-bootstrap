@@ -33,7 +33,7 @@ Read the generated plan before copying or creating anything. The most important 
 - `Explicitly Rejected Modules`: things the planner intentionally did not recommend.
 - `Validation Steps`: commands or checks to run before accepting the harness.
 
-Apply only the items you accept in the target repo, usually starting with a thin `AGENTS.md` and any tiny provider adapters that point back to it. Use [the template](templates/Harness%20Engineering%20Bootstrap.md) as reference material while implementing the plan; do not copy every optional module by default.
+Apply only the items you accept in the target repo, usually starting with a thin `AGENTS.md` and any tiny provider adapters that point back to it. Use [the template](templates/Harness%20Engineering%20Bootstrap.md) as reference material while implementing the plan; do not copy every optional module by default. Do not accept a first-time bootstrap until the target repo's harness doctor or validator is wired into the canonical quality gate and CI or equivalent automation.
 
 After changes in the target repo, rerun the planner and the target repo's validation commands. To capture machine-readable planner output:
 
