@@ -630,12 +630,23 @@ function closesMarkdownFence(fence, activeFence) {
 }
 
 function markdownContainerLine(line, listContexts = []) {
-  const listItem = parseMarkdownListItem(line);
-  if (listItem) return line.slice(listItem.contentStart);
-  const indent = indentationWidth(line.match(/^[ \t]*/)?.[0] ?? '');
+  const unquotedLine = stripMarkdownBlockquote(line);
+  const listItem = parseMarkdownListItem(unquotedLine);
+  if (listItem) return unquotedLine.slice(listItem.contentStart);
+  const indent = indentationWidth(unquotedLine.match(/^[ \t]*/)?.[0] ?? '');
   const parent = deepestListParent(indent, listContexts);
-  if (!parent || indent < parent.contentIndent) return line;
-  return removeIndentWidth(line, parent.contentIndent);
+  if (!parent || indent < parent.contentIndent) return unquotedLine;
+  return removeIndentWidth(unquotedLine, parent.contentIndent);
+}
+
+function stripMarkdownBlockquote(line) {
+  let value = line;
+  let previous = null;
+  while (value !== previous) {
+    previous = value;
+    value = value.replace(/^( {0,3})>\s?/, '$1');
+  }
+  return value;
 }
 
 function removeIndentWidth(line, targetWidth) {

@@ -380,6 +380,53 @@ test('counts CI Make quality targets that run harness-doctor as automated valida
   }
 });
 
+test('counts CI Make doctor targets that run harness-doctor as automated validation', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-make-target-validation-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'scripts'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'scripts', 'harness-doctor.mjs'), 'console.log("ok");\n');
+    writeFileSync(resolve(tempRoot, 'Makefile'), [
+      'doctor:',
+      '\tnode scripts/harness-doctor.mjs',
+      '',
+      'harness-doctor:',
+      '\tnode scripts/harness-doctor.mjs',
+      '',
+    ].join('\n'));
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'quality.yml'), [
+      'name: Quality',
+      'on: [pull_request]',
+      'jobs:',
+      '  check:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: make doctor',
+      '      - run: make harness-doctor',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-06-11' });
+    const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
+
+    assert(survey.commands.some((command) => (
+      command.command === 'make doctor'
+      && command.scriptBody === 'node scripts/harness-doctor.mjs'
+    )));
+    assert(survey.commands.some((command) => (
+      command.command === 'make harness-doctor'
+      && command.scriptBody === 'node scripts/harness-doctor.mjs'
+    )));
+    assert.equal(harnessValidation.status, 'present');
+    assert(harnessValidation.evidence.includes('.github/workflows/quality.yml: make doctor -> node scripts/harness-doctor.mjs'));
+    assert(harnessValidation.evidence.includes('.github/workflows/quality.yml: make harness-doctor'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('uses doctor-based harness evidence for update-mode detection', () => {
   const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-bootstrap-state-'));
   try {

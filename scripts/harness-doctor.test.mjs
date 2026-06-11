@@ -498,6 +498,27 @@ test('ignores markdown links inside list-contained fenced examples', () => {
   }
 });
 
+test('ignores markdown links inside blockquoted fenced examples', () => {
+  const root = makeRepo({
+    'AGENTS.md': '# Agent Instructions\n',
+    'README.md': [
+      '# Project',
+      '',
+      '> ```markdown',
+      '> [Missing](docs/missing.md)',
+      '> ```',
+      '',
+    ].join('\n'),
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert(!report.warnings.some((warning) => warning.code === 'broken-link'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('accepts exact-case directory links but warns for case-only directory drift', () => {
   const root = makeRepo({
     'AGENTS.md': '# Agent Instructions\n',

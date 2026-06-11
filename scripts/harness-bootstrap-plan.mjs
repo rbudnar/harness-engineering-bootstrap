@@ -348,6 +348,7 @@ export function surveyRepository(inputPath, options = {}) {
   const makeRuntimeSafetyHints = collectMakeRuntimeSafetyHints(root, fileSet, packageManifests, runtimeSafetyUnsafeMakeTargets);
   const ci = collectCi(root, allFiles, packageManifests, unsafeMakeTargets, {
     incompleteScan: files.truncated,
+    makeTargets,
     runtimeSafetyUnsafeMakeTargets,
   });
   const scriptFiles = allFiles.filter((path) => path.startsWith('scripts/')).sort();
@@ -1218,7 +1219,8 @@ function scopedPackageScriptCommand(packageManager, name, directory) {
 function collectMakeTargets(root, fileSet, unsafeTargets = collectUnsafeMakeTargets(root, fileSet)) {
   const targets = collectMakeTargetRecipes(root, fileSet);
   return targets
-    .filter((target) => /^(test|build|lint|check|quality|validate|coverage)$/i.test(target.name))
+    .filter((target) => /^(test|build|lint|check|quality|validate|coverage)$/i.test(target.name)
+      || isHarnessValidationScriptBody(target.recipe))
     .filter((target) => !unsafeTargets.has(makeTargetKey(target.directory, target.name)))
     .map((target) => ({
       source: target.path,
@@ -1805,6 +1807,7 @@ function collectWorkflowRunCommands(text, source, packageManifests = [], unsafeM
           workingDirectory,
           runtimeSafetyReason,
           unsafeMakeTargets,
+          makeTargets: options.makeTargets,
           runtimeSafetyUnsafeMakeTargets: options.runtimeSafetyUnsafeMakeTargets,
           incompleteScan: options.incompleteScan,
         }));
@@ -1814,6 +1817,7 @@ function collectWorkflowRunCommands(text, source, packageManifests = [], unsafeM
         workingDirectory,
         runtimeSafetyReason,
         unsafeMakeTargets,
+        makeTargets: options.makeTargets,
         runtimeSafetyUnsafeMakeTargets: options.runtimeSafetyUnsafeMakeTargets,
         incompleteScan: options.incompleteScan,
       }));
@@ -1955,6 +1959,7 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
   const ciOptions = (extra = {}) => ({
     ...extra,
     unsafeMakeTargets,
+    makeTargets: options.makeTargets,
     runtimeSafetyUnsafeMakeTargets: options.runtimeSafetyUnsafeMakeTargets,
     incompleteScan: options.incompleteScan,
   });
@@ -2882,6 +2887,7 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
     && !incompleteScanReason
     && (
       isSafeValidationCommand(command)
+      || makeTargetRunsHarnessValidation(command, options.makeTargets ?? [])
       || packageScriptRunsHarnessValidation(command, packageManifest, packageManifests, workingDirectory ?? '')
     );
   return {
@@ -2921,6 +2927,14 @@ function packageScriptRunsHarnessValidation(command, packageManifest, packageMan
   }
 
   return false;
+}
+
+function makeTargetRunsHarnessValidation(command, makeTargets = []) {
+  const targetsByCommand = new Map(makeTargets.map((target) => [target.command, target]));
+  return splitShellCommandParts(command).some((part) => {
+    const target = targetsByCommand.get(part);
+    return target?.scriptBody && isHarnessValidationScriptBody(target.scriptBody);
+  });
 }
 
 function unsafeMakeTargetReason(command, unsafeMakeTargets, baseDirectory = '') {
