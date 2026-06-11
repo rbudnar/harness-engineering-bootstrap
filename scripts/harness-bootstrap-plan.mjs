@@ -1223,6 +1223,7 @@ function collectMakeTargets(root, fileSet, unsafeTargets = collectUnsafeMakeTarg
     .map((target) => ({
       source: target.path,
       command: target.directory ? `make -C ${quotePath(target.directory)} ${target.name}` : `make ${target.name}`,
+      scriptBody: target.recipe,
     }));
 }
 
@@ -2717,7 +2718,8 @@ function healthControlEvidence(survey) {
 }
 
 function isHarnessValidationControlPath(path) {
-  const value = String(path ?? '');
+  const value = String(path ?? '').replace(/\\/g, '/');
+  if (value.toLowerCase().startsWith('.github/workflows/')) return false;
   if (/\.test\./i.test(value)) return false;
   return /template-fitness|validate-harness|harness-audit|harness-doctor/i.test(value);
 }
