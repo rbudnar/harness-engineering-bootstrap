@@ -973,6 +973,38 @@ test('does not count non-runnable harness doctor docs or specs as validators', (
   }
 });
 
+test('does not treat substring harness-doctor wrapper names as safe validation commands', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-substring-wrapper-validation-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'scripts'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'scripts', 'my-harness-doctor-wrapper.mjs'), 'console.log("wrapper");\n');
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'quality.yml'), [
+      'name: Quality',
+      'on: [pull_request]',
+      'jobs:',
+      '  check:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: node scripts/my-harness-doctor-wrapper.mjs',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-06-11' });
+    const wrapperRun = survey.ci.runCommands.find((run) => run.command === 'node scripts/my-harness-doctor-wrapper.mjs');
+    const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
+
+    assert.equal(wrapperRun.safe, false);
+    assert(!survey.commands.some((command) => command.command === 'node scripts/my-harness-doctor-wrapper.mjs'));
+    assert.equal(harnessValidation.status, 'missing');
+    assert.deepEqual(harnessValidation.evidence, []);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('counts CI Make quality targets that run harness-doctor as automated validation', () => {
   const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-make-wrapper-validation-'));
   try {

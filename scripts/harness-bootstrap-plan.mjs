@@ -5619,6 +5619,7 @@ function isSafeValidationCommandPart(part) {
   if (commandPartReferencesRuntimeSurface(normalizedPart)) return false;
   if (/(^|[^&])&(?!&)/.test(lower)) return false;
   if (unsafeScopedPackageDirectoryReason(normalizedPart)) return false;
+  if (isHarnessValidationCommand(normalizedPart)) return true;
 
   const validationPatterns = [
     /^node\s+--test(?:\s+.*)?$/,
@@ -5632,8 +5633,6 @@ function isSafeValidationCommandPart(part) {
     /^(pytest|python\s+-m\s+pytest|go\s+test|cargo\s+test|mvn\s+test|gradle\s+test|(?:\.\/|\.\\)?mvnw(?:\.cmd)?\s+test|(?:\.\/|\.\\)?gradlew(?:\.bat)?\s+test)(?:\s+.*)?$/,
     /^make\s+(test|build|lint|check|quality|validate|coverage)(?:\s+\w+=\S+)?$/,
     /^(terraform\s+validate|terraform\s+fmt\s+-check)(?:\s+.*)?$/,
-    /^node\s+\S*(template-fitness|validate-harness|harness-audit|harness-doctor)\S*(?:\s+.*)?$/,
-    /^(template-fitness|validate-harness|harness-audit|harness-doctor)(?:\s+.*)?$/,
     /^npm\s+ci(?:\s+.*)?$/,
     /^pnpm\s+install(?:\s+.*)?$/,
     /^yarn\s+install(?:\s+.*)?$/,
