@@ -62,6 +62,7 @@ test('counts automated harness-doctor as existing harness validation', () => {
       '    runs-on: ubuntu-latest',
       '    steps:',
       '      - run: node scripts/harness-doctor.mjs',
+      '      - run: node scripts/harness-doctor.mjs --repo .',
       '',
     ].join('\n'));
 
@@ -74,6 +75,7 @@ test('counts automated harness-doctor as existing harness validation', () => {
     assert.equal(harnessValidation.status, 'present');
     assert(harnessValidation.evidence.includes('scripts/harness-doctor.mjs'));
     assert(harnessValidation.evidence.includes('.github/workflows/quality.yml: node scripts/harness-doctor.mjs'));
+    assert(harnessValidation.evidence.includes('.github/workflows/quality.yml: node scripts/harness-doctor.mjs --repo .'));
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }
@@ -136,6 +138,47 @@ test('does not count bare doctor commands when the control lives under scripts',
 
     assert.equal(typoRun.safe, false);
     assert.equal(bareRun.safe, false);
+    assert.equal(harnessValidation.status, 'partial');
+    assert.deepEqual(harnessValidation.evidence, ['scripts/harness-doctor.mjs']);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('does not count doctor commands that point --repo at another tree', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-wrong-repo-validation-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'scripts'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'scripts', 'harness-doctor.mjs'), 'console.log("ok");\n');
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        quality: 'node scripts/harness-doctor.mjs --repo ../other',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'quality.yml'), [
+      'name: Quality',
+      'on: [pull_request]',
+      'jobs:',
+      '  check:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: node scripts/harness-doctor.mjs --repo ../other',
+      '      - run: npm run quality',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-06-11' });
+    const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
+    const directRun = survey.ci.runCommands.find((run) => run.command === 'node scripts/harness-doctor.mjs --repo ../other');
+    const packageRun = survey.ci.runCommands.find((run) => run.command === 'npm run quality');
+
+    assert.equal(directRun.safe, false);
+    assert.match(directRun.inspectOnlyReason, /--repo/);
+    assert.equal(packageRun.safe, false);
+    assert.match(packageRun.inspectOnlyReason, /--repo/);
     assert.equal(harnessValidation.status, 'partial');
     assert.deepEqual(harnessValidation.evidence, ['scripts/harness-doctor.mjs']);
   } finally {
