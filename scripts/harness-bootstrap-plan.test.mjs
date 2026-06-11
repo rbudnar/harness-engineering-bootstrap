@@ -949,6 +949,30 @@ test('does not count workflow filenames as harness validators without scripts', 
   }
 });
 
+test('does not count non-runnable harness doctor docs or specs as validators', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-non-runnable-validation-'));
+  try {
+    mkdirSync(resolve(tempRoot, 'docs'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'tests'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'docs', 'README.md'), '# Docs\n');
+    writeFileSync(resolve(tempRoot, 'docs', 'harness-doctor.md'), '# Manual doctor notes\n');
+    writeFileSync(resolve(tempRoot, 'tests', 'harness-doctor.spec.mjs'), 'console.log("spec only");\n');
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-06-11' });
+    const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
+
+    assert(survey.harnessControls.includes('docs/harness-doctor.md'));
+    assert(survey.harnessControls.includes('tests/harness-doctor.spec.mjs'));
+    assert.equal(harnessValidation.status, 'missing');
+    assert.deepEqual(harnessValidation.evidence, []);
+    assert.equal(survey.bootstrapState.status, 'fresh');
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('counts CI Make quality targets that run harness-doctor as automated validation', () => {
   const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-make-wrapper-validation-'));
   try {

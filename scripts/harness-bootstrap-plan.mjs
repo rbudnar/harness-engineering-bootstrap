@@ -2737,8 +2737,7 @@ function healthControlEvidence(survey) {
 function isHarnessValidationControlPath(path) {
   const value = String(path ?? '').replace(/\\/g, '/');
   if (value.toLowerCase().startsWith('.github/workflows/')) return false;
-  if (/\.test\./i.test(value)) return false;
-  return /template-fitness|validate-harness|harness-audit|harness-doctor/i.test(value);
+  return isHarnessValidationExecutableWord(value);
 }
 
 function harnessValidationAutomationEvidence(survey, harnessValidationControls = survey.harnessControls?.filter(isHarnessValidationControlPath) ?? []) {
