@@ -38,6 +38,48 @@ superseded_by: none
   }
 });
 
+test('accepts contract-memory body metadata shape for routed contracts', () => {
+  const root = makeRepo({
+    'docs/data-contracts/INDEX.md': '# Data Contracts\n\n- [Orders](orders.md)\n',
+    'docs/data-contracts/orders.md': `# Orders Data Contract
+
+Status: active
+Owner: Data Platform
+Source of truth: warehouse catalog orders table
+Last reviewed: 2026-06-01
+Review after: 2026-12-01
+
+## Validation
+
+- Inspect: warehouse catalog orders table
+- Test/check: contract fixture replay
+
+# Known Pitfalls
+`,
+    'docs/repo-contracts/INDEX.md': '# Repo Contracts\n\n- [Design Tokens](design-tokens.md)\n',
+    'docs/repo-contracts/design-tokens.md': `# Design Token Repo Contract
+
+Status: active
+Owner: Frontend Platform
+Source of truth: design-system generated tokens package
+Last reviewed: 2026-06-01
+Review after: 2026-12-01
+
+## Validation
+
+- Inspect: design-system release notes
+- Test/check: token import snapshot
+`,
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert.equal(report.summary.warningCount, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('warns for stale metadata, missing metadata, missing indexes, and broken links', () => {
   const root = makeRepo({
     'AGENTS.md': '# Agent Instructions\n',
@@ -156,6 +198,21 @@ test('reports case-only broken Markdown links on case-insensitive filesystems', 
   }
 });
 
+test('ignores markdown links inside inline code spans', () => {
+  const root = makeRepo({
+    'AGENTS.md': '# Agent Instructions\n',
+    'README.md': '# Project\n\nUse `[missing](docs/missing.md)` syntax, then see [ok](docs/ok.md).\n',
+    'docs/ok.md': '# OK\n',
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert.equal(report.summary.warningCount, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('accepts exact-case directory links but warns for case-only directory drift', () => {
   const root = makeRepo({
     'AGENTS.md': '# Agent Instructions\n',
@@ -168,6 +225,26 @@ test('accepts exact-case directory links but warns for case-only directory drift
     const brokenLinks = report.warnings.filter((warning) => warning.code === 'broken-link');
     assert.equal(brokenLinks.length, 1);
     assert.equal(brokenLinks[0].message.includes('Docs/'), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('reports always-on leakage on the matched marker line', () => {
+  const root = makeRepo({
+    'AGENTS.md': [
+      '# Agent Instructions',
+      '',
+      'Keep this file short and route details elsewhere.',
+      '',
+      'Trigger conditions: when external data changes.',
+    ].join('\n'),
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    const warning = report.warnings.find((item) => item.code === 'always-on-leakage');
+    assert.equal(warning?.line, 5);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

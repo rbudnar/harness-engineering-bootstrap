@@ -45,6 +45,7 @@ const optionalMetadataFields = [
 ];
 
 const statusValues = new Set(['active', 'draft', 'deprecated', 'superseded']);
+const bodyMetadataFields = new Set([...requiredMetadataFields, ...optionalMetadataFields]);
 
 export function runDoctor(options = {}) {
   const root = resolve(options.repo ?? process.cwd());
@@ -285,22 +286,22 @@ function buildRepositoryTargetSets(files) {
 function checkDurableMetadata({ root, markdownFiles, warnings, asOf }) {
   for (const file of markdownFiles) {
     const text = readText(root, file);
-    const frontmatter = parseFrontmatter(text);
+    const metadata = parseFrontmatter(text) ?? parseBodyMetadata(text);
     const metadataRequired = requiresDurableMetadata(file);
 
-    if (metadataRequired && !frontmatter) {
+    if (metadataRequired && !metadata) {
       warnings.push({
         code: 'missing-metadata',
         path: file,
-        message: 'load-bearing durable artifact is missing YAML frontmatter metadata.',
+        message: 'load-bearing durable artifact is missing lifecycle metadata.',
         action: `Add frontmatter fields: ${[...requiredMetadataFields, ...optionalMetadataFields].join(', ')}.`,
       });
       continue;
     }
 
-    if (!frontmatter) continue;
+    if (!metadata) continue;
 
-    const normalized = normalizeMetadata(frontmatter.fields);
+    const normalized = normalizeMetadata(metadata.fields);
     if (!metadataRequired) continue;
 
     for (const field of requiredMetadataFields) {
@@ -308,7 +309,7 @@ function checkDurableMetadata({ root, markdownFiles, warnings, asOf }) {
         warnings.push({
           code: 'missing-metadata-field',
           path: file,
-          line: frontmatter.lineByField[field] ?? 1,
+          line: metadata.lineByField[field] ?? 1,
           message: `load-bearing durable artifact is missing "${field}" metadata.`,
           action: 'Add the field or move the artifact out of a load-bearing contract/decision directory.',
         });
@@ -319,7 +320,7 @@ function checkDurableMetadata({ root, markdownFiles, warnings, asOf }) {
       warnings.push({
         code: 'unknown-status',
         path: file,
-        line: frontmatter.lineByField.status ?? 1,
+        line: metadata.lineByField.status ?? 1,
         message: `metadata status "${normalized.status}" is not one of: ${[...statusValues].join(', ')}.`,
         action: 'Use a known lifecycle status or update the local doctor policy deliberately.',
       });
@@ -329,7 +330,7 @@ function checkDurableMetadata({ root, markdownFiles, warnings, asOf }) {
       warnings.push({
         code: 'invalid-last-reviewed',
         path: file,
-        line: frontmatter.lineByField.last_reviewed ?? 1,
+        line: metadata.lineByField.last_reviewed ?? 1,
         message: `last_reviewed is not YYYY-MM-DD: ${normalized.last_reviewed}`,
         action: 'Use a date-only value so freshness metadata can be audited deterministically.',
       });
@@ -341,7 +342,7 @@ function checkDurableMetadata({ root, markdownFiles, warnings, asOf }) {
         warnings.push({
           code: 'invalid-review-after',
           path: file,
-          line: frontmatter.lineByField.review_after ?? 1,
+          line: metadata.lineByField.review_after ?? 1,
           message: `review_after is not YYYY-MM-DD: ${normalized.review_after}`,
           action: 'Use a date-only value so stale durable memory can be audited deterministically.',
         });
@@ -349,7 +350,7 @@ function checkDurableMetadata({ root, markdownFiles, warnings, asOf }) {
         warnings.push({
           code: 'stale-metadata',
           path: file,
-          line: frontmatter.lineByField.review_after ?? 1,
+          line: metadata.lineByField.review_after ?? 1,
           message: `review_after ${formatDate(reviewAfter)} is before audit date ${formatDate(asOf)}.`,
           action: 'Re-review the source of truth, update the date, or retire/supersede the artifact.',
         });
@@ -360,7 +361,7 @@ function checkDurableMetadata({ root, markdownFiles, warnings, asOf }) {
       warnings.push({
         code: 'missing-superseded-by',
         path: file,
-        line: frontmatter.lineByField.status ?? 1,
+        line: metadata.lineByField.status ?? 1,
         message: 'superseded artifact does not name superseded_by.',
         action: 'Point to the replacement artifact or explain why none exists.',
       });
@@ -369,19 +370,22 @@ function checkDurableMetadata({ root, markdownFiles, warnings, asOf }) {
 }
 
 function checkAlwaysOnLeakage({ root, files, warnings }) {
-  const leakagePatterns = [
-    /^##\s+(Data Contract|Repo Contract|Evidence Pack|Agent Runtime Safety)\b/im,
-    /^###\s+Compact Example\b/im,
+  const lineLeakagePatterns = [
+    /^##\s+(Data Contract|Repo Contract|Evidence Pack|Agent Runtime Safety)\b/i,
+    /^###\s+Compact Example\b/i,
     /\bTrigger conditions:\s*/i,
-    /\bSource of truth:\s*[\s\S]{0,160}\bLast reviewed:\s*/i,
   ];
+  const windowLeakagePattern = /\bSource of truth:\s*[\s\S]{0,160}\bLast reviewed:\s*/i;
 
   for (const file of files) {
     const text = readText(root, file);
     const lines = text.replace(/\r\n/g, '\n').split('\n');
     for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
       const window = lines.slice(index, index + 6).join('\n');
-      if (!leakagePatterns.some((pattern) => pattern.test(window))) continue;
+      const leaks = lineLeakagePatterns.some((pattern) => pattern.test(line))
+        || (/\bSource of truth:\s*/i.test(line) && windowLeakagePattern.test(window));
+      if (!leaks) continue;
       warnings.push({
         code: 'always-on-leakage',
         path: file,
@@ -508,12 +512,35 @@ function extractMarkdownLinks(text) {
       continue;
     }
     if (!inFence) {
-      links.push(...extractReferenceDefinitionLinks(line, offset, lineIndex + 1));
-      links.push(...extractInlineLinks(line, offset, lineIndex + 1));
+      const linkLine = maskInlineCodeSpans(line);
+      links.push(...extractReferenceDefinitionLinks(linkLine, offset, lineIndex + 1));
+      links.push(...extractInlineLinks(linkLine, offset, lineIndex + 1));
     }
     offset += line.length + 1;
   }
   return links;
+}
+
+function maskInlineCodeSpans(line) {
+  let masked = '';
+  let codeFence = '';
+  for (let index = 0; index < line.length; index += 1) {
+    if (line[index] === '`') {
+      let end = index + 1;
+      while (end < line.length && line[end] === '`') end += 1;
+      const run = line.slice(index, end);
+      if (!codeFence) {
+        codeFence = run;
+      } else if (run === codeFence) {
+        codeFence = '';
+      }
+      masked += ' '.repeat(run.length);
+      index = end - 1;
+      continue;
+    }
+    masked += codeFence ? ' ' : line[index];
+  }
+  return masked;
 }
 
 function extractReferenceDefinitionLinks(line, lineOffset, lineNumber) {
@@ -636,6 +663,31 @@ function parseFrontmatter(text) {
   return { fields, lineByField };
 }
 
+function parseBodyMetadata(text) {
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  const fields = {};
+  const lineByField = {};
+  let validationLine = null;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+    if (/^##\s+Validation\b/i.test(line)) validationLine = index + 1;
+    const match = /^([A-Za-z][A-Za-z -]*):\s*(.*)$/.exec(line);
+    if (!match) continue;
+    const key = normalizeFieldName(match[1]);
+    if (!bodyMetadataFields.has(key)) continue;
+    fields[key] = unquote(match[2].trim());
+    lineByField[key] = index + 1;
+  }
+
+  if (!Object.keys(fields).length) return null;
+  if (!hasValue(fields.provenance) && validationLine) {
+    fields.provenance = 'validation section';
+    lineByField.provenance = validationLine;
+  }
+  return { fields, lineByField };
+}
+
 function normalizeMetadata(fields) {
   return Object.fromEntries(
     Object.entries(fields).map(([key, value]) => [normalizeFieldName(key), value]),
@@ -643,7 +695,7 @@ function normalizeMetadata(fields) {
 }
 
 function normalizeFieldName(name) {
-  return name.replace(/-/g, '_').toLowerCase();
+  return name.replace(/[\s-]+/g, '_').toLowerCase();
 }
 
 function hasValue(value) {
