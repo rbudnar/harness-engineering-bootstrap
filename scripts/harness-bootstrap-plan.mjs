@@ -2757,11 +2757,19 @@ function harnessValidationAutomationEvidence(survey, harnessValidationControls =
   return dedupe(evidence);
 }
 
-function harnessValidationEvidenceForRun(source, command, commandsByCommand, harnessValidationControls = []) {
+function harnessValidationEvidenceForRun(source, command, commandsByCommand, harnessValidationControls = [], baseDirectory = '') {
   const evidence = [];
+  let currentDirectory = normalizePackageDirectory(baseDirectory || '');
 
   for (const part of splitShellCommandParts(command)) {
-    if (isHarnessValidationCommand(part) && harnessValidationCommandMatchesControl(part, harnessValidationControls)) {
+    const cdCommand = inspectCdCommand(part, currentDirectory);
+    if (cdCommand.isCd) {
+      if (cdCommand.unsafeReason) return dedupe(evidence);
+      currentDirectory = cdCommand.directory;
+      continue;
+    }
+
+    if (isHarnessValidationCommand(part) && harnessValidationCommandMatchesControl(part, harnessValidationControls, currentDirectory)) {
       evidence.push(`${source}: ${formatInlineValue(part)}`);
       continue;
     }
@@ -2773,6 +2781,7 @@ function harnessValidationEvidenceForRun(source, command, commandsByCommand, har
         commandsByCommand,
         new Set([part]),
         harnessValidationControls,
+        currentDirectory,
       )
       : [];
     for (const wrappedPart of wrappedValidationParts) {
@@ -2783,14 +2792,20 @@ function harnessValidationEvidenceForRun(source, command, commandsByCommand, har
   return dedupe(evidence);
 }
 
-function isSafeHarnessValidationCommand(source, command, commandsByCommand, harnessValidationControls = []) {
+function isSafeHarnessValidationCommand(source, command, commandsByCommand, harnessValidationControls = [], baseDirectory = '') {
   let hasHarnessValidationPart = false;
+  let currentDirectory = normalizePackageDirectory(baseDirectory || '');
 
   for (const part of splitShellCommandParts(command)) {
-    if (workingDirectoryFromCdCommand(part)) continue;
+    const cdCommand = inspectCdCommand(part, currentDirectory);
+    if (cdCommand.isCd) {
+      if (cdCommand.unsafeReason) return false;
+      currentDirectory = cdCommand.directory;
+      continue;
+    }
     if (isHarmlessShellPrelude(part)) continue;
 
-    const partEvidence = harnessValidationEvidenceForRun(source, part, commandsByCommand, harnessValidationControls);
+    const partEvidence = harnessValidationEvidenceForRun(source, part, commandsByCommand, harnessValidationControls, currentDirectory);
     if (partEvidence.length) {
       hasHarnessValidationPart = true;
       continue;
@@ -2808,14 +2823,18 @@ function isHarnessValidationCommand(command) {
 }
 
 function harnessValidationCommandPayloadWord(command) {
+  return harnessValidationCommandPayload(command)?.word ?? null;
+}
+
+function harnessValidationCommandPayload(command) {
   const value = String(command ?? '');
   if (/(^|\s)--test(?:\s|$)|\.test\./i.test(value)) return null;
   if (hasShellPipeline(value) || /(^|[^&])&(?!&)/.test(value)) return null;
   const wrapperPayload = shellWrapperPayload(value);
-  if (wrapperPayload !== null) return harnessValidationCommandPayloadWord(wrapperPayload);
+  if (wrapperPayload !== null) return harnessValidationCommandPayload(wrapperPayload);
 
   const packageExecutorPayload = packageExecutorPayloads(value)
-    .map((payload) => harnessValidationCommandPayloadWord(payload))
+    .map((payload) => harnessValidationCommandPayload(payload))
     .find(Boolean);
   if (packageExecutorPayload) return packageExecutorPayload;
 
@@ -2823,10 +2842,13 @@ function harnessValidationCommandPayloadWord(command) {
   if (!words.length) return null;
   const commandWord = words[0]?.toLowerCase();
 
-  if (isHarnessValidationExecutableWord(commandWord)) return commandWord;
+  if (isHarnessValidationExecutableWord(commandWord)) {
+    if (hasHarnessValidationNoOpArgument(words.slice(1))) return null;
+    return { word: words[0], index: 0 };
+  }
   if (!isHarnessValidationRunner(commandWord)) return null;
 
-  return harnessValidationRunnerPayloadWord(words);
+  return harnessValidationRunnerPayload(words);
 }
 
 function isHarnessValidationScriptBody(body) {
@@ -2838,18 +2860,45 @@ function isHarnessValidationRunner(word) {
 }
 
 function harnessValidationRunnerPayloadWord(words) {
+  return harnessValidationRunnerPayload(words)?.word ?? null;
+}
+
+function harnessValidationRunnerPayload(words) {
   for (let index = 1; index < words.length; index += 1) {
     const word = words[index];
     if (!word || word === '--') continue;
-    if (runnerPayloadOption(word) && words[index + 1]) return stripYamlQuotes(words[index + 1]);
+    if (isHarnessValidationNoOpArgument(word)) return null;
+    if (runnerPayloadOption(word) && words[index + 1]) {
+      if (hasHarnessValidationNoOpArgument(words.slice(index + 2))) return null;
+      return { word: stripYamlQuotes(words[index + 1]), index: index + 1 };
+    }
     if (runnerOptionConsumesNext(word) && words[index + 1]) {
       index += 1;
       continue;
     }
     if (String(word).startsWith('-')) continue;
-    return stripYamlQuotes(word);
+    if (hasHarnessValidationNoOpArgument(words.slice(index + 1))) return null;
+    return { word: stripYamlQuotes(word), index };
   }
   return null;
+}
+
+function hasHarnessValidationNoOpArgument(args) {
+  return args.some((arg) => isHarnessValidationNoOpArgument(arg));
+}
+
+function isHarnessValidationNoOpArgument(arg) {
+  const lower = stripYamlQuotes(String(arg ?? '')).toLowerCase();
+  return [
+    '--help',
+    '-h',
+    '/help',
+    '/?',
+    '-?',
+    'help',
+    '--version',
+    'version',
+  ].includes(lower);
 }
 
 function runnerPayloadOption(option) {
@@ -2892,25 +2941,38 @@ function isHarnessValidationExecutableWord(word) {
   return /^(template-fitness|validate-harness|harness-audit|harness-doctor)(?:\.(?:mjs|cjs|js|ts|py|sh|ps1|cmd|bat))?$/.test(name);
 }
 
-function harnessValidationCommandMatchesControl(command, harnessValidationControls = []) {
+function harnessValidationCommandMatchesControl(command, harnessValidationControls = [], currentDirectory = '') {
   const payloadWord = harnessValidationCommandPayloadWord(command);
-  return harnessValidationPayloadMatchesControl(payloadWord, harnessValidationControls);
+  return harnessValidationPayloadMatchesControl(payloadWord, harnessValidationControls, currentDirectory);
 }
 
-function harnessValidationPayloadMatchesControl(payloadWord, harnessValidationControls = []) {
+function harnessValidationPayloadMatchesControl(payloadWord, harnessValidationControls = [], currentDirectory = '') {
   if (!payloadWord || !harnessValidationControls.length) return false;
   const payloadPath = normalizeHarnessValidationPayloadPath(payloadWord);
   const payloadName = payloadPath.split('/').pop() ?? '';
   const directToolName = payloadName.replace(/\.(?:mjs|cjs|js|ts|py|sh|ps1|cmd|bat)$/i, '');
   const payloadIsPath = payloadPath.includes('/') || payloadPath.startsWith('.');
+  const payloadCandidates = harnessValidationPayloadPathCandidates(payloadPath, payloadIsPath, currentDirectory);
 
   return harnessValidationControls.some((control) => {
     const controlPath = normalizeHarnessValidationPayloadPath(control);
     const controlName = controlPath.split('/').pop() ?? '';
     const controlToolName = controlName.replace(/\.(?:mjs|cjs|js|ts|py|sh|ps1|cmd|bat)$/i, '');
-    return payloadPath === controlPath
+    return payloadCandidates.includes(controlPath)
       || (!payloadIsPath && directToolName === controlToolName);
   });
+}
+
+function harnessValidationPayloadPathCandidates(payloadPath, payloadIsPath, currentDirectory = '') {
+  const normalizedDirectory = normalizePackageDirectory(currentDirectory || '');
+  if (!payloadIsPath || !normalizedDirectory || !isRelativeHarnessValidationPayloadPath(payloadPath)) {
+    return [payloadPath];
+  }
+  return [resolvePackageDirectory(payloadPath, normalizedDirectory)];
+}
+
+function isRelativeHarnessValidationPayloadPath(payloadPath) {
+  return !/^(?:[a-z]:|\/|\/\/|~)/i.test(payloadPath);
 }
 
 function normalizeHarnessValidationPayloadPath(value) {
@@ -2920,11 +2982,19 @@ function normalizeHarnessValidationPayloadPath(value) {
     .toLowerCase();
 }
 
-function harnessValidationCommandParts(command, commandsByCommand = new Map(), visited = new Set(), harnessValidationControls = null) {
+function harnessValidationCommandParts(command, commandsByCommand = new Map(), visited = new Set(), harnessValidationControls = null, baseDirectory = '') {
   const parts = [];
+  let currentDirectory = normalizePackageDirectory(baseDirectory || '');
   for (const part of splitShellCommandParts(command)) {
+    const cdCommand = inspectCdCommand(part, currentDirectory);
+    if (cdCommand.isCd) {
+      if (cdCommand.unsafeReason) return parts;
+      currentDirectory = cdCommand.directory;
+      continue;
+    }
+
     if (isHarnessValidationCommand(part)
-      && (!harnessValidationControls || harnessValidationCommandMatchesControl(part, harnessValidationControls))) {
+      && (!harnessValidationControls || harnessValidationCommandMatchesControl(part, harnessValidationControls, currentDirectory))) {
       parts.push(part);
       continue;
     }
@@ -2932,7 +3002,7 @@ function harnessValidationCommandParts(command, commandsByCommand = new Map(), v
     const wrapped = wrappedCommandForPart(part, commandsByCommand);
     if (!wrapped?.scriptBody || visited.has(part)) continue;
     visited.add(part);
-    parts.push(...harnessValidationCommandParts(wrapped.scriptBody, commandsByCommand, visited, harnessValidationControls));
+    parts.push(...harnessValidationCommandParts(wrapped.scriptBody, commandsByCommand, visited, harnessValidationControls, currentDirectory));
   }
   return parts;
 }
@@ -3107,12 +3177,14 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
     command,
     options.harnessValidationCommandsByCommand ?? harnessValidationCommandMapForCi(packageManifests, options.makeTargets ?? []),
     options.harnessControls ?? [],
+    workingDirectory ?? '',
   );
   const harnessValidationSafe = isSafeHarnessValidationCommand(
     source,
     command,
     options.harnessValidationCommandsByCommand ?? harnessValidationCommandMapForCi(packageManifests, options.makeTargets ?? []),
     options.harnessControls ?? [],
+    workingDirectory ?? '',
   );
   const incompleteScanReason = options.incompleteScan && commandNeedsCompleteScan(command)
     ? 'it depends on package, workspace, or make targets that may be omitted by the truncated repository scan'

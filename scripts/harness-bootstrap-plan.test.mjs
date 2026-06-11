@@ -109,6 +109,35 @@ test('counts PowerShell file doctor commands as automated validation', () => {
   }
 });
 
+test('does not count no-op harness-doctor help commands as automated validation', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-noop-validation-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'scripts'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'scripts', 'harness-doctor.mjs'), 'console.log("ok");\n');
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'quality.yml'), [
+      'name: Quality',
+      'on: [pull_request]',
+      'jobs:',
+      '  check:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: node scripts/harness-doctor.mjs --help',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-06-11' });
+    const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
+
+    assert.equal(harnessValidation.status, 'partial');
+    assert.deepEqual(harnessValidation.evidence, ['scripts/harness-doctor.mjs']);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('treats an unwired harness-doctor as partial validation', () => {
   const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-unwired-doctor-validation-'));
   try {
@@ -123,6 +152,71 @@ test('treats an unwired harness-doctor as partial validation', () => {
     assert.equal(harnessValidation.status, 'partial');
     assert.deepEqual(harnessValidation.evidence, ['scripts/harness-doctor.mjs']);
     assert.match(harnessValidation.action, /Wire the existing harness doctor or validator/);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('resolves cd before matching package-local harness-doctor controls', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-cd-package-validation-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'packages', 'app', 'scripts'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'packages', 'app', 'scripts', 'harness-doctor.mjs'), 'console.log("ok");\n');
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'quality.yml'), [
+      'name: Quality',
+      'on: [pull_request]',
+      'jobs:',
+      '  check:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: |',
+      '          cd packages/app',
+      '          node scripts/harness-doctor.mjs',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-06-11' });
+    const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
+
+    assert(survey.harnessControls.includes('packages/app/scripts/harness-doctor.mjs'));
+    assert.equal(harnessValidation.status, 'present');
+    assert(harnessValidation.evidence.includes('packages/app/scripts/harness-doctor.mjs'));
+    assert(harnessValidation.evidence.includes('.github/workflows/quality.yml: node scripts/harness-doctor.mjs'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('does not credit a root harness-doctor after cd into a package directory', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-cd-root-mismatch-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'packages', 'app'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'scripts'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'scripts', 'harness-doctor.mjs'), 'console.log("ok");\n');
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'quality.yml'), [
+      'name: Quality',
+      'on: [pull_request]',
+      'jobs:',
+      '  check:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: |',
+      '          cd packages/app',
+      '          node scripts/harness-doctor.mjs',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-06-11' });
+    const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
+
+    assert.equal(harnessValidation.status, 'partial');
+    assert.deepEqual(harnessValidation.evidence, ['scripts/harness-doctor.mjs']);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }
