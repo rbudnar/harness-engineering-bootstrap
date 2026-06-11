@@ -47,7 +47,7 @@ test('surveys a small JavaScript repo and renders the review-ready plan contract
   assert(plan.rejectedModules.some((module) => module.id === 'pr-workflow-metrics'));
 });
 
-test('counts harness-doctor as existing harness validation', () => {
+test('counts automated harness-doctor as existing harness validation', () => {
   const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-validation-control-'));
   try {
     mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
@@ -70,8 +70,49 @@ test('counts harness-doctor as existing harness validation', () => {
     const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
 
     assert(survey.harnessControls.includes('scripts/harness-doctor.mjs'));
+    assert(survey.commands.some((command) => command.command === 'node scripts/harness-doctor.mjs'));
     assert.equal(harnessValidation.status, 'present');
+    assert(harnessValidation.evidence.includes('scripts/harness-doctor.mjs'));
+    assert(harnessValidation.evidence.includes('.github/workflows/quality.yml: node scripts/harness-doctor.mjs'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('treats an unwired harness-doctor as partial validation', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-unwired-doctor-validation-'));
+  try {
+    mkdirSync(resolve(tempRoot, 'scripts'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'scripts', 'harness-doctor.mjs'), 'console.log("ok");\n');
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-06-11' });
+    const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
+
+    assert.equal(harnessValidation.status, 'partial');
     assert.deepEqual(harnessValidation.evidence, ['scripts/harness-doctor.mjs']);
+    assert.match(harnessValidation.action, /Wire the existing harness doctor or validator/);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('uses doctor-based harness evidence for update-mode detection', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-bootstrap-state-'));
+  try {
+    mkdirSync(resolve(tempRoot, 'docs'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'scripts'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'docs', 'README.md'), '# Docs\n');
+    writeFileSync(resolve(tempRoot, 'scripts', 'harness-doctor.mjs'), 'console.log("ok");\n');
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-06-11' });
+
+    assert.equal(survey.bootstrapState.status, 'bootstrapped');
+    assert(survey.bootstrapState.evidence.includes('harness validation'));
+    assert.equal(plan.operation, 'update');
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }

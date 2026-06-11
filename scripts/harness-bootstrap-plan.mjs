@@ -687,6 +687,13 @@ export function parseArgs(args) {
 function buildRequiredCore(survey) {
   const commandEvidence = survey.commands.map((command) => command.command);
   const hasDecisionMemory = survey.docs.hasDecisionMemory;
+  const harnessValidationControls = survey.harnessControls.filter(isHarnessValidationControlPath);
+  const harnessValidationAutomation = harnessValidationAutomationEvidence(survey);
+  const harnessValidationStatus = harnessValidationControls.length && harnessValidationAutomation.length
+    ? 'present'
+    : harnessValidationControls.length
+      ? 'partial'
+      : 'missing';
 
   return [
     {
@@ -776,13 +783,13 @@ function buildRequiredCore(survey) {
     {
       id: 'harness-validation',
       title: 'Harness validation',
-      status: survey.harnessControls.some(isHarnessValidationControlPath)
-        ? 'present'
-        : 'missing',
-      evidence: survey.harnessControls.filter(isHarnessValidationControlPath),
-      action: survey.harnessControls.some(isHarnessValidationControlPath)
+      status: harnessValidationStatus,
+      evidence: dedupe([...harnessValidationControls, ...harnessValidationAutomation]),
+      action: harnessValidationStatus === 'present'
         ? 'Keep harness validation wired into the canonical quality gate and CI or equivalent automation so it runs without a human remembering it.'
-        : 'Add a minimal warning-mode harness doctor or validator after the first required harness files exist, then wire it into the canonical quality gate and CI or equivalent automation before accepting the bootstrap.',
+        : harnessValidationControls.length
+          ? 'Wire the existing harness doctor or validator into the canonical quality gate and CI or equivalent automation before accepting the bootstrap.'
+          : 'Add a minimal warning-mode harness doctor or validator after the first required harness files exist, then wire it into the canonical quality gate and CI or equivalent automation before accepting the bootstrap.',
       smallerControl: 'Start with warning-mode size, route, link, and leakage checks before adding semantic validators; do not rely on manual reminders for recurring harness drift checks.',
     },
     {
@@ -1046,14 +1053,14 @@ function collectBootstrapState({ instructionFiles, docs, harnessControls, versio
   if (docs.hasDocsReadme) evidence.push('docs/README.md');
   if (docs.hasDecisionMemory) evidence.push('decision memory');
   if (docs.hasHumanGuide) evidence.push('human guide');
-  if (harnessControls.some((path) => /template-fitness|validate-harness|harness-audit/i.test(path))) {
+  if (harnessControls.some(isHarnessValidationControlPath)) {
     evidence.push('harness validation');
   }
 
   const hasHebSpecificEvidence = Boolean(
     versionState.installedVersion
       || versionState.source
-      || harnessControls.some((path) => /template-fitness|validate-harness|harness-audit/i.test(path)),
+      || harnessControls.some(isHarnessValidationControlPath),
   );
   const hasVersionMetadata = Boolean(versionState.installedVersion || versionState.source);
   const status = hasVersionMetadata || (hasHebSpecificEvidence && evidence.length >= 3) ? 'bootstrapped' : 'fresh';
@@ -2707,6 +2714,18 @@ function healthControlEvidence(survey) {
 
 function isHarnessValidationControlPath(path) {
   return /template-fitness|validate-harness|harness-audit|harness-doctor/i.test(path);
+}
+
+function harnessValidationAutomationEvidence(survey) {
+  return dedupe(
+    survey.commands
+      .filter((command) => isHarnessValidationCommand(command.command))
+      .map((command) => `${command.source}: ${formatInlineValue(command.command)}`),
+  );
+}
+
+function isHarnessValidationCommand(command) {
+  return /\b(template-fitness|validate-harness|harness-audit|harness-doctor)\b/i.test(String(command ?? ''));
 }
 
 function sampleValues(items, limit = 5) {
@@ -5063,8 +5082,8 @@ function isSafeValidationCommandPart(part) {
     /^(pytest|python\s+-m\s+pytest|go\s+test|cargo\s+test|mvn\s+test|gradle\s+test|(?:\.\/|\.\\)?mvnw(?:\.cmd)?\s+test|(?:\.\/|\.\\)?gradlew(?:\.bat)?\s+test)(?:\s+.*)?$/,
     /^make\s+(test|build|lint|check|quality|validate|coverage)(?:\s+\w+=\S+)?$/,
     /^(terraform\s+validate|terraform\s+fmt\s+-check)(?:\s+.*)?$/,
-    /^node\s+\S*(template-fitness|validate-harness|harness-audit)\S*(?:\s+.*)?$/,
-    /^(template-fitness|validate-harness|harness-audit)(?:\s+.*)?$/,
+    /^node\s+\S*(template-fitness|validate-harness|harness-audit|harness-doctor)\S*(?:\s+.*)?$/,
+    /^(template-fitness|validate-harness|harness-audit|harness-doctor)(?:\s+.*)?$/,
     /^npm\s+ci(?:\s+.*)?$/,
     /^pnpm\s+install(?:\s+.*)?$/,
     /^yarn\s+install(?:\s+.*)?$/,
