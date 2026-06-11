@@ -1194,7 +1194,11 @@ function collectPackageScriptsFromManifest(manifest, packageManager, packageMani
       };
     })
     .filter((script) => !script.unsafeReason)
-    .filter((script) => isSafeValidationCommand(script.command) || hasExistingHarnessValidator(script.scriptBody))
+    .filter((script) => {
+      const hasExistingValidator = hasExistingHarnessValidator(script.scriptBody);
+      if (hasHarnessValidationCommandText(script.scriptBody)) return hasExistingValidator;
+      return isSafeValidationCommand(script.command) || hasExistingValidator;
+    })
     .map(({ source, command, scriptBody }) => ({ source, command, scriptBody }));
 }
 
@@ -3041,7 +3045,9 @@ function harnessValidationPayloadMatchesControl(payload, harnessValidationContro
 function harnessValidationPayloadMatchingControls(payload, harnessValidationControls = [], currentDirectory = '') {
   if (!payload?.word || !harnessValidationControls.length) return [];
   const payloadPath = normalizeHarnessValidationPayloadPath(payload.word);
-  const payloadIsPath = payloadPath.includes('/') || payloadPath.startsWith('.');
+  const payloadIsPath = payloadPath.includes('/')
+    || payloadPath.startsWith('.')
+    || (normalizePackageDirectoryOrRoot(currentDirectory || '') && isHarnessValidationExecutableWord(payloadPath));
   const payloadCandidates = harnessValidationPayloadPathCandidates(payloadPath, payloadIsPath, currentDirectory);
 
   return harnessValidationControls.filter((control) => {
