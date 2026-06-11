@@ -296,7 +296,7 @@ function buildRepositoryTargetSets(files) {
 function checkDurableMetadata({ root, markdownFiles, warnings, asOf }) {
   for (const file of markdownFiles) {
     const text = readText(root, file);
-    const metadata = parseFrontmatter(text) ?? parseBodyMetadata(text);
+    const metadata = mergeMetadata(parseFrontmatter(text), parseBodyMetadata(text));
     const metadataRequired = requiresDurableMetadata(file);
 
     if (metadataRequired && !metadata) {
@@ -348,7 +348,7 @@ function checkDurableMetadata({ root, markdownFiles, warnings, asOf }) {
 
     if (hasValue(normalized.review_after)) {
       const reviewAfter = parseDateOnly(normalized.review_after);
-      if (!reviewAfter && metadata.kind === 'body') {
+      if (!reviewAfter && metadata.fieldKind?.review_after === 'body') {
         continue;
       }
       if (!reviewAfter) {
@@ -727,13 +727,15 @@ function parseFrontmatter(text) {
     fields[key] = unquote(match[2].trim());
     lineByField[key] = index + 1;
   }
-  return { fields, lineByField, kind: 'frontmatter' };
+  const fieldKind = Object.fromEntries(Object.keys(fields).map((key) => [key, 'frontmatter']));
+  return { fields, lineByField, fieldKind, kind: 'frontmatter' };
 }
 
 function parseBodyMetadata(text) {
   const lines = text.replace(/\r\n/g, '\n').split('\n');
   const fields = {};
   const lineByField = {};
+  const fieldKind = {};
   let validationLine = null;
   let inFence = false;
   let inHeaderMetadata = true;
@@ -754,14 +756,27 @@ function parseBodyMetadata(text) {
     if (!bodyMetadataFields.has(key)) continue;
     fields[key] = unquote(match[2].trim());
     lineByField[key] = index + 1;
+    fieldKind[key] = 'body';
   }
 
   if (!Object.keys(fields).length) return null;
   if (!hasValue(fields.provenance) && validationLine) {
     fields.provenance = 'validation section';
     lineByField.provenance = validationLine;
+    fieldKind.provenance = 'body';
   }
-  return { fields, lineByField, kind: 'body' };
+  return { fields, lineByField, fieldKind, kind: 'body' };
+}
+
+function mergeMetadata(frontmatter, body) {
+  if (!frontmatter) return body;
+  if (!body) return frontmatter;
+  return {
+    fields: { ...body.fields, ...frontmatter.fields },
+    lineByField: { ...body.lineByField, ...frontmatter.lineByField },
+    fieldKind: { ...body.fieldKind, ...frontmatter.fieldKind },
+    kind: 'mixed',
+  };
 }
 
 function normalizeMetadata(fields) {

@@ -133,6 +133,36 @@ Review after: next design-system major version
   }
 });
 
+test('merges unrelated frontmatter with contract body metadata', () => {
+  const root = makeRepo({
+    'docs/data-contracts/INDEX.md': '# Data Contracts\n\n- [Orders](orders.md)\n',
+    'docs/data-contracts/orders.md': `---
+title: Orders
+---
+
+# Orders Data Contract
+
+Status: active
+Owner: Data Platform
+Source of truth: warehouse catalog orders table
+Last reviewed: 2026-06-01
+Review after: 2026-12-01
+
+## Validation
+
+- Inspect: warehouse catalog orders table
+- Test/check: contract fixture replay
+`,
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert.equal(report.summary.warningCount, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('warns for stale metadata, missing metadata, missing indexes, and broken links', () => {
   const root = makeRepo({
     'AGENTS.md': '# Agent Instructions\n',
