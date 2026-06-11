@@ -123,6 +123,20 @@ test('ignores protocol-relative external links', () => {
   }
 });
 
+test('ignores internal links that normalize outside the repo root', () => {
+  const root = makeRepo({
+    'AGENTS.md': '# Agent Instructions\n',
+    'README.md': '# Project\n\nSee [escaped](/docs/../../outside.md).\n',
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert.equal(report.summary.warningCount, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('ignores non-load-bearing frontmatter metadata', () => {
   const root = makeRepo({
     'AGENTS.md': '# Agent Instructions\n',

@@ -1334,7 +1334,8 @@ Recommended frontmatter fields for active decisions, split ADR files, data contr
 
 ```yaml
 ---
-status: active | draft | deprecated | superseded
+# Allowed status values: active, draft, deprecated, superseded
+status: active
 owner: <team or role>
 source_of_truth: <canonical source or owner-reviewed route>
 last_reviewed: YYYY-MM-DD

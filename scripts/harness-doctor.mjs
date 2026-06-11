@@ -579,10 +579,11 @@ function parseInlineLinkDestination(line, start) {
 function resolveInternalLinkTarget({ root, fromFile, href }) {
   const target = normalizeInternalLinkTarget(href);
   if (!target) return null;
-  const resolved = target.rootRelative
-    ? slash(target.path.replace(/^\/+/, ''))
-    : slash(relative(root, resolve(root, dirname(fromFile), target.path)));
-  if (resolved.startsWith('..') || resolve(root, resolved) === root) return null;
+  const absolute = target.rootRelative
+    ? resolve(root, target.path.replace(/^\/+/, ''))
+    : resolve(root, dirname(fromFile), target.path);
+  const resolved = slash(relative(root, absolute));
+  if (!resolved || resolved === '..' || resolved.startsWith('../')) return null;
   return resolved;
 }
 
