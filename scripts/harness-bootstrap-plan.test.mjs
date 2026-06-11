@@ -79,6 +79,36 @@ test('counts automated harness-doctor as existing harness validation', () => {
   }
 });
 
+test('counts PowerShell file doctor commands as automated validation', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-pwsh-validation-control-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'scripts'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'scripts', 'harness-doctor.ps1'), 'Write-Output "ok"\n');
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'quality.yml'), [
+      'name: Quality',
+      'on: [pull_request]',
+      'jobs:',
+      '  check:',
+      '    runs-on: windows-latest',
+      '    steps:',
+      '      - run: pwsh -File scripts/harness-doctor.ps1',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-06-11' });
+    const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
+
+    assert.equal(harnessValidation.status, 'present');
+    assert(harnessValidation.evidence.includes('scripts/harness-doctor.ps1'));
+    assert(harnessValidation.evidence.includes('.github/workflows/quality.yml: pwsh -File scripts/harness-doctor.ps1'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('treats an unwired harness-doctor as partial validation', () => {
   const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-unwired-doctor-validation-'));
   try {
@@ -93,6 +123,35 @@ test('treats an unwired harness-doctor as partial validation', () => {
     assert.equal(harnessValidation.status, 'partial');
     assert.deepEqual(harnessValidation.evidence, ['scripts/harness-doctor.mjs']);
     assert.match(harnessValidation.action, /Wire the existing harness doctor or validator/);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('does not count stale automation commands that do not match an existing control', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-stale-automation-validation-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'scripts'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'scripts', 'template-fitness.mjs'), 'console.log("ok");\n');
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'quality.yml'), [
+      'name: Quality',
+      'on: [pull_request]',
+      'jobs:',
+      '  check:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: node scripts/harness-doctor.mjs',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-06-11' });
+    const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
+
+    assert.equal(harnessValidation.status, 'partial');
+    assert.deepEqual(harnessValidation.evidence, ['scripts/template-fitness.mjs']);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }
@@ -131,6 +190,42 @@ test('counts CI quality wrappers that run harness-doctor as automated validation
     )));
     assert.equal(harnessValidation.status, 'present');
     assert(harnessValidation.evidence.includes('.github/workflows/quality.yml: npm run quality -> node scripts/harness-doctor.mjs'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('counts CI package chains that delegate to package doctor scripts', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-ci-package-chain-validation-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'scripts'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'scripts', 'harness-doctor.mjs'), 'console.log("ok");\n');
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        ci: 'npm run doctor',
+        doctor: 'node scripts/harness-doctor.mjs',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'quality.yml'), [
+      'name: Quality',
+      'on: [pull_request]',
+      'jobs:',
+      '  check:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: npm run ci',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-06-11' });
+    const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
+
+    assert(survey.ci.runCommands.some((run) => run.command === 'npm run ci' && run.safe));
+    assert.equal(harnessValidation.status, 'present');
+    assert(harnessValidation.evidence.includes('.github/workflows/quality.yml: npm run ci -> node scripts/harness-doctor.mjs'));
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }
@@ -371,7 +466,7 @@ test('does not count workflow filenames as harness validators without scripts', 
 
     assert(survey.harnessControls.includes('.github/workflows/template-fitness.yml'));
     assert.equal(harnessValidation.status, 'missing');
-    assert.deepEqual(harnessValidation.evidence, ['.github/workflows/template-fitness.yml: node scripts/harness-doctor.mjs']);
+    assert.deepEqual(harnessValidation.evidence, []);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }
