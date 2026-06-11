@@ -156,6 +156,23 @@ test('reports case-only broken Markdown links on case-insensitive filesystems', 
   }
 });
 
+test('accepts exact-case directory links but warns for case-only directory drift', () => {
+  const root = makeRepo({
+    'AGENTS.md': '# Agent Instructions\n',
+    'README.md': '# Project\n\nSee [docs](docs/) and [wrong case](Docs/).\n',
+    'docs/guide.md': '# Guide\n',
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    const brokenLinks = report.warnings.filter((warning) => warning.code === 'broken-link');
+    assert.equal(brokenLinks.length, 1);
+    assert.equal(brokenLinks[0].message.includes('Docs/'), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('ignores non-load-bearing frontmatter metadata', () => {
   const root = makeRepo({
     'AGENTS.md': '# Agent Instructions\n',

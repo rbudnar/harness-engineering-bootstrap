@@ -51,7 +51,7 @@ export function runDoctor(options = {}) {
   const asOf = parseDateOnly(options.date ?? today());
   if (!asOf) throw new Error(`Invalid audit date: ${options.date}`);
   const files = listRepositoryFiles(root);
-  const fileSet = new Set(files);
+  const targetSets = buildRepositoryTargetSets(files);
   const markdownFiles = files.filter((file) => extname(file).toLowerCase() === '.md');
   const alwaysOnFiles = listAlwaysOnAuditFiles(files);
   const linkFiles = [...new Set([...markdownFiles, ...alwaysOnFiles])].sort();
@@ -59,7 +59,7 @@ export function runDoctor(options = {}) {
   const observations = [];
 
   checkRequiredRoutes({ root, files, warnings, observations });
-  checkMarkdownLinks({ root, markdownFiles: linkFiles, fileSet, warnings });
+  checkMarkdownLinks({ root, markdownFiles: linkFiles, targetSets, warnings });
   checkDurableMetadata({ root, markdownFiles, warnings, asOf });
   checkAlwaysOnLeakage({ root, files: alwaysOnFiles, warnings });
   checkDuplicateAlwaysOnGuidance({ root, files: alwaysOnFiles, warnings });
@@ -247,14 +247,14 @@ function checkRequiredRoutes({ root, files, warnings, observations }) {
   }
 }
 
-function checkMarkdownLinks({ root, markdownFiles, fileSet, warnings }) {
+function checkMarkdownLinks({ root, markdownFiles, targetSets, warnings }) {
   for (const file of markdownFiles) {
     const text = readText(root, file);
     const links = extractMarkdownLinks(text);
     for (const link of links) {
       const resolved = resolveInternalLinkTarget({ root, fromFile: file, href: link.href });
       if (!resolved) continue;
-      if (!fileSet.has(resolved)) {
+      if (!targetSets.files.has(resolved) && !targetSets.directories.has(resolved)) {
         warnings.push({
           code: 'broken-link',
           path: file,
@@ -265,6 +265,21 @@ function checkMarkdownLinks({ root, markdownFiles, fileSet, warnings }) {
       }
     }
   }
+}
+
+function buildRepositoryTargetSets(files) {
+  const directories = new Set();
+  for (const file of files) {
+    const parts = file.split('/');
+    parts.pop();
+    for (let index = 1; index <= parts.length; index += 1) {
+      directories.add(parts.slice(0, index).join('/'));
+    }
+  }
+  return {
+    files: new Set(files),
+    directories,
+  };
 }
 
 function checkDurableMetadata({ root, markdownFiles, warnings, asOf }) {
