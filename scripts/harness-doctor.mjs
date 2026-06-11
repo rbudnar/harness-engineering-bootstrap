@@ -523,22 +523,26 @@ function extractMarkdownLinks(text) {
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const line = lines[lineIndex];
     const uncommentedLine = activeFence ? line : maskHtmlComments(line, htmlCommentState);
-    const fence = parseMarkdownFence(markdownContainerLine(uncommentedLine, listContexts));
+    const lineListContexts = updateListContexts(uncommentedLine, listContexts);
+    const fence = parseMarkdownFence(markdownContainerLine(uncommentedLine, lineListContexts));
     if (activeFence) {
       if (closesMarkdownFence(fence, activeFence)) activeFence = null;
+      listContexts = lineListContexts;
       offset += line.length + 1;
       continue;
     }
     if (fence) {
       activeFence = fence;
+      listContexts = lineListContexts;
       offset += line.length + 1;
       continue;
     }
-    if (isIndentedCodeLine(uncommentedLine, { listContexts })) {
+    if (isIndentedCodeLine(uncommentedLine, { listContexts: lineListContexts })) {
+      listContexts = lineListContexts;
       offset += line.length + 1;
       continue;
     }
-    listContexts = updateListContexts(uncommentedLine, listContexts);
+    listContexts = lineListContexts;
     const linkLine = maskInlineCodeSpans(uncommentedLine);
     const definition = parseReferenceDefinition(linkLine, offset, lineIndex + 1);
     if (definition) referenceDefinitions.set(normalizeReferenceLabel(definition.label), definition);
@@ -624,6 +628,8 @@ function closesMarkdownFence(fence, activeFence) {
 }
 
 function markdownContainerLine(line, listContexts = []) {
+  const listItem = parseMarkdownListItem(line);
+  if (listItem) return line.slice(listItem.contentStart);
   const indent = indentationWidth(line.match(/^[ \t]*/)?.[0] ?? '');
   const parent = deepestListParent(indent, listContexts);
   if (!parent || indent < parent.contentIndent) return line;
@@ -677,6 +683,7 @@ function parseMarkdownListItem(line) {
   return {
     indent,
     contentIndent: indent + match[2].length + indentationWidth(match[3]),
+    contentStart: match[0].length,
   };
 }
 
@@ -882,17 +889,23 @@ function parseBodyMetadata(text) {
   for (let index = 0; index < lines.length; index += 1) {
     const uncommentedLine = activeFence ? lines[index] : maskHtmlComments(lines[index], htmlCommentState);
     const line = uncommentedLine.trim();
-    const fence = parseMarkdownFence(markdownContainerLine(uncommentedLine, listContexts));
+    const lineListContexts = updateListContexts(uncommentedLine, listContexts);
+    const fence = parseMarkdownFence(markdownContainerLine(uncommentedLine, lineListContexts));
     if (activeFence) {
       if (closesMarkdownFence(fence, activeFence)) activeFence = null;
+      listContexts = lineListContexts;
       continue;
     }
     if (fence) {
       activeFence = fence;
+      listContexts = lineListContexts;
       continue;
     }
-    if (isIndentedCodeLine(uncommentedLine)) continue;
-    listContexts = updateListContexts(uncommentedLine, listContexts);
+    if (isIndentedCodeLine(uncommentedLine, { listContexts: lineListContexts })) {
+      listContexts = lineListContexts;
+      continue;
+    }
+    listContexts = lineListContexts;
     if (/^##\s+Validation\b/i.test(line)) validationLine = index + 1;
     if (/^##\s+/.test(line)) inHeaderMetadata = false;
     if (!inHeaderMetadata) continue;

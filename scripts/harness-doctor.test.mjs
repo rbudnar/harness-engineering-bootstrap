@@ -138,6 +138,35 @@ test('ignores nested fenced examples when parsing body metadata', () => {
   }
 });
 
+test('ignores list-item fenced examples when parsing body metadata', () => {
+  const root = makeRepo({
+    'docs/data-contracts/INDEX.md': '# Data Contracts\n\n- [Orders](orders.md)\n',
+    'docs/data-contracts/orders.md': [
+      '# Orders Data Contract',
+      '',
+      '- ```yaml',
+      '  Status: active',
+      '  Owner: Data Platform',
+      '  Source of truth: warehouse catalog orders table',
+      '  Last reviewed: 2026-06-01',
+      '  Review after: 2026-12-01',
+      '  Provenance: example',
+      '  ```',
+      '',
+    ].join('\n'),
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert(report.warnings.some((warning) => (
+      warning.code === 'missing-metadata'
+      && warning.path === 'docs/data-contracts/orders.md'
+    )));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('ignores HTML-commented examples when parsing body metadata', () => {
   const root = makeRepo({
     'docs/data-contracts/INDEX.md': '# Data Contracts\n\n- [Orders](orders.md)\n',

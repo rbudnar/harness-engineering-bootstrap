@@ -776,11 +776,11 @@ function buildRequiredCore(survey) {
     {
       id: 'harness-validation',
       title: 'Harness validation',
-      status: survey.harnessControls.some((path) => /template-fitness|validate-harness|harness-audit/i.test(path))
+      status: survey.harnessControls.some(isHarnessValidationControlPath)
         ? 'present'
         : 'missing',
-      evidence: survey.harnessControls.filter((path) => /template-fitness|validate-harness|harness-audit/i.test(path)),
-      action: survey.harnessControls.some((path) => /template-fitness|validate-harness|harness-audit/i.test(path))
+      evidence: survey.harnessControls.filter(isHarnessValidationControlPath),
+      action: survey.harnessControls.some(isHarnessValidationControlPath)
         ? 'Keep harness validation wired into the canonical quality gate and CI or equivalent automation so it runs without a human remembering it.'
         : 'Add a minimal warning-mode harness doctor or validator after the first required harness files exist, then wire it into the canonical quality gate and CI or equivalent automation before accepting the bootstrap.',
       smallerControl: 'Start with warning-mode size, route, link, and leakage checks before adding semantic validators; do not rely on manual reminders for recurring harness drift checks.',
@@ -2518,6 +2518,7 @@ function collectHarnessControls(files) {
       || lower.includes('template-fitness')
       || lower.includes('validate-harness')
       || lower.includes('harness-metrics')
+      || lower.includes('harness-doctor')
       || lower.includes('harness-health');
   }).sort();
 }
@@ -2701,7 +2702,11 @@ function sampleHintEvidence(items, limit = 5) {
 }
 
 function healthControlEvidence(survey) {
-  return survey.harnessControls.filter((path) => /template-fitness|validate-harness|harness-audit|harness-metrics|harness-health|health-report/i.test(path));
+  return survey.harnessControls.filter((path) => /template-fitness|validate-harness|harness-audit|harness-doctor|harness-metrics|harness-health|health-report/i.test(path));
+}
+
+function isHarnessValidationControlPath(path) {
+  return /template-fitness|validate-harness|harness-audit|harness-doctor/i.test(path);
 }
 
 function sampleValues(items, limit = 5) {
