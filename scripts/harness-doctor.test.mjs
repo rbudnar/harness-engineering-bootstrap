@@ -185,6 +185,36 @@ Review after: next design-system major version
   }
 });
 
+test('checks supersession metadata after body review triggers', () => {
+  const root = makeRepo({
+    'docs/repo-contracts/INDEX.md': '# Repo Contracts\n\n- [Design Tokens](design-tokens.md)\n',
+    'docs/repo-contracts/design-tokens.md': `# Design Token Repo Contract
+
+Status: superseded
+Owner: Frontend Platform
+Source of truth: design-system generated tokens package
+Last reviewed: 2026-06-01
+Review after: next design-system major version
+
+## Validation
+
+- Inspect: design-system release notes
+- Test/check: token import snapshot
+`,
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert(report.warnings.some((warning) => (
+      warning.code === 'missing-superseded-by'
+      && warning.path === 'docs/repo-contracts/design-tokens.md'
+    )));
+    assert(!report.warnings.some((warning) => warning.code === 'invalid-review-after'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('merges unrelated frontmatter with contract body metadata', () => {
   const root = makeRepo({
     'docs/data-contracts/INDEX.md': '# Data Contracts\n\n- [Orders](orders.md)\n',
@@ -735,6 +765,21 @@ test('includes untracked non-ignored harness files in git repositories', () => {
     assert(codes.includes('missing-data-contract-index'));
     assert(codes.includes('missing-metadata'));
     assert(!report.warnings.some((warning) => warning.path === 'scratch-report.md'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('keeps empty git repositories on the filtered git file list', () => {
+  const root = makeRepo({
+    'scratch-report.md': '# Scratch\n\nSee [missing](missing.md).\n',
+  });
+
+  try {
+    execFileSync('git', ['-C', root, 'init', '-q']);
+
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert.equal(report.summary.warningCount, 0);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -348,17 +348,16 @@ function checkDurableMetadata({ root, markdownFiles, warnings, asOf }) {
 
     if (hasValue(normalized.review_after)) {
       const reviewAfter = parseDateOnly(normalized.review_after);
-      if (!reviewAfter && metadata.fieldKind?.review_after === 'body') {
-        continue;
-      }
       if (!reviewAfter) {
-        warnings.push({
-          code: 'invalid-review-after',
-          path: file,
-          line: metadata.lineByField.review_after ?? 1,
-          message: `review_after is not YYYY-MM-DD: ${normalized.review_after}`,
-          action: 'Use a date-only value so stale durable memory can be audited deterministically.',
-        });
+        if (metadata.fieldKind?.review_after !== 'body') {
+          warnings.push({
+            code: 'invalid-review-after',
+            path: file,
+            line: metadata.lineByField.review_after ?? 1,
+            message: `review_after is not YYYY-MM-DD: ${normalized.review_after}`,
+            action: 'Use a date-only value so stale durable memory can be audited deterministically.',
+          });
+        }
       } else if (reviewAfter < asOf) {
         warnings.push({
           code: 'stale-metadata',
@@ -474,7 +473,7 @@ function listGitFiles(root) {
       ...tracked.split('\0').filter(Boolean).map(slash).filter((file) => existsSync(resolve(root, file))),
       ...untracked.split('\0').filter(Boolean).map(slash).filter(shouldAuditUntrackedFile),
     ].sort();
-    return files.length ? files : null;
+    return files;
   } catch {
     return null;
   }
