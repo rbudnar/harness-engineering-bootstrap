@@ -341,12 +341,13 @@ export function surveyRepository(inputPath, options = {}) {
   const packageManager = inferPackageManager(fileSet, packageJson);
   const unsafeMakeTargets = collectUnsafeMakeTargets(root, fileSet, packageManifests);
   const runtimeSafetyUnsafeMakeTargets = collectUnsafeMakeTargets(root, fileSet, packageManifests, { runtimeSafety: true });
+  const harnessControls = collectHarnessControls(allFiles);
   const packageScripts = collectPackageScripts(packageManifests, packageManager, fileSet, unsafeMakeTargets, {
     incompleteScan: files.truncated,
+    harnessControls,
   });
-  const makeTargets = collectMakeTargets(root, fileSet, unsafeMakeTargets);
+  const makeTargets = collectMakeTargets(root, fileSet, unsafeMakeTargets, { harnessControls });
   const makeRuntimeSafetyHints = collectMakeRuntimeSafetyHints(root, fileSet, packageManifests, runtimeSafetyUnsafeMakeTargets);
-  const harnessControls = collectHarnessControls(allFiles);
   const ci = collectCi(root, allFiles, packageManifests, unsafeMakeTargets, {
     harnessControls,
     incompleteScan: files.truncated,
@@ -1173,9 +1174,12 @@ function collectPackageScriptsFromManifest(manifest, packageManager, packageMani
   const packageJson = manifest.json;
   const scripts = packageScriptsObject(packageJson?.scripts);
   if (!scripts) return [];
+  const hasExistingHarnessValidator = (body) => (
+    isHarnessValidationScriptBody(body, options.harnessControls, manifest.directory)
+  );
 
   return Object.entries(scripts)
-    .filter(([name, body]) => isValidationScriptName(name) || isHarnessValidationScriptBody(body))
+    .filter(([name, body]) => isValidationScriptName(name) || hasExistingHarnessValidator(body))
     .map(([name]) => {
       const command = packageScriptCommand(packageManager, name, manifest.directory);
       return {
@@ -1190,7 +1194,7 @@ function collectPackageScriptsFromManifest(manifest, packageManager, packageMani
       };
     })
     .filter((script) => !script.unsafeReason)
-    .filter((script) => isSafeValidationCommand(script.command) || isHarnessValidationScriptBody(script.scriptBody))
+    .filter((script) => isSafeValidationCommand(script.command) || hasExistingHarnessValidator(script.scriptBody))
     .map(({ source, command, scriptBody }) => ({ source, command, scriptBody }));
 }
 
@@ -1218,11 +1222,11 @@ function scopedPackageScriptCommand(packageManager, name, directory) {
   return name === 'test' ? `npm --prefix ${path} test` : `npm --prefix ${path} run ${name}`;
 }
 
-function collectMakeTargets(root, fileSet, unsafeTargets = collectUnsafeMakeTargets(root, fileSet)) {
+function collectMakeTargets(root, fileSet, unsafeTargets = collectUnsafeMakeTargets(root, fileSet), options = {}) {
   const targets = collectMakeTargetRecipes(root, fileSet);
   return targets
     .filter((target) => /^(test|build|lint|check|quality|validate|coverage)$/i.test(target.name)
-      || isHarnessValidationScriptBody(target.recipe))
+      || isHarnessValidationScriptBody(target.recipe, options.harnessControls, target.directory))
     .filter((target) => !unsafeTargets.has(makeTargetKey(target.directory, target.name)))
     .map((target) => ({
       source: target.path,
@@ -2774,7 +2778,7 @@ function harnessValidationEvidenceForRun(source, command, commandsByCommand, har
       continue;
     }
 
-    const wrapped = wrappedCommandForPart(part, commandsByCommand);
+    const wrapped = wrappedCommandForPart(part, commandsByCommand, currentDirectory);
     const wrappedDirectory = wrappedCommandBaseDirectory(wrapped, currentDirectory);
     const wrappedValidationParts = wrapped?.scriptBody
       ? harnessValidationCommandParts(
@@ -2852,8 +2856,14 @@ function harnessValidationCommandPayload(command) {
   return harnessValidationRunnerPayload(words);
 }
 
-function isHarnessValidationScriptBody(body) {
-  return harnessValidationCommandParts(body).length > 0;
+function isHarnessValidationScriptBody(body, harnessValidationControls = null, baseDirectory = '') {
+  return harnessValidationCommandParts(
+    body,
+    new Map(),
+    new Set(),
+    harnessValidationControls,
+    baseDirectory,
+  ).length > 0;
 }
 
 function isHarnessValidationRunner(word) {
@@ -3000,7 +3010,7 @@ function harnessValidationCommandParts(command, commandsByCommand = new Map(), v
       continue;
     }
 
-    const wrapped = wrappedCommandForPart(part, commandsByCommand);
+    const wrapped = wrappedCommandForPart(part, commandsByCommand, currentDirectory);
     if (!wrapped?.scriptBody || visited.has(part)) continue;
     visited.add(part);
     parts.push(...harnessValidationCommandParts(
@@ -3014,11 +3024,20 @@ function harnessValidationCommandParts(command, commandsByCommand = new Map(), v
   return parts;
 }
 
-function wrappedCommandForPart(part, commandsByCommand) {
+function wrappedCommandForPart(part, commandsByCommand, currentDirectory = '') {
+  const scriptName = packageScriptNameFromCommand(part);
+  if (scriptName && hasPackageWrapperContext(part, currentDirectory)) {
+    for (const candidate of packageScriptWrapperCommandCandidates(part, currentDirectory)) {
+      const wrapped = commandsByCommand.get(candidate);
+      if (wrapped) return wrapped;
+    }
+    return null;
+  }
+
   const exact = commandsByCommand.get(part);
   if (exact) return exact;
 
-  for (const candidate of packageScriptWrapperCommandCandidates(part)) {
+  for (const candidate of packageScriptWrapperCommandCandidates(part, currentDirectory)) {
     const wrapped = commandsByCommand.get(candidate);
     if (wrapped) return wrapped;
   }
@@ -3037,7 +3056,13 @@ function wrappedCommandBaseDirectory(wrapped, fallbackDirectory = '') {
   return normalizePackageDirectory(fallbackDirectory || '');
 }
 
-function packageScriptWrapperCommandCandidates(part) {
+function hasPackageWrapperContext(part, currentDirectory = '') {
+  return Boolean(normalizePackageDirectoryOrRoot(currentDirectory || ''))
+    || scopedPackageDirectoryValues(part).length > 0
+    || packageWorkspacesFromCommand(part).length > 0;
+}
+
+function packageScriptWrapperCommandCandidates(part, currentDirectory = '') {
   const scriptName = packageScriptNameFromCommand(part);
   if (!scriptName) return [];
 
@@ -3045,10 +3070,13 @@ function packageScriptWrapperCommandCandidates(part) {
   const manager = words[0]?.toLowerCase();
   if (!['npm', 'pnpm', 'yarn', 'bun'].includes(manager)) return [];
 
+  if (packageWorkspacesFromCommand(part).length) return [part];
+
   const directories = scopedPackageDirectoryValues(part);
-  const scopes = directories.length ? directories : [''];
+  const currentScope = normalizePackageDirectoryOrRoot(currentDirectory || '');
+  const scopes = directories.length ? directories : [currentScope];
   const candidates = scopes.map((directory) => packageScriptCommand(manager, scriptName, directory));
-  if (manager === 'yarn' && scriptName !== 'test' && !directories.length) {
+  if (manager === 'yarn' && scriptName !== 'test' && !directories.length && !currentScope) {
     candidates.push(`yarn ${scriptName}`);
   }
   return candidates;
@@ -3109,11 +3137,23 @@ function packageScriptWorkspaceCommandAliases(packageManager, name, manifest) {
       return name === 'test'
         ? [
           `npm test --workspace ${value}`,
+          `npm test --workspace=${value}`,
+          `npm test -w ${value}`,
+          `npm test -w=${value}`,
           `npm --workspace ${value} test`,
+          `npm --workspace=${value} test`,
+          `npm -w ${value} test`,
+          `npm -w=${value} test`,
         ]
         : [
           `npm run ${name} --workspace ${value}`,
+          `npm run ${name} --workspace=${value}`,
+          `npm run ${name} -w ${value}`,
+          `npm run ${name} -w=${value}`,
           `npm --workspace ${value} run ${name}`,
+          `npm --workspace=${value} run ${name}`,
+          `npm -w ${value} run ${name}`,
+          `npm -w=${value} run ${name}`,
         ];
     }
     if (packageManager === 'pnpm') {
@@ -3121,10 +3161,14 @@ function packageScriptWorkspaceCommandAliases(packageManager, name, manifest) {
         ? [
           `pnpm --filter ${value} test`,
           `pnpm --filter=${value} test`,
+          `pnpm -F ${value} test`,
+          `pnpm -F=${value} test`,
         ]
         : [
           `pnpm --filter ${value} run ${name}`,
           `pnpm --filter=${value} run ${name}`,
+          `pnpm -F ${value} run ${name}`,
+          `pnpm -F=${value} run ${name}`,
         ];
     }
     if (packageManager === 'yarn') {
@@ -4332,6 +4376,11 @@ function normalizePackageDirectory(directory) {
     .replace(/^\.\/+/, '')
     .replace(/\/\.$/, '')
     .replace(/\/$/, '');
+}
+
+function normalizePackageDirectoryOrRoot(directory) {
+  const normalized = normalizePackageDirectory(directory);
+  return normalized === '.' ? '' : normalized;
 }
 
 function normalizePnpmWorkspaceSelector(selector) {

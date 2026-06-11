@@ -138,6 +138,37 @@ test('does not count no-op harness-doctor help commands as automated validation'
   }
 });
 
+test('does not emit stale package or make doctor wrappers without existing controls', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-stale-wrapper-validation-'));
+  try {
+    mkdirSync(resolve(tempRoot), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        doctor: 'node scripts/harness-doctor.mjs',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, 'Makefile'), [
+      'doctor:',
+      '\tnode scripts/harness-doctor.mjs',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-06-11' });
+    const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
+    const commands = survey.commands.map((command) => command.command);
+
+    assert.equal(harnessValidation.status, 'missing');
+    assert(!commands.includes('npm run doctor'));
+    assert(!commands.includes('make doctor'));
+    assert(!validationStepsText(plan).includes('npm run doctor'));
+    assert(!validationStepsText(plan).includes('make doctor'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('treats an unwired harness-doctor as partial validation', () => {
   const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-unwired-doctor-validation-'));
   try {
@@ -152,6 +183,53 @@ test('treats an unwired harness-doctor as partial validation', () => {
     assert.equal(harnessValidation.status, 'partial');
     assert.deepEqual(harnessValidation.evidence, ['scripts/harness-doctor.mjs']);
     assert.match(harnessValidation.action, /Wire the existing harness doctor or validator/);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('does not credit root package doctor after cd into a package directory', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-cd-root-wrapper-mismatch-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'packages', 'app'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'scripts'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        doctor: 'node scripts/harness-doctor.mjs',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, 'packages', 'app', 'package.json'), JSON.stringify({
+      scripts: {
+        test: 'echo ok',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, 'scripts', 'harness-doctor.mjs'), 'console.log("ok");\n');
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'quality.yml'), [
+      'name: Quality',
+      'on: [pull_request]',
+      'jobs:',
+      '  check:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: |',
+      '          cd packages/app',
+      '          npm run doctor',
+      '      - working-directory: packages/app',
+      '        run: npm run doctor',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-06-11' });
+    const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
+    const doctorRuns = survey.ci.runCommands.filter((run) => run.command.includes('npm run doctor'));
+
+    assert.equal(doctorRuns.length, 2);
+    assert(doctorRuns.every((run) => run.safe === false));
+    assert.equal(harnessValidation.status, 'partial');
+    assert.deepEqual(harnessValidation.evidence, ['scripts/harness-doctor.mjs']);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }
@@ -280,7 +358,9 @@ test('counts workspace-selected package doctor scripts as automated validation',
       '    runs-on: ubuntu-latest',
       '    steps:',
       '      - run: npm run doctor --workspace app',
+      '      - run: npm run doctor -w app',
       '      - run: pnpm --filter app run doctor',
+      '      - run: pnpm -F app run doctor',
       '',
     ].join('\n'));
 
@@ -291,7 +371,9 @@ test('counts workspace-selected package doctor scripts as automated validation',
     assert.equal(harnessValidation.status, 'present');
     assert(harnessValidation.evidence.includes('packages/app/scripts/harness-doctor.mjs'));
     assert(harnessValidation.evidence.includes('.github/workflows/quality.yml: npm run doctor --workspace app -> node scripts/harness-doctor.mjs'));
+    assert(harnessValidation.evidence.includes('.github/workflows/quality.yml: npm run doctor -w app -> node scripts/harness-doctor.mjs'));
     assert(harnessValidation.evidence.includes('.github/workflows/quality.yml: pnpm --filter app run doctor -> node scripts/harness-doctor.mjs'));
+    assert(harnessValidation.evidence.includes('.github/workflows/quality.yml: pnpm -F app run doctor -> node scripts/harness-doctor.mjs'));
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }
