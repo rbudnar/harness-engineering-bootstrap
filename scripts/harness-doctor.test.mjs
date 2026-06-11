@@ -80,6 +80,59 @@ Review after: 2026-12-01
   }
 });
 
+test('ignores fenced examples when parsing body metadata', () => {
+  const root = makeRepo({
+    'docs/data-contracts/INDEX.md': '# Data Contracts\n\n- [Orders](orders.md)\n',
+    'docs/data-contracts/orders.md': `# Orders Data Contract
+
+\`\`\`markdown
+Status: active
+Owner: Data Platform
+Source of truth: warehouse catalog orders table
+Last reviewed: 2026-06-01
+Review after: 2026-12-01
+Provenance: example
+\`\`\`
+`,
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert(report.warnings.some((warning) => (
+      warning.code === 'missing-metadata'
+      && warning.path === 'docs/data-contracts/orders.md'
+    )));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('accepts non-date review-after triggers in contract body metadata', () => {
+  const root = makeRepo({
+    'docs/repo-contracts/INDEX.md': '# Repo Contracts\n\n- [Design Tokens](design-tokens.md)\n',
+    'docs/repo-contracts/design-tokens.md': `# Design Token Repo Contract
+
+Status: active
+Owner: Frontend Platform
+Source of truth: design-system generated tokens package
+Last reviewed: 2026-06-01
+Review after: next design-system major version
+
+## Validation
+
+- Inspect: design-system release notes
+- Test/check: token import snapshot
+`,
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert.equal(report.summary.warningCount, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('warns for stale metadata, missing metadata, missing indexes, and broken links', () => {
   const root = makeRepo({
     'AGENTS.md': '# Agent Instructions\n',

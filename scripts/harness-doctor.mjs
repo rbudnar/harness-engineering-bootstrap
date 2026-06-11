@@ -348,6 +348,9 @@ function checkDurableMetadata({ root, markdownFiles, warnings, asOf }) {
 
     if (hasValue(normalized.review_after)) {
       const reviewAfter = parseDateOnly(normalized.review_after);
+      if (!reviewAfter && metadata.kind === 'body') {
+        continue;
+      }
       if (!reviewAfter) {
         warnings.push({
           code: 'invalid-review-after',
@@ -711,7 +714,7 @@ function parseFrontmatter(text) {
     fields[key] = unquote(match[2].trim());
     lineByField[key] = index + 1;
   }
-  return { fields, lineByField };
+  return { fields, lineByField, kind: 'frontmatter' };
 }
 
 function parseBodyMetadata(text) {
@@ -719,10 +722,19 @@ function parseBodyMetadata(text) {
   const fields = {};
   const lineByField = {};
   let validationLine = null;
+  let inFence = false;
+  let inHeaderMetadata = true;
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index].trim();
+    if (/^\s*(```|~~~)/.test(lines[index])) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
     if (/^##\s+Validation\b/i.test(line)) validationLine = index + 1;
+    if (/^##\s+/.test(line)) inHeaderMetadata = false;
+    if (!inHeaderMetadata) continue;
     const match = /^([A-Za-z][A-Za-z -]*):\s*(.*)$/.exec(line);
     if (!match) continue;
     const key = normalizeFieldName(match[1]);
@@ -736,7 +748,7 @@ function parseBodyMetadata(text) {
     fields.provenance = 'validation section';
     lineByField.provenance = validationLine;
   }
-  return { fields, lineByField };
+  return { fields, lineByField, kind: 'body' };
 }
 
 function normalizeMetadata(fields) {
