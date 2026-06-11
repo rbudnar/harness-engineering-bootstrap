@@ -394,6 +394,21 @@ test('reports case-only broken Markdown links on case-insensitive filesystems', 
   }
 });
 
+test('accepts inline links with parenthesized titles', () => {
+  const root = makeRepo({
+    'AGENTS.md': '# Agent Instructions\n',
+    'README.md': '# Project\n\nSee [Guide](docs/guide.md (Guide)).\n',
+    'docs/guide.md': '# Guide\n',
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert.equal(report.summary.warningCount, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('ignores markdown links inside inline code spans', () => {
   const root = makeRepo({
     'AGENTS.md': '# Agent Instructions\n',

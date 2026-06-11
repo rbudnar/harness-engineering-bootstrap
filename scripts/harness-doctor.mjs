@@ -808,7 +808,7 @@ function normalizeInternalLinkTarget(rawHref) {
   if (href.startsWith('<') && href.endsWith('>')) href = href.slice(1, -1);
   if (href.startsWith('//')) return null;
   if (/^[a-z][a-z0-9+.-]*:/i.test(href)) return null;
-  href = href.split(/\s+(?=["'])/)[0];
+  href = stripMarkdownLinkTitle(href);
   const withoutAnchor = href.split('#')[0].split('?')[0];
   if (!withoutAnchor) return null;
   try {
@@ -816,6 +816,14 @@ function normalizeInternalLinkTarget(rawHref) {
   } catch {
     return { path: withoutAnchor, rootRelative: withoutAnchor.startsWith('/') };
   }
+}
+
+function stripMarkdownLinkTitle(href) {
+  const quotedTitle = /\s+(?=["'])/.exec(href);
+  if (quotedTitle) return href.slice(0, quotedTitle.index);
+  const parenthesizedTitle = /\s+\([^)]*\)$/.exec(href);
+  if (parenthesizedTitle) return href.slice(0, parenthesizedTitle.index);
+  return href;
 }
 
 function parseFrontmatter(text) {
