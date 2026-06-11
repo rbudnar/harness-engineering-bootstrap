@@ -2783,6 +2783,26 @@ function harnessValidationEvidenceForRun(source, command, commandsByCommand, har
   return dedupe(evidence);
 }
 
+function isSafeHarnessValidationCommand(source, command, commandsByCommand, harnessValidationControls = []) {
+  let hasHarnessValidationPart = false;
+
+  for (const part of splitShellCommandParts(command)) {
+    if (workingDirectoryFromCdCommand(part)) continue;
+    if (isHarmlessShellPrelude(part)) continue;
+
+    const partEvidence = harnessValidationEvidenceForRun(source, part, commandsByCommand, harnessValidationControls);
+    if (partEvidence.length) {
+      hasHarnessValidationPart = true;
+      continue;
+    }
+
+    if (isSafeValidationCommandPart(part)) continue;
+    return false;
+  }
+
+  return hasHarnessValidationPart;
+}
+
 function isHarnessValidationCommand(command) {
   return isHarnessValidationExecutableWord(harnessValidationCommandPayloadWord(command));
 }
@@ -3034,6 +3054,12 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
     options.harnessValidationCommandsByCommand ?? harnessValidationCommandMapForCi(packageManifests, options.makeTargets ?? []),
     options.harnessControls ?? [],
   );
+  const harnessValidationSafe = isSafeHarnessValidationCommand(
+    source,
+    command,
+    options.harnessValidationCommandsByCommand ?? harnessValidationCommandMapForCi(packageManifests, options.makeTargets ?? []),
+    options.harnessControls ?? [],
+  );
   const incompleteScanReason = options.incompleteScan && commandNeedsCompleteScan(command)
     ? 'it depends on package, workspace, or make targets that may be omitted by the truncated repository scan'
     : null;
@@ -3044,9 +3070,7 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
     && !incompleteScanReason
     && (
       isSafeValidationCommand(command)
-      || harnessValidationEvidence.length > 0
-      || makeTargetRunsHarnessValidation(command, options.makeTargets ?? [])
-      || packageScriptRunsHarnessValidation(command, packageManifest, packageManifests, workingDirectory ?? '')
+      || harnessValidationSafe
     );
   return {
     source,

@@ -444,6 +444,41 @@ test('does not count package quality scripts that only mention harness-doctor', 
   }
 });
 
+test('keeps mixed doctor and mutating CI blocks inspect-only', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-mixed-unsafe-validation-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'scripts'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'scripts', 'harness-doctor.mjs'), 'console.log("ok");\n');
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'quality.yml'), [
+      'name: Quality',
+      'on: [pull_request]',
+      'jobs:',
+      '  check:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: |',
+      '          node scripts/harness-doctor.mjs',
+      '          kubectl apply -f k8s/prod.yaml',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-06-11' });
+    const run = survey.ci.runCommands.find((command) => command.source === '.github/workflows/quality.yml');
+    const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
+
+    assert.equal(run.safe, false);
+    assert.match(run.inspectOnlyReason, /not a known-safe validation command|may mutate external state/);
+    assert.equal(harnessValidation.status, 'partial');
+    assert.deepEqual(harnessValidation.evidence, ['scripts/harness-doctor.mjs']);
+    assert(!plan.validationSteps.some((step) => step.command?.includes('kubectl apply')));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('does not count workflow filenames as harness validators without scripts', () => {
   const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-workflow-without-doctor-script-'));
   try {
