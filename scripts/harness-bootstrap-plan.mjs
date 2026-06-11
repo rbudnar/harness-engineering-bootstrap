@@ -2736,8 +2736,11 @@ function harnessValidationAutomationEvidence(survey) {
       }
 
       const wrapped = commandsByCommand.get(part);
-      if (wrapped?.scriptBody && isHarnessValidationCommand(wrapped.scriptBody)) {
-        evidence.push(`${run.source}: ${formatInlineValue(part)} -> ${formatInlineValue(wrapped.scriptBody)}`);
+      const wrappedValidationParts = wrapped?.scriptBody
+        ? splitShellCommandParts(wrapped.scriptBody).filter(isHarnessValidationCommand)
+        : [];
+      for (const wrappedPart of wrappedValidationParts) {
+        evidence.push(`${run.source}: ${formatInlineValue(part)} -> ${formatInlineValue(wrappedPart)}`);
       }
     }
   }

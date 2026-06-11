@@ -212,7 +212,7 @@ function checkRequiredRoutes({ root, files, warnings, observations }) {
   ];
 
   for (const route of routeDirs) {
-    const dirFiles = files.filter((file) => file.startsWith(`${route.dir}/`) && file.endsWith('.md'));
+    const dirFiles = files.filter((file) => file.startsWith(`${route.dir}/`) && extname(file).toLowerCase() === '.md');
     const nonIndexFiles = dirFiles.filter((file) => file !== route.index);
     if (!nonIndexFiles.length) continue;
     observations.push({

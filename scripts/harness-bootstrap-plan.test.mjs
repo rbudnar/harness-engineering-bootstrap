@@ -172,6 +172,41 @@ test('counts multiline CI quality wrappers that run harness-doctor as automated 
   }
 });
 
+test('counts wrapped quality scripts that run doctor tests before harness-doctor', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-mixed-wrapper-validation-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'scripts'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'scripts', 'harness-doctor.mjs'), 'console.log("ok");\n');
+    writeFileSync(resolve(tempRoot, 'scripts', 'harness-doctor.test.mjs'), 'console.log("test");\n');
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+      scripts: {
+        quality: 'node --test scripts/harness-doctor.test.mjs && node scripts/harness-doctor.mjs',
+      },
+    }));
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'quality.yml'), [
+      'name: Quality',
+      'on: [pull_request]',
+      'jobs:',
+      '  check:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: npm run quality',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-06-11' });
+    const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
+
+    assert.equal(harnessValidation.status, 'present');
+    assert(harnessValidation.evidence.includes('.github/workflows/quality.yml: npm run quality -> node scripts/harness-doctor.mjs'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('does not count harness-doctor tests as automated harness validation', () => {
   const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-test-only-validation-'));
   try {

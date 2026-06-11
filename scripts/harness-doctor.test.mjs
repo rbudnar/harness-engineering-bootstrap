@@ -721,6 +721,32 @@ provenance: owner review
   }
 });
 
+test('treats uppercase Markdown extensions as routed artifacts', () => {
+  const root = makeRepo({
+    'docs/data-contracts/orders.MD': `---
+status: active
+owner: Data Platform
+source_of_truth: warehouse catalog
+last_reviewed: 2026-06-01
+review_after: 2026-12-01
+provenance: owner-reviewed fixture
+---
+
+# Orders
+`,
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert(report.warnings.some((warning) => (
+      warning.code === 'missing-data-contract-index'
+      && warning.path === 'docs/data-contracts'
+    )));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('requires exact route-index link targets for load-bearing artifacts', () => {
   const metadata = `---
 status: active
