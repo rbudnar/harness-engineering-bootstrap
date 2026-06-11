@@ -2974,17 +2974,12 @@ function harnessValidationCommandMatchesControl(command, harnessValidationContro
 function harnessValidationPayloadMatchesControl(payloadWord, harnessValidationControls = [], currentDirectory = '') {
   if (!payloadWord || !harnessValidationControls.length) return false;
   const payloadPath = normalizeHarnessValidationPayloadPath(payloadWord);
-  const payloadName = payloadPath.split('/').pop() ?? '';
-  const directToolName = payloadName.replace(/\.(?:mjs|cjs|js|ts|py|sh|ps1|cmd|bat)$/i, '');
   const payloadIsPath = payloadPath.includes('/') || payloadPath.startsWith('.');
   const payloadCandidates = harnessValidationPayloadPathCandidates(payloadPath, payloadIsPath, currentDirectory);
 
   return harnessValidationControls.some((control) => {
     const controlPath = normalizeHarnessValidationPayloadPath(control);
-    const controlName = controlPath.split('/').pop() ?? '';
-    const controlToolName = controlName.replace(/\.(?:mjs|cjs|js|ts|py|sh|ps1|cmd|bat)$/i, '');
-    return payloadCandidates.includes(controlPath)
-      || (!payloadIsPath && directToolName === controlToolName);
+    return payloadCandidates.includes(controlPath);
   });
 }
 

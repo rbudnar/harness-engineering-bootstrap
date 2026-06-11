@@ -109,6 +109,40 @@ test('counts PowerShell file doctor commands as automated validation', () => {
   }
 });
 
+test('does not count bare doctor commands when the control lives under scripts', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-bare-mismatch-validation-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.github', 'workflows'), { recursive: true });
+    mkdirSync(resolve(tempRoot, 'scripts'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'scripts', 'harness-doctor.mjs'), 'console.log("ok");\n');
+    writeFileSync(resolve(tempRoot, '.github', 'workflows', 'quality.yml'), [
+      'name: Quality',
+      'on: [pull_request]',
+      'jobs:',
+      '  check:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: node harness-doctor.mjs',
+      '      - run: harness-doctor',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-06-11' });
+    const harnessValidation = plan.requiredCore.find((item) => item.id === 'harness-validation');
+    const typoRun = survey.ci.runCommands.find((run) => run.command === 'node harness-doctor.mjs');
+    const bareRun = survey.ci.runCommands.find((run) => run.command === 'harness-doctor');
+
+    assert.equal(typoRun.safe, false);
+    assert.equal(bareRun.safe, false);
+    assert.equal(harnessValidation.status, 'partial');
+    assert.deepEqual(harnessValidation.evidence, ['scripts/harness-doctor.mjs']);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('does not count no-op harness-doctor help commands as automated validation', () => {
   const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-doctor-noop-validation-'));
   try {
