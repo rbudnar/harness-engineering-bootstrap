@@ -523,6 +523,30 @@ provenance: owner-reviewed fixture
   }
 });
 
+test('counts visible shortcut reference routes in indexes', () => {
+  const metadata = `---
+status: active
+owner: Data Platform
+source_of_truth: warehouse catalog
+last_reviewed: 2026-06-01
+review_after: 2026-12-01
+provenance: owner-reviewed fixture
+---
+
+`;
+  const root = makeRepo({
+    'docs/data-contracts/INDEX.md': '# Data Contracts\n\n- [Orders]\n\n[Orders]: orders.md\n',
+    'docs/data-contracts/orders.md': `${metadata}# Orders\n`,
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert(!report.warnings.some((warning) => warning.code === 'unindexed-artifact'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('warns when visible reference-style links have no definition', () => {
   const root = makeRepo({
     'AGENTS.md': '# Agent Instructions\n',
@@ -535,6 +559,24 @@ test('warns when visible reference-style links have no definition', () => {
       warning.code === 'broken-link'
       && warning.path === 'README.md'
       && warning.message.includes('[guide]')
+    )));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('checks shortcut reference link targets', () => {
+  const root = makeRepo({
+    'AGENTS.md': '# Agent Instructions\n',
+    'README.md': '# Project\n\nSee [Guide].\n\n[Guide]: docs/missing.md\n',
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert(report.warnings.some((warning) => (
+      warning.code === 'broken-link'
+      && warning.path === 'README.md'
+      && warning.message.includes('docs/missing.md')
     )));
   } finally {
     rmSync(root, { recursive: true, force: true });

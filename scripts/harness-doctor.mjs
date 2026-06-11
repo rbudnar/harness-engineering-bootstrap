@@ -583,9 +583,11 @@ function parseReferenceDefinition(line, lineOffset, lineNumber) {
 function extractReferenceUsageLinks(line, lineOffset, lineNumber, referenceDefinitions) {
   const links = [];
   const pattern = /(!?)\[([^\]\n]+)\]\[([^\]\n]*)\]/g;
+  const consumedRanges = [];
   let match;
   while ((match = pattern.exec(line))) {
     if (match[1]) continue;
+    consumedRanges.push([match.index, pattern.lastIndex]);
     const label = normalizeReferenceLabel(match[3] || match[2]);
     const definition = referenceDefinitions.get(label);
     if (!definition) {
@@ -598,6 +600,17 @@ function extractReferenceUsageLinks(line, lineOffset, lineNumber, referenceDefin
       });
       continue;
     }
+    links.push({ href: definition.href, index: lineOffset + match.index, line: lineNumber });
+  }
+
+  const shortcutPattern = /(!?)\[([^\]\n]+)\]/g;
+  while ((match = shortcutPattern.exec(line))) {
+    if (match[1]) continue;
+    if (consumedRanges.some(([start, end]) => match.index >= start && match.index < end)) continue;
+    const next = line[shortcutPattern.lastIndex];
+    if (next === '(' || next === '[' || next === ':') continue;
+    const definition = referenceDefinitions.get(normalizeReferenceLabel(match[2]));
+    if (!definition) continue;
     links.push({ href: definition.href, index: lineOffset + match.index, line: lineNumber });
   }
   return links;
