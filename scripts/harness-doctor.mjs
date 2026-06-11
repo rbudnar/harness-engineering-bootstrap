@@ -517,6 +517,7 @@ function extractMarkdownLinks(text) {
   const lines = normalized.split('\n');
   let inFence = false;
   const htmlCommentState = { inComment: false };
+  let listIndents = [];
   let offset = 0;
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
@@ -527,11 +528,12 @@ function extractMarkdownLinks(text) {
       offset += line.length + 1;
       continue;
     }
-    if (!inFence && isIndentedCodeLine(uncommentedLine)) {
+    if (!inFence && isIndentedCodeLine(uncommentedLine, { listIndents })) {
       offset += line.length + 1;
       continue;
     }
     if (!inFence) {
+      listIndents = updateListIndents(uncommentedLine, listIndents);
       const linkLine = maskInlineCodeSpans(uncommentedLine);
       const definition = parseReferenceDefinition(linkLine, offset, lineIndex + 1);
       if (definition) referenceDefinitions.set(normalizeReferenceLabel(definition.label), definition);
@@ -604,8 +606,37 @@ function maskHtmlComments(line, state) {
   return masked;
 }
 
-function isIndentedCodeLine(line) {
-  return /^( {4}|\t)/.test(line);
+function isIndentedCodeLine(line, context = {}) {
+  if (!/^( {4}|\t)/.test(line)) return false;
+  const listItem = parseMarkdownListItem(line);
+  if (listItem && context.listIndents?.some((indent) => indent < listItem.indent)) return false;
+  return true;
+}
+
+function updateListIndents(line, current) {
+  const listItem = parseMarkdownListItem(line);
+  if (!listItem) {
+    if (!line.trim()) return current;
+    return [];
+  }
+  return [
+    ...current.filter((indent) => indent < listItem.indent),
+    listItem.indent,
+  ];
+}
+
+function parseMarkdownListItem(line) {
+  const match = /^([ \t]*)(?:[-+*]|\d+[.)])\s+/.exec(line);
+  if (!match) return null;
+  return { indent: indentationWidth(match[1]) };
+}
+
+function indentationWidth(value) {
+  let width = 0;
+  for (const character of value) {
+    width += character === '\t' ? 4 : 1;
+  }
+  return width;
 }
 
 function parseReferenceDefinition(line, lineOffset, lineNumber) {

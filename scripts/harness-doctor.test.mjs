@@ -665,6 +665,30 @@ provenance: owner-reviewed fixture
   }
 });
 
+test('counts visible nested-list routes in indexes', () => {
+  const metadata = `---
+status: active
+owner: Data Platform
+source_of_truth: warehouse catalog
+last_reviewed: 2026-06-01
+review_after: 2026-12-01
+provenance: owner-reviewed fixture
+---
+
+`;
+  const root = makeRepo({
+    'docs/data-contracts/INDEX.md': '# Data Contracts\n\n- Current\n    - [Orders](orders.md)\n',
+    'docs/data-contracts/orders.md': `${metadata}# Orders\n`,
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert(!report.warnings.some((warning) => warning.code === 'unindexed-artifact'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('counts visible reference-style routes in indexes', () => {
   const metadata = `---
 status: active
@@ -742,6 +766,25 @@ test('checks shortcut reference link targets', () => {
     assert(report.warnings.some((warning) => (
       warning.code === 'broken-link'
       && warning.path === 'README.md'
+      && warning.message.includes('docs/missing.md')
+    )));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('checks visible nested-list link targets', () => {
+  const root = makeRepo({
+    'AGENTS.md': '# Agent Instructions\n',
+    'README.md': '# Project\n\n- Docs\n    - [Guide](docs/missing.md)\n',
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert(report.warnings.some((warning) => (
+      warning.code === 'broken-link'
+      && warning.path === 'README.md'
+      && warning.line === 4
       && warning.message.includes('docs/missing.md')
     )));
   } finally {
