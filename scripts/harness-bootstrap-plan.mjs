@@ -2766,7 +2766,7 @@ function harnessValidationEvidenceForRun(source, command, commandsByCommand, har
       continue;
     }
 
-    const wrapped = commandsByCommand.get(part);
+    const wrapped = wrappedCommandForPart(part, commandsByCommand);
     const wrappedValidationParts = wrapped?.scriptBody
       ? harnessValidationCommandParts(
         wrapped.scriptBody,
@@ -2810,6 +2810,7 @@ function isHarnessValidationCommand(command) {
 function harnessValidationCommandPayloadWord(command) {
   const value = String(command ?? '');
   if (/(^|\s)--test(?:\s|$)|\.test\./i.test(value)) return null;
+  if (hasShellPipeline(value) || /(^|[^&])&(?!&)/.test(value)) return null;
   const wrapperPayload = shellWrapperPayload(value);
   if (wrapperPayload !== null) return harnessValidationCommandPayloadWord(wrapperPayload);
 
@@ -2904,12 +2905,41 @@ function harnessValidationCommandParts(command, commandsByCommand = new Map(), v
       continue;
     }
 
-    const wrapped = commandsByCommand.get(part);
+    const wrapped = wrappedCommandForPart(part, commandsByCommand);
     if (!wrapped?.scriptBody || visited.has(part)) continue;
     visited.add(part);
     parts.push(...harnessValidationCommandParts(wrapped.scriptBody, commandsByCommand, visited, harnessValidationControls));
   }
   return parts;
+}
+
+function wrappedCommandForPart(part, commandsByCommand) {
+  const exact = commandsByCommand.get(part);
+  if (exact) return exact;
+
+  for (const candidate of packageScriptWrapperCommandCandidates(part)) {
+    const wrapped = commandsByCommand.get(candidate);
+    if (wrapped) return wrapped;
+  }
+
+  return null;
+}
+
+function packageScriptWrapperCommandCandidates(part) {
+  const scriptName = packageScriptNameFromCommand(part);
+  if (!scriptName) return [];
+
+  const words = shellWords(stripPackageCommandPrefix(part));
+  const manager = words[0]?.toLowerCase();
+  if (!['npm', 'pnpm', 'yarn', 'bun'].includes(manager)) return [];
+
+  const directories = scopedPackageDirectoryValues(part);
+  const scopes = directories.length ? directories : [''];
+  const candidates = scopes.map((directory) => packageScriptCommand(manager, scriptName, directory));
+  if (manager === 'yarn' && scriptName !== 'test' && !directories.length) {
+    candidates.push(`yarn ${scriptName}`);
+  }
+  return candidates;
 }
 
 function harnessValidationCommandMapForCi(packageManifests = [], makeTargets = []) {
