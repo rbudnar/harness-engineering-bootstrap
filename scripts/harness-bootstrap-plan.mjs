@@ -2908,15 +2908,49 @@ function harnessValidationRunnerPayload(words) {
   return null;
 }
 
-function harnessValidationPayloadRepoTargetReason(payload) {
+function harnessValidationPayloadRepoTargetReason(payload, currentDirectory = '', expectedDirectory = null) {
+  const auditTarget = harnessValidationPayloadAuditTarget(payload, currentDirectory);
+  if (auditTarget.reason) return auditTarget.reason;
+  if (expectedDirectory === null) return null;
+  const actualDirectory = normalizePackageDirectoryOrRoot(auditTarget.directory || '');
+  const normalizedExpectedDirectory = normalizePackageDirectoryOrRoot(expectedDirectory || '');
+  if (actualDirectory === normalizedExpectedDirectory) return null;
+  return `it audits ${formatHarnessValidationAuditDirectory(actualDirectory)} instead of ${formatHarnessValidationAuditDirectory(normalizedExpectedDirectory)}`;
+}
+
+function harnessValidationPayloadAuditTarget(payload, currentDirectory = '') {
   const repoTarget = harnessValidationPayloadRepoTarget(payload);
-  if (repoTarget === null) return null;
+  const normalizedCurrentDirectory = normalizePackageDirectoryOrRoot(currentDirectory || '');
+  if (repoTarget === null) {
+    return { directory: normalizedCurrentDirectory, reason: null };
+  }
+
   const value = stripYamlQuotes(String(repoTarget ?? '')).trim();
-  const normalized = normalizePackageDirectory(value);
-  if (value && (normalized === '' || normalized === '.')) return null;
-  return value
-    ? `it passes --repo ${formatInlineValue(value)} instead of auditing the current repository context`
-    : 'it passes --repo without a repository path';
+  if (!value) {
+    return { directory: null, reason: 'it passes --repo without a repository path' };
+  }
+  if (!isStaticRelativeDirectory(value)) {
+    return {
+      directory: null,
+      reason: `it passes --repo ${formatInlineValue(value)} instead of a static relative repository path`,
+    };
+  }
+  if (cdTargetEscapesRepo(value, normalizedCurrentDirectory)) {
+    return {
+      directory: null,
+      reason: `it passes --repo ${formatInlineValue(value)} outside the surveyed repository`,
+    };
+  }
+
+  return {
+    directory: normalizePackageDirectoryOrRoot(resolvePackageDirectory(value, normalizedCurrentDirectory)),
+    reason: null,
+  };
+}
+
+function formatHarnessValidationAuditDirectory(directory) {
+  const normalized = normalizePackageDirectoryOrRoot(directory || '');
+  return normalized ? formatInlineValue(normalized) : 'the repository root';
 }
 
 function harnessValidationPayloadRepoTarget(payload) {
@@ -2991,20 +3025,51 @@ function isHarnessValidationExecutableWord(word) {
 
 function harnessValidationCommandMatchesControl(command, harnessValidationControls = [], currentDirectory = '') {
   const payload = harnessValidationCommandPayload(command);
-  if (harnessValidationPayloadRepoTargetReason(payload)) return false;
-  return harnessValidationPayloadMatchesControl(payload?.word, harnessValidationControls, currentDirectory);
+  return harnessValidationPayloadMatchesControl(payload, harnessValidationControls, currentDirectory);
 }
 
-function harnessValidationPayloadMatchesControl(payloadWord, harnessValidationControls = [], currentDirectory = '') {
-  if (!payloadWord || !harnessValidationControls.length) return false;
-  const payloadPath = normalizeHarnessValidationPayloadPath(payloadWord);
+function harnessValidationPayloadMatchesControl(payload, harnessValidationControls = [], currentDirectory = '') {
+  if (!payload?.word || !harnessValidationControls.length) return false;
+  const auditTarget = harnessValidationPayloadAuditTarget(payload, currentDirectory);
+  if (auditTarget.reason) return false;
+  const auditDirectory = normalizePackageDirectoryOrRoot(auditTarget.directory || '');
+  const matchedControls = harnessValidationPayloadMatchingControls(payload, harnessValidationControls, currentDirectory);
+  return matchedControls.some((control) => harnessValidationControlAuditDirectory(control) === auditDirectory);
+}
+
+function harnessValidationPayloadMatchingControls(payload, harnessValidationControls = [], currentDirectory = '') {
+  if (!payload?.word || !harnessValidationControls.length) return [];
+  const payloadPath = normalizeHarnessValidationPayloadPath(payload.word);
   const payloadIsPath = payloadPath.includes('/') || payloadPath.startsWith('.');
   const payloadCandidates = harnessValidationPayloadPathCandidates(payloadPath, payloadIsPath, currentDirectory);
 
-  return harnessValidationControls.some((control) => {
+  return harnessValidationControls.filter((control) => {
     const controlPath = normalizeHarnessValidationPayloadPath(control);
     return payloadCandidates.includes(controlPath);
   });
+}
+
+function harnessValidationPayloadControlAuditReason(payload, harnessValidationControls = [], currentDirectory = '') {
+  const explicitReason = harnessValidationPayloadRepoTargetReason(payload, currentDirectory);
+  if (explicitReason) return explicitReason;
+  const matchedControls = harnessValidationPayloadMatchingControls(payload, harnessValidationControls, currentDirectory);
+  if (!matchedControls.length) return null;
+  const auditDirectory = normalizePackageDirectoryOrRoot(
+    harnessValidationPayloadAuditTarget(payload, currentDirectory).directory || '',
+  );
+  if (matchedControls.some((control) => harnessValidationControlAuditDirectory(control) === auditDirectory)) return null;
+  return `it audits ${formatHarnessValidationAuditDirectory(auditDirectory)} instead of ${formatHarnessValidationAuditDirectory(harnessValidationControlAuditDirectory(matchedControls[0]))}`;
+}
+
+function harnessValidationControlAuditDirectory(control) {
+  const normalized = normalizePackageDirectory(normalizeHarnessValidationPayloadPath(control));
+  const parts = normalized.split('/').filter(Boolean);
+  if (!parts.length) return '';
+  const parent = parts[parts.length - 2]?.toLowerCase();
+  if (parent === 'scripts') {
+    return normalizePackageDirectoryOrRoot(parts.slice(0, -2).join('/'));
+  }
+  return normalizePackageDirectoryOrRoot(parts.slice(0, -1).join('/'));
 }
 
 function harnessValidationPayloadPathCandidates(payloadPath, payloadIsPath, currentDirectory = '') {
@@ -3039,7 +3104,7 @@ function harnessValidationCommandParts(command, commandsByCommand = new Map(), v
     }
 
     if (isHarnessValidationCommand(part)
-      && !harnessValidationPayloadRepoTargetReason(harnessValidationCommandPayload(part))
+      && !harnessValidationPayloadRepoTargetReason(harnessValidationCommandPayload(part), currentDirectory)
       && (!harnessValidationControls || harnessValidationCommandMatchesControl(part, harnessValidationControls, currentDirectory))) {
       parts.push(part);
       continue;
@@ -3061,7 +3126,7 @@ function harnessValidationCommandParts(command, commandsByCommand = new Map(), v
   return parts;
 }
 
-function harnessValidationCommandRepoTargetReason(command, commandsByCommand = new Map(), visited = new Set(), baseDirectory = '') {
+function harnessValidationCommandRepoTargetReason(command, commandsByCommand = new Map(), visited = new Set(), baseDirectory = '', harnessValidationControls = []) {
   let currentDirectory = normalizePackageDirectory(baseDirectory || '');
   for (const part of splitShellCommandParts(command)) {
     const cdCommand = inspectCdCommand(part, currentDirectory);
@@ -3071,7 +3136,11 @@ function harnessValidationCommandRepoTargetReason(command, commandsByCommand = n
       continue;
     }
 
-    const reason = harnessValidationPayloadRepoTargetReason(harnessValidationCommandPayload(part));
+    const reason = harnessValidationPayloadControlAuditReason(
+      harnessValidationCommandPayload(part),
+      harnessValidationControls,
+      currentDirectory,
+    );
     if (reason) return reason;
 
     const wrapped = wrappedCommandForPart(part, commandsByCommand, currentDirectory);
@@ -3082,6 +3151,7 @@ function harnessValidationCommandRepoTargetReason(command, commandsByCommand = n
       commandsByCommand,
       visited,
       wrappedCommandBaseDirectory(wrapped, currentDirectory),
+      harnessValidationControls,
     );
     if (wrappedReason) return wrappedReason;
   }
@@ -3382,6 +3452,7 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
     harnessValidationCommandsByCommand,
     new Set(),
     workingDirectory ?? '',
+    options.harnessControls ?? [],
   );
   const incompleteScanReason = options.incompleteScan && commandNeedsCompleteScan(command)
     ? 'it depends on package, workspace, or make targets that may be omitted by the truncated repository scan'
