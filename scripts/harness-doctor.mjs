@@ -517,17 +517,19 @@ function extractMarkdownLinks(text) {
   const normalized = text.replace(/\r\n/g, '\n');
   const lines = normalized.split('\n');
   let inFence = false;
+  const htmlCommentState = { inComment: false };
   let offset = 0;
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const line = lines[lineIndex];
-    if (/^\s*(```|~~~)/.test(line)) {
+    const uncommentedLine = inFence ? line : maskHtmlComments(line, htmlCommentState);
+    if (/^\s*(```|~~~)/.test(uncommentedLine)) {
       inFence = !inFence;
       offset += line.length + 1;
       continue;
     }
     if (!inFence) {
-      const linkLine = maskInlineCodeSpans(line);
+      const linkLine = maskInlineCodeSpans(uncommentedLine);
       const definition = parseReferenceDefinition(linkLine, offset, lineIndex + 1);
       if (definition) referenceDefinitions.set(normalizeReferenceLabel(definition.label), definition);
       linkLines.push({ line: linkLine, offset, lineNumber: lineIndex + 1, isReferenceDefinition: Boolean(definition) });
@@ -561,6 +563,40 @@ function maskInlineCodeSpans(line) {
       continue;
     }
     masked += codeFence ? ' ' : line[index];
+  }
+  return masked;
+}
+
+function maskHtmlComments(line, state) {
+  let masked = '';
+  let index = 0;
+  while (index < line.length) {
+    if (state.inComment) {
+      const end = line.indexOf('-->', index);
+      if (end < 0) {
+        masked += ' '.repeat(line.length - index);
+        return masked;
+      }
+      masked += ' '.repeat(end + 3 - index);
+      index = end + 3;
+      state.inComment = false;
+      continue;
+    }
+
+    const start = line.indexOf('<!--', index);
+    if (start < 0) {
+      masked += line.slice(index);
+      return masked;
+    }
+    masked += line.slice(index, start);
+    const end = line.indexOf('-->', start + 4);
+    if (end < 0) {
+      masked += ' '.repeat(line.length - start);
+      state.inComment = true;
+      return masked;
+    }
+    masked += ' '.repeat(end + 3 - start);
+    index = end + 3;
   }
   return masked;
 }
@@ -739,10 +775,12 @@ function parseBodyMetadata(text) {
   let validationLine = null;
   let inFence = false;
   let inHeaderMetadata = true;
+  const htmlCommentState = { inComment: false };
 
   for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index].trim();
-    if (/^\s*(```|~~~)/.test(lines[index])) {
+    const uncommentedLine = inFence ? lines[index] : maskHtmlComments(lines[index], htmlCommentState);
+    const line = uncommentedLine.trim();
+    if (/^\s*(```|~~~)/.test(uncommentedLine)) {
       inFence = !inFence;
       continue;
     }
