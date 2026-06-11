@@ -2710,11 +2710,16 @@ function sampleHintEvidence(items, limit = 5) {
 }
 
 function healthControlEvidence(survey) {
-  return survey.harnessControls.filter((path) => /template-fitness|validate-harness|harness-audit|harness-doctor|harness-metrics|harness-health|health-report/i.test(path));
+  return survey.harnessControls.filter((path) => (
+    isHarnessValidationControlPath(path)
+    || /harness-metrics|harness-health|health-report/i.test(path)
+  ));
 }
 
 function isHarnessValidationControlPath(path) {
-  return /template-fitness|validate-harness|harness-audit|harness-doctor/i.test(path);
+  const value = String(path ?? '');
+  if (/\.test\./i.test(value)) return false;
+  return /template-fitness|validate-harness|harness-audit|harness-doctor/i.test(value);
 }
 
 function harnessValidationAutomationEvidence(survey) {
@@ -2722,14 +2727,16 @@ function harnessValidationAutomationEvidence(survey) {
   const evidence = [];
 
   for (const run of survey.ci.runCommands.filter((command) => command.safe)) {
-    if (isHarnessValidationCommand(run.command)) {
-      evidence.push(`${run.source}: ${formatInlineValue(run.command)}`);
-      continue;
-    }
+    for (const part of splitShellCommandParts(run.command)) {
+      if (isHarnessValidationCommand(part)) {
+        evidence.push(`${run.source}: ${formatInlineValue(part)}`);
+        continue;
+      }
 
-    const wrapped = commandsByCommand.get(run.command);
-    if (wrapped?.scriptBody && isHarnessValidationCommand(wrapped.scriptBody)) {
-      evidence.push(`${run.source}: ${formatInlineValue(run.command)} -> ${formatInlineValue(wrapped.scriptBody)}`);
+      const wrapped = commandsByCommand.get(part);
+      if (wrapped?.scriptBody && isHarnessValidationCommand(wrapped.scriptBody)) {
+        evidence.push(`${run.source}: ${formatInlineValue(part)} -> ${formatInlineValue(wrapped.scriptBody)}`);
+      }
     }
   }
 
@@ -2737,7 +2744,9 @@ function harnessValidationAutomationEvidence(survey) {
 }
 
 function isHarnessValidationCommand(command) {
-  return /\b(template-fitness|validate-harness|harness-audit|harness-doctor)\b/i.test(String(command ?? ''));
+  const value = String(command ?? '');
+  if (/(^|\s)--test(?:\s|$)|\.test\./i.test(value)) return false;
+  return /\b(template-fitness|validate-harness|harness-audit|harness-doctor)\b/i.test(value);
 }
 
 function sampleValues(items, limit = 5) {
