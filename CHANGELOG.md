@@ -12,7 +12,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - Added `harness-bootstrap init` as a dry-run first-time bootstrap command while keeping `--write` explicitly unsupported.
 - Added a trigger-gated `contract-memory` Agent Skill prototype as the first progressive-disclosure optional module.
 - Added compact trigger-gated examples for data and repo contract shapes.
-- Added a warning-mode `harness-doctor` audit for durable-memory metadata, route rot, and always-on leakage.
+- Added a warning-mode `harness-doctor` audit for durable-memory metadata, route rot, and always-on leakage, with CI/release automation so humans do not have to remember to run it.
 - Pointed repo-local skill guidance at the public Agent Skills specification for both this repo and downstream template consumers.
 - Updated the MCP specification reference to the current dated version (2025-11-25).
 
@@ -38,6 +38,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - `node --test scripts/package-entrypoint.test.mjs`
 - `node --test scripts/prepare-stable-release.test.mjs`
 - `node scripts/template-fitness.mjs`
+- `node scripts/harness-doctor.mjs`
 - `node scripts/harness-bootstrap-plan.mjs --repo .`
 
 ### Rollback

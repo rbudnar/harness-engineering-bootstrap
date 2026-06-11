@@ -1353,7 +1353,7 @@ Freshness metadata admission rules:
 - Validation: a warning-mode doctor or harness validator can identify missing metadata, stale review dates, broken routes, and supersession gaps.
 - Retirement: remove or demote metadata when the artifact is no longer load-bearing, a generated source covers it, or warnings prove noisy.
 
-Add a warning-mode command such as `node scripts/harness-doctor.mjs` before adding hard failures. The first doctor should prioritize actionable findings:
+Add a warning-mode command such as `node scripts/harness-doctor.mjs` before adding hard failures, and wire it into the repo's CI or unified quality gate so humans do not have to remember to run it. The first doctor should prioritize actionable findings:
 
 - Missing lifecycle metadata only in directories the template treats as load-bearing, such as split ADRs and `docs/data-contracts/` or `docs/repo-contracts/`.
 - Stale `review_after` dates when metadata already exists.

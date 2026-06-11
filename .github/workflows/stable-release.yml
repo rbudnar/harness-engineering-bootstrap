@@ -171,6 +171,7 @@ jobs:
           node --test scripts/package-entrypoint.test.mjs
           node --test scripts/prepare-stable-release.test.mjs
           node scripts/template-fitness.mjs
+          node scripts/harness-doctor.mjs
 
           CURRENT_VERSION="$(tr -d '\r\n' < VERSION)"
           CURRENT_TAG="v$CURRENT_VERSION"
