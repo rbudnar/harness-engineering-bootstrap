@@ -253,6 +253,16 @@ function checkMarkdownLinks({ root, markdownFiles, targetSets, warnings }) {
     const text = readText(root, file);
     const links = extractMarkdownLinks(text);
     for (const link of links) {
+      if (link.missingReference) {
+        warnings.push({
+          code: 'broken-link',
+          path: file,
+          line: link.line,
+          message: `reference-style link has no definition: [${link.label}]`,
+          action: 'Add a matching reference definition or convert the route to an inline link.',
+        });
+        continue;
+      }
       const resolved = resolveInternalLinkTarget({ root, fromFile: file, href: link.href });
       if (!resolved) continue;
       if (!targetSets.files.has(resolved) && !targetSets.directories.has(resolved)) {
@@ -575,7 +585,16 @@ function extractReferenceUsageLinks(line, lineOffset, lineNumber, referenceDefin
     if (match[1]) continue;
     const label = normalizeReferenceLabel(match[3] || match[2]);
     const definition = referenceDefinitions.get(label);
-    if (!definition) continue;
+    if (!definition) {
+      links.push({
+        href: '',
+        missingReference: true,
+        label: match[3] || match[2],
+        index: lineOffset + match.index,
+        line: lineNumber,
+      });
+      continue;
+    }
     links.push({ href: definition.href, index: lineOffset + match.index, line: lineNumber });
   }
   return links;

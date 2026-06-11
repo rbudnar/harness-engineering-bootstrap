@@ -470,6 +470,24 @@ provenance: owner-reviewed fixture
   }
 });
 
+test('warns when visible reference-style links have no definition', () => {
+  const root = makeRepo({
+    'AGENTS.md': '# Agent Instructions\n',
+    'README.md': '# Project\n\nSee [Guide][guide].\n',
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert(report.warnings.some((warning) => (
+      warning.code === 'broken-link'
+      && warning.path === 'README.md'
+      && warning.message.includes('[guide]')
+    )));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('includes untracked non-ignored harness files in git repositories', () => {
   const root = makeRepo({
     'AGENTS.md': '# Agent Instructions\n',
