@@ -419,6 +419,57 @@ provenance: owner-reviewed fixture
   }
 });
 
+test('does not count hidden reference definitions as route-index entries', () => {
+  const metadata = `---
+status: active
+owner: Data Platform
+source_of_truth: warehouse catalog
+last_reviewed: 2026-06-01
+review_after: 2026-12-01
+provenance: owner-reviewed fixture
+---
+
+`;
+  const root = makeRepo({
+    'docs/data-contracts/INDEX.md': '# Data Contracts\n\n[orders]: orders.md\n',
+    'docs/data-contracts/orders.md': `${metadata}# Orders\n`,
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert(report.warnings.some((warning) => (
+      warning.code === 'unindexed-artifact'
+      && warning.path === 'docs/data-contracts/orders.md'
+    )));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('counts visible reference-style routes in indexes', () => {
+  const metadata = `---
+status: active
+owner: Data Platform
+source_of_truth: warehouse catalog
+last_reviewed: 2026-06-01
+review_after: 2026-12-01
+provenance: owner-reviewed fixture
+---
+
+`;
+  const root = makeRepo({
+    'docs/data-contracts/INDEX.md': '# Data Contracts\n\n- [Orders][orders]\n\n[orders]: orders.md\n',
+    'docs/data-contracts/orders.md': `${metadata}# Orders\n`,
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert(!report.warnings.some((warning) => warning.code === 'unindexed-artifact'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('includes untracked non-ignored harness files in git repositories', () => {
   const root = makeRepo({
     'AGENTS.md': '# Agent Instructions\n',

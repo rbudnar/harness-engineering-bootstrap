@@ -499,6 +499,8 @@ function requiresDurableMetadata(file) {
 
 function extractMarkdownLinks(text) {
   const links = [];
+  const referenceDefinitions = new Map();
+  const linkLines = [];
   const normalized = text.replace(/\r\n/g, '\n');
   const lines = normalized.split('\n');
   let inFence = false;
@@ -513,10 +515,17 @@ function extractMarkdownLinks(text) {
     }
     if (!inFence) {
       const linkLine = maskInlineCodeSpans(line);
-      links.push(...extractReferenceDefinitionLinks(linkLine, offset, lineIndex + 1));
-      links.push(...extractInlineLinks(linkLine, offset, lineIndex + 1));
+      const definition = parseReferenceDefinition(linkLine, offset, lineIndex + 1);
+      if (definition) referenceDefinitions.set(normalizeReferenceLabel(definition.label), definition);
+      linkLines.push({ line: linkLine, offset, lineNumber: lineIndex + 1, isReferenceDefinition: Boolean(definition) });
     }
     offset += line.length + 1;
+  }
+
+  for (const item of linkLines) {
+    if (item.isReferenceDefinition) continue;
+    links.push(...extractInlineLinks(item.line, item.offset, item.lineNumber));
+    links.push(...extractReferenceUsageLinks(item.line, item.offset, item.lineNumber, referenceDefinitions));
   }
   return links;
 }
@@ -543,14 +552,37 @@ function maskInlineCodeSpans(line) {
   return masked;
 }
 
-function extractReferenceDefinitionLinks(line, lineOffset, lineNumber) {
+function parseReferenceDefinition(line, lineOffset, lineNumber) {
   const match = /^\s{0,3}\[([^\]\n]+)]:\s*(.*)$/.exec(line);
-  if (!match) return [];
-  if (match[1].startsWith('^')) return [];
+  if (!match) return null;
+  if (match[1].startsWith('^')) return null;
   const destination = parseLinkDestination(match[2]);
-  if (!destination) return [];
+  if (!destination) return null;
   const column = line.indexOf(destination.href, line.indexOf(']:') + 2);
-  return [{ href: destination.href, index: lineOffset + Math.max(column, 0), line: lineNumber }];
+  return {
+    label: match[1],
+    href: destination.href,
+    index: lineOffset + Math.max(column, 0),
+    line: lineNumber,
+  };
+}
+
+function extractReferenceUsageLinks(line, lineOffset, lineNumber, referenceDefinitions) {
+  const links = [];
+  const pattern = /(!?)\[([^\]\n]+)\]\[([^\]\n]*)\]/g;
+  let match;
+  while ((match = pattern.exec(line))) {
+    if (match[1]) continue;
+    const label = normalizeReferenceLabel(match[3] || match[2]);
+    const definition = referenceDefinitions.get(label);
+    if (!definition) continue;
+    links.push({ href: definition.href, index: lineOffset + match.index, line: lineNumber });
+  }
+  return links;
+}
+
+function normalizeReferenceLabel(label) {
+  return label.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 function extractInlineLinks(line, lineOffset, lineNumber) {
