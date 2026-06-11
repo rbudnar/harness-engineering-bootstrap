@@ -3034,6 +3034,7 @@ function harnessValidationPayloadMatchesControl(payload, harnessValidationContro
   if (auditTarget.reason) return false;
   const auditDirectory = normalizePackageDirectoryOrRoot(auditTarget.directory || '');
   const matchedControls = harnessValidationPayloadMatchingControls(payload, harnessValidationControls, currentDirectory);
+  if (auditDirectory === '') return matchedControls.length > 0;
   return matchedControls.some((control) => harnessValidationControlAuditDirectory(control) === auditDirectory);
 }
 
@@ -3057,6 +3058,7 @@ function harnessValidationPayloadControlAuditReason(payload, harnessValidationCo
   const auditDirectory = normalizePackageDirectoryOrRoot(
     harnessValidationPayloadAuditTarget(payload, currentDirectory).directory || '',
   );
+  if (auditDirectory === '') return null;
   if (matchedControls.some((control) => harnessValidationControlAuditDirectory(control) === auditDirectory)) return null;
   return `it audits ${formatHarnessValidationAuditDirectory(auditDirectory)} instead of ${formatHarnessValidationAuditDirectory(harnessValidationControlAuditDirectory(matchedControls[0]))}`;
 }
@@ -3067,9 +3069,14 @@ function harnessValidationControlAuditDirectory(control) {
   if (!parts.length) return '';
   const parent = parts[parts.length - 2]?.toLowerCase();
   if (parent === 'scripts') {
-    return normalizePackageDirectoryOrRoot(parts.slice(0, -2).join('/'));
+    const ownerDirectory = normalizePackageDirectoryOrRoot(parts.slice(0, -2).join('/'));
+    return isRepoOwnedHarnessScriptDirectory(ownerDirectory) ? '' : ownerDirectory;
   }
   return normalizePackageDirectoryOrRoot(parts.slice(0, -1).join('/'));
+}
+
+function isRepoOwnedHarnessScriptDirectory(directory) {
+  return ['', '.github', 'tools'].includes(normalizePackageDirectoryOrRoot(directory || ''));
 }
 
 function harnessValidationPayloadPathCandidates(payloadPath, payloadIsPath, currentDirectory = '') {
