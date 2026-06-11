@@ -528,6 +528,10 @@ function extractMarkdownLinks(text) {
       offset += line.length + 1;
       continue;
     }
+    if (!inFence && isIndentedCodeLine(uncommentedLine)) {
+      offset += line.length + 1;
+      continue;
+    }
     if (!inFence) {
       const linkLine = maskInlineCodeSpans(uncommentedLine);
       const definition = parseReferenceDefinition(linkLine, offset, lineIndex + 1);
@@ -599,6 +603,10 @@ function maskHtmlComments(line, state) {
     index = end + 3;
   }
   return masked;
+}
+
+function isIndentedCodeLine(line) {
+  return /^( {4}|\t)/.test(line);
 }
 
 function parseReferenceDefinition(line, lineOffset, lineNumber) {
@@ -785,6 +793,7 @@ function parseBodyMetadata(text) {
       continue;
     }
     if (inFence) continue;
+    if (isIndentedCodeLine(uncommentedLine)) continue;
     if (/^##\s+Validation\b/i.test(line)) validationLine = index + 1;
     if (/^##\s+/.test(line)) inHeaderMetadata = false;
     if (!inHeaderMetadata) continue;

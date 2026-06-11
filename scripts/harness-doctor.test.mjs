@@ -134,6 +134,31 @@ Provenance: example
   }
 });
 
+test('ignores indented examples when parsing body metadata', () => {
+  const root = makeRepo({
+    'docs/data-contracts/INDEX.md': '# Data Contracts\n\n- [Orders](orders.md)\n',
+    'docs/data-contracts/orders.md': `# Orders Data Contract
+
+    Status: active
+    Owner: Data Platform
+    Source of truth: warehouse catalog orders table
+    Last reviewed: 2026-06-01
+    Review after: 2026-12-01
+    Provenance: example
+`,
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert(report.warnings.some((warning) => (
+      warning.code === 'missing-metadata'
+      && warning.path === 'docs/data-contracts/orders.md'
+    )));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('accepts non-date review-after triggers in contract body metadata', () => {
   const root = makeRepo({
     'docs/repo-contracts/INDEX.md': '# Repo Contracts\n\n- [Design Tokens](design-tokens.md)\n',
@@ -569,6 +594,33 @@ provenance: owner-reviewed fixture
 `;
   const root = makeRepo({
     'docs/data-contracts/INDEX.md': '# Data Contracts\n\n<!-- [Orders](orders.md) -->\n',
+    'docs/data-contracts/orders.md': `${metadata}# Orders\n`,
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert(report.warnings.some((warning) => (
+      warning.code === 'unindexed-artifact'
+      && warning.path === 'docs/data-contracts/orders.md'
+    )));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('does not count indented code links as route-index entries', () => {
+  const metadata = `---
+status: active
+owner: Data Platform
+source_of_truth: warehouse catalog
+last_reviewed: 2026-06-01
+review_after: 2026-12-01
+provenance: owner-reviewed fixture
+---
+
+`;
+  const root = makeRepo({
+    'docs/data-contracts/INDEX.md': '# Data Contracts\n\n    - [Orders](orders.md)\n',
     'docs/data-contracts/orders.md': `${metadata}# Orders\n`,
   });
 
