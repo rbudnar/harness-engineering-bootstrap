@@ -1172,7 +1172,7 @@ function collectPackageScriptsFromManifest(manifest, packageManager, packageMani
   if (!scripts) return [];
 
   return Object.entries(scripts)
-    .filter(([name]) => isValidationScriptName(name))
+    .filter(([name, body]) => isValidationScriptName(name) || isHarnessValidationScriptBody(body))
     .map(([name]) => {
       const command = packageScriptCommand(packageManager, name, manifest.directory);
       return {
@@ -1187,7 +1187,7 @@ function collectPackageScriptsFromManifest(manifest, packageManager, packageMani
       };
     })
     .filter((script) => !script.unsafeReason)
-    .filter((script) => isSafeValidationCommand(script.command))
+    .filter((script) => isSafeValidationCommand(script.command) || isHarnessValidationScriptBody(script.scriptBody))
     .map(({ source, command, scriptBody }) => ({ source, command, scriptBody }));
 }
 
@@ -2737,7 +2737,7 @@ function harnessValidationAutomationEvidence(survey) {
 
       const wrapped = commandsByCommand.get(part);
       const wrappedValidationParts = wrapped?.scriptBody
-        ? splitShellCommandParts(wrapped.scriptBody).filter(isHarnessValidationCommand)
+        ? harnessValidationCommandParts(wrapped.scriptBody, commandsByCommand, new Set([part]))
         : [];
       for (const wrappedPart of wrappedValidationParts) {
         evidence.push(`${run.source}: ${formatInlineValue(part)} -> ${formatInlineValue(wrappedPart)}`);
@@ -2752,6 +2752,26 @@ function isHarnessValidationCommand(command) {
   const value = String(command ?? '');
   if (/(^|\s)--test(?:\s|$)|\.test\./i.test(value)) return false;
   return /\b(template-fitness|validate-harness|harness-audit|harness-doctor)\b/i.test(value);
+}
+
+function isHarnessValidationScriptBody(body) {
+  return harnessValidationCommandParts(body).length > 0;
+}
+
+function harnessValidationCommandParts(command, commandsByCommand = new Map(), visited = new Set()) {
+  const parts = [];
+  for (const part of splitShellCommandParts(command)) {
+    if (isHarnessValidationCommand(part)) {
+      parts.push(part);
+      continue;
+    }
+
+    const wrapped = commandsByCommand.get(part);
+    if (!wrapped?.scriptBody || visited.has(part)) continue;
+    visited.add(part);
+    parts.push(...harnessValidationCommandParts(wrapped.scriptBody, commandsByCommand, visited));
+  }
+  return parts;
 }
 
 function sampleValues(items, limit = 5) {
@@ -2860,7 +2880,10 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
     && !makeTargetReason
     && !packageScriptReason
     && !incompleteScanReason
-    && isSafeValidationCommand(command);
+    && (
+      isSafeValidationCommand(command)
+      || packageScriptRunsHarnessValidation(command, packageManifest, packageManifests, workingDirectory ?? '')
+    );
   return {
     source,
     command,
@@ -2880,6 +2903,24 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
         || incompleteScanReason
         || 'it is not a known-safe validation command or it may mutate external state',
   };
+}
+
+function packageScriptRunsHarnessValidation(command, packageManifest, packageManifests = [], currentDirectory = '') {
+  const scriptName = packageScriptNameFromCommand(command);
+  if (!scriptName) return false;
+
+  for (const targetManifest of packageScriptManifestsForCommand(
+    command,
+    packageManifest,
+    packageManifests,
+    currentDirectory,
+  )) {
+    const scripts = packageScriptsObject(targetManifest?.json?.scripts);
+    if (!scripts || !Object.hasOwn(scripts, scriptName)) continue;
+    if (isHarnessValidationScriptBody(scripts[scriptName])) return true;
+  }
+
+  return false;
 }
 
 function unsafeMakeTargetReason(command, unsafeMakeTargets, baseDirectory = '') {
