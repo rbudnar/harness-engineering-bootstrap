@@ -523,7 +523,7 @@ function extractMarkdownLinks(text) {
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const line = lines[lineIndex];
     const uncommentedLine = activeFence ? line : maskHtmlComments(line, htmlCommentState);
-    const fence = parseMarkdownFence(uncommentedLine);
+    const fence = parseMarkdownFence(markdownContainerLine(uncommentedLine, listContexts));
     if (activeFence) {
       if (closesMarkdownFence(fence, activeFence)) activeFence = null;
       offset += line.length + 1;
@@ -621,6 +621,30 @@ function parseMarkdownFence(line) {
 
 function closesMarkdownFence(fence, activeFence) {
   return Boolean(fence && fence.marker === activeFence.marker && fence.length >= activeFence.length);
+}
+
+function markdownContainerLine(line, listContexts = []) {
+  const indent = indentationWidth(line.match(/^[ \t]*/)?.[0] ?? '');
+  const parent = deepestListParent(indent, listContexts);
+  if (!parent || indent < parent.contentIndent) return line;
+  return removeIndentWidth(line, parent.contentIndent);
+}
+
+function removeIndentWidth(line, targetWidth) {
+  let width = 0;
+  let index = 0;
+  while (index < line.length && width < targetWidth) {
+    const character = line[index];
+    if (character === ' ') {
+      width += 1;
+    } else if (character === '\t') {
+      width += 4;
+    } else {
+      break;
+    }
+    index += 1;
+  }
+  return line.slice(index);
 }
 
 function isIndentedCodeLine(line, context = {}) {
@@ -853,11 +877,12 @@ function parseBodyMetadata(text) {
   let activeFence = null;
   let inHeaderMetadata = true;
   const htmlCommentState = { inComment: false };
+  let listContexts = [];
 
   for (let index = 0; index < lines.length; index += 1) {
     const uncommentedLine = activeFence ? lines[index] : maskHtmlComments(lines[index], htmlCommentState);
     const line = uncommentedLine.trim();
-    const fence = parseMarkdownFence(uncommentedLine);
+    const fence = parseMarkdownFence(markdownContainerLine(uncommentedLine, listContexts));
     if (activeFence) {
       if (closesMarkdownFence(fence, activeFence)) activeFence = null;
       continue;
@@ -867,6 +892,7 @@ function parseBodyMetadata(text) {
       continue;
     }
     if (isIndentedCodeLine(uncommentedLine)) continue;
+    listContexts = updateListContexts(uncommentedLine, listContexts);
     if (/^##\s+Validation\b/i.test(line)) validationLine = index + 1;
     if (/^##\s+/.test(line)) inHeaderMetadata = false;
     if (!inHeaderMetadata) continue;

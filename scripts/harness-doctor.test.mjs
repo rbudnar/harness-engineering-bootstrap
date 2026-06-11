@@ -447,6 +447,28 @@ test('ignores markdown links inside nested fenced examples', () => {
   }
 });
 
+test('ignores markdown links inside list-contained fenced examples', () => {
+  const root = makeRepo({
+    'AGENTS.md': '# Agent Instructions\n',
+    'README.md': [
+      '# Project',
+      '',
+      '- Example:',
+      '    ```markdown',
+      '    [Missing](docs/missing.md)',
+      '    ```',
+      '',
+    ].join('\n'),
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert(!report.warnings.some((warning) => warning.code === 'broken-link'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('accepts exact-case directory links but warns for case-only directory drift', () => {
   const root = makeRepo({
     'AGENTS.md': '# Agent Instructions\n',
@@ -742,6 +764,41 @@ provenance: owner-reviewed fixture
 `;
   const root = makeRepo({
     'docs/data-contracts/INDEX.md': '# Data Contracts\n\n    - [Orders](orders.md)\n',
+    'docs/data-contracts/orders.md': `${metadata}# Orders\n`,
+  });
+
+  try {
+    const report = runDoctor({ repo: root, date: '2026-06-10' });
+    assert(report.warnings.some((warning) => (
+      warning.code === 'unindexed-artifact'
+      && warning.path === 'docs/data-contracts/orders.md'
+    )));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('does not count list-contained fenced code links as route-index entries', () => {
+  const metadata = `---
+status: active
+owner: Data Platform
+source_of_truth: warehouse catalog
+last_reviewed: 2026-06-01
+review_after: 2026-12-01
+provenance: owner-reviewed fixture
+---
+
+`;
+  const root = makeRepo({
+    'docs/data-contracts/INDEX.md': [
+      '# Data Contracts',
+      '',
+      '- Example:',
+      '    ```markdown',
+      '    - [Orders](orders.md)',
+      '    ```',
+      '',
+    ].join('\n'),
     'docs/data-contracts/orders.md': `${metadata}# Orders\n`,
   });
 
