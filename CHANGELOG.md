@@ -14,6 +14,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - Added compact trigger-gated examples for data and repo contract shapes.
 - Added a warning-mode `harness-doctor` audit for durable-memory metadata, route rot, and always-on leakage, with CI/release automation and Markdown fence hardening so humans do not have to remember to run it.
 - Made downstream bootstrap acceptance require wiring the harness doctor or validator into the target repo's quality gate and CI or equivalent automation by default.
+- Added a compact long-running handoff/resume contract and failure-to-memory classifier so repeated misses can become the smallest durable harness update instead of chat-only lore, while leaving provider-native compaction and summarization behavior outside HEB's scope.
 - Pointed repo-local skill guidance at the public Agent Skills specification for both this repo and downstream template consumers.
 - Updated the MCP specification reference to the current dated version (2025-11-25).
 
@@ -23,6 +24,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - Added a Getting Started section with requirements, clone/run commands, Windows usage, output sections to review, and the update-mode command.
 - Split deeper measurement-layer implementation guidance into a routed template reference and tightened the main-template line budget.
 - Added a compact contract-memory skill and routed contract shapes for data/repo contract work without making contract folders mandatory.
+- Tightened task-contract guidance with current-state, known-failure, resume-preflight, closeout, and promotion-candidate fields for handoff-heavy work.
 
 ### Planner And Metadata
 

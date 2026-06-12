@@ -280,9 +280,9 @@ const moduleDefinitions = [
     trigger: (survey) => survey.planHints.length > 0,
     evidence: (survey) => samplePaths(survey.planHints),
     smallerControl:
-      'Use the active bootstrap plan header and progress log before creating a broader task-contract system.',
+      'Use the active bootstrap plan header, resume preflight, and progress log before creating a broader task-contract system.',
     validation:
-      'A new session can resume from the plan without chat-history archaeology and without trusting stale claims.',
+      'A new session can resume from the closeout state, verify known failures and repo drift, and classify repeated misses without chat-history archaeology.',
     rejection: 'No existing plan, handoff, task-contract, or multi-session work surface was detected.',
   },
   {

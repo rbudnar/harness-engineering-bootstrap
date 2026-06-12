@@ -113,7 +113,7 @@ Planner, update-mode, and release-policy changes must stay read-only until a sep
 node --test scripts/harness-bootstrap-plan.test.mjs
 node scripts/harness-bootstrap-plan.mjs --repo .
 ```
-Output must keep required core, triggered modules, rejected modules, smaller-control rationale, validation steps, open questions, and phase handoff rules visible enough for a fresh reviewer to challenge without manual chat relay.
+Output must keep required core, triggered modules, rejected modules, smaller-control rationale, validation steps, open questions, phase handoff rules, and any closeout/resume state visible enough for a fresh reviewer to challenge without manual chat relay.
 
 ## Review Posture
 
