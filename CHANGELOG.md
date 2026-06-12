@@ -12,6 +12,8 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - Added `harness-bootstrap init` as a dry-run first-time bootstrap command while keeping `--write` explicitly unsupported.
 - Added a trigger-gated `contract-memory` Agent Skill prototype as the first progressive-disclosure optional module.
 - Added compact trigger-gated examples for data and repo contract shapes.
+- Added a warning-mode `harness-doctor` audit for durable-memory metadata, route rot, and always-on leakage, with CI/release automation and Markdown fence hardening so humans do not have to remember to run it.
+- Made downstream bootstrap acceptance require wiring the harness doctor or validator into the target repo's quality gate and CI or equivalent automation by default.
 - Pointed repo-local skill guidance at the public Agent Skills specification for both this repo and downstream template consumers.
 - Updated the MCP specification reference to the current dated version (2025-11-25).
 
@@ -27,15 +29,18 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - Added template-fitness validation for repo-local `SKILL.md` packages so future repository skills use valid standard frontmatter.
 - Included repo-local skills in the GitHub package file list when skills are present and advertised from packaged docs.
 - Added package metadata validation, release-preparation version sync, and release-workflow staging for `package.json`.
+- Updated the read-only bootstrap planner so required-core and validation output call for automatic downstream harness-doctor or validator runs, recognize existing doctor controls, and avoid manual reminders.
 
 ### Migration
 
 ### Validation
 
 - `node --test scripts/harness-bootstrap-plan.test.mjs`
+- `node --test scripts/harness-doctor.test.mjs`
 - `node --test scripts/package-entrypoint.test.mjs`
 - `node --test scripts/prepare-stable-release.test.mjs`
 - `node scripts/template-fitness.mjs`
+- `node scripts/harness-doctor.mjs`
 - `node scripts/harness-bootstrap-plan.mjs --repo .`
 
 ### Rollback

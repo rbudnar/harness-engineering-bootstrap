@@ -71,6 +71,19 @@ test('package init subcommand matches direct bootstrap mode without writing targ
   }
 });
 
+test('package includes the warning-mode harness doctor script', () => {
+  const packRoot = mkdtempSync(resolve(tmpdir(), 'heb-bin-doctor-pack-'));
+
+  try {
+    const packed = JSON.parse(runNpm(['pack', '--dry-run', '--json', '--pack-destination', packRoot], { cwd: repoRoot }));
+    const paths = packed[0].files.map((file) => file.path);
+
+    assert(paths.includes('scripts/harness-doctor.mjs'));
+  } finally {
+    rmSync(packRoot, { recursive: true, force: true });
+  }
+});
+
 test('normalizes quoted and unquoted planner validation commands', () => {
   const output = normalizePlannerOutput({
     quoted: 'node "C:\\work dir\\heb\\scripts\\harness-bootstrap-plan.mjs" --repo target',

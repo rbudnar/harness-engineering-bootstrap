@@ -1324,7 +1324,44 @@ Add a harness validator that checks:
 - If `docs/agent-runtime.md` or `docs/agent-runtime-safety.md` exists, `AGENTS.md` includes the agent-runtime safety rule and the runtime doc links to its verification checks
 - If behavioral anchors, evidence packs, code-search adapters, or fault-injection profiles exist, their indexes or docs are reachable from the task router or relevant runtime/eval docs
 
-Run this validator in the repo's exact unified quality-gate command and CI.
+Run this validator in the repo's exact unified quality-gate command and CI or equivalent automation. Bootstrap plans should treat that wiring as part of the default required core, not as an optional follow-up or manual reminder.
+
+### Freshness Metadata And Memory Doctor
+
+Use durable metadata only for load-bearing harness memory, not every Markdown file. Start with warning-mode audits before enforcing freshness or supersession as a PR failure.
+
+Recommended frontmatter fields for active decisions, split ADR files, data contracts, repo contracts, source-heavy evidence packs, and other durable artifacts once they become load-bearing:
+
+```yaml
+---
+# Allowed status values: active, draft, deprecated, superseded
+status: active
+owner: <team or role>
+source_of_truth: <canonical source or owner-reviewed route>
+last_reviewed: YYYY-MM-DD
+review_after: YYYY-MM-DD
+provenance: <manual audit, generated check, owner review, fixture, or source citation>
+supersedes: <artifact id/path or none>
+superseded_by: <artifact id/path or none>
+---
+```
+
+Freshness metadata admission rules:
+
+- Trigger evidence: the artifact guides future work, encodes an external assumption, or is cited by a validator, review rule, index, or task router.
+- Smaller control: a short route update or local test is not enough because stale or superseded memory would still mislead future agents.
+- Validation: a warning-mode doctor or harness validator can identify missing metadata, stale review dates, broken routes, and supersession gaps.
+- Retirement: remove or demote metadata when the artifact is no longer load-bearing, a generated source covers it, or warnings prove noisy.
+
+Add a warning-mode command such as `node scripts/harness-doctor.mjs` before adding hard failures, and wire it into the repo's CI or unified quality gate during bootstrap so humans do not have to remember to run it. If the repo has no CI, name the equivalent automated runner before accepting the bootstrap. The first doctor should prioritize actionable findings:
+
+- Missing lifecycle metadata only in directories the template treats as load-bearing, such as split ADRs and `docs/data-contracts/` or `docs/repo-contracts/`.
+- Stale `review_after` dates when metadata already exists.
+- Broken internal Markdown links and index routes.
+- Optional-module detail leaking into always-on instruction files.
+- Obvious duplicate guidance across always-on adapters.
+
+The doctor should exit `0` when warnings are present. Promote any warning to a failing check only after at least one audit cycle shows low noise and an active decision records the promotion.
 
 ### Optional Contract Coverage Checks
 
@@ -1545,7 +1582,7 @@ Mechanical validation:
 - Health report, if present, summarizes validators and metrics into prioritized actions.
 - Agent-specific instruction files point to the shared source of truth.
 - Optional contract checks are warnings or failures according to confidence.
-- CI or local commands document how to run the checks.
+- The harness doctor or validator runs from CI or equivalent automation; the local command is documented for fast feedback only.
 - PR-time harness checks are wired into CI.
 - Scheduled harness metrics or audit reporting is wired into CI or the repo's equivalent automation.
 
@@ -1633,7 +1670,7 @@ Do not treat baseline imperfections as automatic blockers. The goal is to make t
 - [ ] Add context rot and garbage-collection guidance
 - [ ] Prefer programmatic state surfaces over raw context dumps for large, changing, or inspectable state
 - [ ] Add or update one exact unified quality-gate command and use that exact command in docs and agent instructions
-- [ ] Add basic harness validation
+- [ ] Add basic warning-mode harness validation and wire it into the quality gate and CI or equivalent automation
 - [ ] Add contract coverage checks if practical
 - [ ] Add or update the canonical review harness; add `.github/copilot-instructions.md` as an adapter only when Copilot is used
 - [ ] Add or update PR template harness-impact questions

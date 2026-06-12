@@ -73,6 +73,13 @@ const prioritySurveyPaths = [
   'docs/decisions.md',
   'scripts/check.sh',
   'scripts/template-fitness.mjs',
+  'scripts/harness-doctor.mjs',
+  'scripts/harness-doctor.cjs',
+  'scripts/harness-doctor.js',
+  'scripts/harness-doctor.ts',
+  'scripts/harness-doctor.py',
+  'scripts/harness-doctor.sh',
+  'scripts/harness-doctor.ps1',
   'scripts/validate-harness.py',
   'scripts/validate-docs.py',
   '.github/workflows/template-fitness.yml',
@@ -341,17 +348,20 @@ export function surveyRepository(inputPath, options = {}) {
   const packageManager = inferPackageManager(fileSet, packageJson);
   const unsafeMakeTargets = collectUnsafeMakeTargets(root, fileSet, packageManifests);
   const runtimeSafetyUnsafeMakeTargets = collectUnsafeMakeTargets(root, fileSet, packageManifests, { runtimeSafety: true });
+  const harnessControls = collectHarnessControls(allFiles);
   const packageScripts = collectPackageScripts(packageManifests, packageManager, fileSet, unsafeMakeTargets, {
     incompleteScan: files.truncated,
+    harnessControls,
   });
-  const makeTargets = collectMakeTargets(root, fileSet, unsafeMakeTargets);
+  const makeTargets = collectMakeTargets(root, fileSet, unsafeMakeTargets, { harnessControls });
   const makeRuntimeSafetyHints = collectMakeRuntimeSafetyHints(root, fileSet, packageManifests, runtimeSafetyUnsafeMakeTargets);
   const ci = collectCi(root, allFiles, packageManifests, unsafeMakeTargets, {
+    harnessControls,
     incompleteScan: files.truncated,
+    makeTargets,
     runtimeSafetyUnsafeMakeTargets,
   });
   const scriptFiles = allFiles.filter((path) => path.startsWith('scripts/')).sort();
-  const harnessControls = collectHarnessControls(allFiles);
   const prWorkflowMetricHints = collectPrWorkflowMetricHints(root, allFiles);
   const versionState = collectVersionState(root, allFiles);
   const bootstrapState = collectBootstrapState({
@@ -687,6 +697,13 @@ export function parseArgs(args) {
 function buildRequiredCore(survey) {
   const commandEvidence = survey.commands.map((command) => command.command);
   const hasDecisionMemory = survey.docs.hasDecisionMemory;
+  const harnessValidationControls = survey.harnessControls.filter(isHarnessValidationControlPath);
+  const harnessValidationAutomation = harnessValidationAutomationEvidence(survey, harnessValidationControls);
+  const harnessValidationStatus = harnessValidationControls.length && harnessValidationAutomation.length
+    ? 'present'
+    : harnessValidationControls.length
+      ? 'partial'
+      : 'missing';
 
   return [
     {
@@ -776,14 +793,14 @@ function buildRequiredCore(survey) {
     {
       id: 'harness-validation',
       title: 'Harness validation',
-      status: survey.harnessControls.some((path) => /template-fitness|validate-harness|harness-audit/i.test(path))
-        ? 'present'
-        : 'missing',
-      evidence: survey.harnessControls.filter((path) => /template-fitness|validate-harness|harness-audit/i.test(path)),
-      action: survey.harnessControls.some((path) => /template-fitness|validate-harness|harness-audit/i.test(path))
-        ? 'Keep harness validation wired into local checks or CI.'
-        : 'Add a minimal harness validator only after the first required harness files exist.',
-      smallerControl: 'Start with size/route checks before adding semantic validators.',
+      status: harnessValidationStatus,
+      evidence: dedupe([...harnessValidationControls, ...harnessValidationAutomation]),
+      action: harnessValidationStatus === 'present'
+        ? 'Keep harness validation wired into the canonical quality gate and CI or equivalent automation so it runs without a human remembering it.'
+        : harnessValidationControls.length
+          ? 'Wire the existing harness doctor or validator into the canonical quality gate and CI or equivalent automation before accepting the bootstrap.'
+          : 'Add a minimal warning-mode harness doctor or validator after the first required harness files exist, then wire it into the canonical quality gate and CI or equivalent automation before accepting the bootstrap.',
+      smallerControl: 'Start with warning-mode size, route, link, and leakage checks before adding semantic validators; do not rely on manual reminders for recurring harness drift checks.',
     },
     {
       id: 'metrics-baseline',
@@ -915,6 +932,7 @@ function buildValidationSteps(survey, options = {}) {
     steps.push({ text: 'For this template repo, keep `node scripts/template-fitness.mjs` green.' });
   }
 
+  steps.push({ text: 'Before accepting the bootstrap, verify the harness doctor or validator is wired into the repo\'s canonical quality gate and CI or equivalent automation so future runs do not depend on human memory.' });
   steps.push({ text: 'Get a fresh-context review before implementation and again before closing the bootstrap PR.' });
 
   return dedupeObjects(steps, (step) => step.command ? `${step.label}\0${step.command}` : step.text);
@@ -944,7 +962,7 @@ function buildOpenQuestions(survey, requiredCore, modules) {
   }
 
   if (!survey.ci.files.length) {
-    questions.push('Is CI intentionally absent, or should harness validation include adding a basic CI check?');
+    questions.push('Is CI intentionally absent? If not, add a basic CI check that runs harness validation automatically; if yes, name the equivalent automated runner before accepting the bootstrap.');
   }
 
   return questions;
@@ -1045,14 +1063,14 @@ function collectBootstrapState({ instructionFiles, docs, harnessControls, versio
   if (docs.hasDocsReadme) evidence.push('docs/README.md');
   if (docs.hasDecisionMemory) evidence.push('decision memory');
   if (docs.hasHumanGuide) evidence.push('human guide');
-  if (harnessControls.some((path) => /template-fitness|validate-harness|harness-audit/i.test(path))) {
+  if (harnessControls.some(isHarnessValidationControlPath)) {
     evidence.push('harness validation');
   }
 
   const hasHebSpecificEvidence = Boolean(
     versionState.installedVersion
       || versionState.source
-      || harnessControls.some((path) => /template-fitness|validate-harness|harness-audit/i.test(path)),
+      || harnessControls.some(isHarnessValidationControlPath),
   );
   const hasVersionMetadata = Boolean(versionState.installedVersion || versionState.source);
   const status = hasVersionMetadata || (hasHebSpecificEvidence && evidence.length >= 3) ? 'bootstrapped' : 'fresh';
@@ -1086,6 +1104,7 @@ function collectCi(root, files, packageManifests = [], unsafeMakeTargets = new S
   const runCommands = [];
   const ciOptions = {
     ...options,
+    harnessValidationCommandsByCommand: harnessValidationCommandMapForCi(packageManifests, options.makeTargets ?? []),
     runtimeSafetyUnsafeMakeTargets: options.runtimeSafetyUnsafeMakeTargets ?? unsafeMakeTargets,
   };
   for (const path of ciFiles) {
@@ -1162,14 +1181,18 @@ function collectPackageScriptsFromManifest(manifest, packageManager, packageMani
   const packageJson = manifest.json;
   const scripts = packageScriptsObject(packageJson?.scripts);
   if (!scripts) return [];
+  const hasExistingHarnessValidator = (body) => (
+    isHarnessValidationScriptBody(body, options.harnessControls, manifest.directory)
+  );
 
   return Object.entries(scripts)
-    .filter(([name]) => isValidationScriptName(name))
+    .filter(([name, body]) => isValidationScriptName(name) || hasExistingHarnessValidator(body))
     .map(([name]) => {
       const command = packageScriptCommand(packageManager, name, manifest.directory);
       return {
         source: manifest.path,
         command,
+        scriptBody: String(scripts[name] ?? ''),
         unsafeReason: unsafePackageScriptReason(command, manifest, packageManifests, {
           unsafeMakeTargets,
           incompleteScan: options.incompleteScan,
@@ -1178,8 +1201,12 @@ function collectPackageScriptsFromManifest(manifest, packageManager, packageMani
       };
     })
     .filter((script) => !script.unsafeReason)
-    .filter((script) => isSafeValidationCommand(script.command))
-    .map(({ source, command }) => ({ source, command }));
+    .filter((script) => {
+      const hasExistingValidator = hasExistingHarnessValidator(script.scriptBody);
+      if (hasHarnessValidationCommandText(script.scriptBody)) return hasExistingValidator;
+      return isSafeValidationCommand(script.command) || hasExistingValidator;
+    })
+    .map(({ source, command, scriptBody }) => ({ source, command, scriptBody }));
 }
 
 function packageScriptsObject(value) {
@@ -1206,14 +1233,17 @@ function scopedPackageScriptCommand(packageManager, name, directory) {
   return name === 'test' ? `npm --prefix ${path} test` : `npm --prefix ${path} run ${name}`;
 }
 
-function collectMakeTargets(root, fileSet, unsafeTargets = collectUnsafeMakeTargets(root, fileSet)) {
+function collectMakeTargets(root, fileSet, unsafeTargets = collectUnsafeMakeTargets(root, fileSet), options = {}) {
   const targets = collectMakeTargetRecipes(root, fileSet);
   return targets
-    .filter((target) => /^(test|build|lint|check|quality|validate|coverage)$/i.test(target.name))
+    .filter((target) => /^(test|build|lint|check|quality|validate|coverage)$/i.test(target.name)
+      || isHarnessValidationScriptBody(target.recipe, options.harnessControls, target.directory))
     .filter((target) => !unsafeTargets.has(makeTargetKey(target.directory, target.name)))
     .map((target) => ({
       source: target.path,
       command: target.directory ? `make -C ${quotePath(target.directory)} ${target.name}` : `make ${target.name}`,
+      directory: target.directory,
+      scriptBody: target.recipe,
     }));
 }
 
@@ -1795,6 +1825,9 @@ function collectWorkflowRunCommands(text, source, packageManifests = [], unsafeM
           workingDirectory,
           runtimeSafetyReason,
           unsafeMakeTargets,
+          harnessControls: options.harnessControls,
+          harnessValidationCommandsByCommand: options.harnessValidationCommandsByCommand,
+          makeTargets: options.makeTargets,
           runtimeSafetyUnsafeMakeTargets: options.runtimeSafetyUnsafeMakeTargets,
           incompleteScan: options.incompleteScan,
         }));
@@ -1804,6 +1837,9 @@ function collectWorkflowRunCommands(text, source, packageManifests = [], unsafeM
         workingDirectory,
         runtimeSafetyReason,
         unsafeMakeTargets,
+        harnessControls: options.harnessControls,
+        harnessValidationCommandsByCommand: options.harnessValidationCommandsByCommand,
+        makeTargets: options.makeTargets,
         runtimeSafetyUnsafeMakeTargets: options.runtimeSafetyUnsafeMakeTargets,
         incompleteScan: options.incompleteScan,
       }));
@@ -1945,6 +1981,9 @@ function collectGenericCiRunCommands(text, source, packageManifests = [], unsafe
   const ciOptions = (extra = {}) => ({
     ...extra,
     unsafeMakeTargets,
+    harnessControls: options.harnessControls,
+    harnessValidationCommandsByCommand: options.harnessValidationCommandsByCommand,
+    makeTargets: options.makeTargets,
     runtimeSafetyUnsafeMakeTargets: options.runtimeSafetyUnsafeMakeTargets,
     incompleteScan: options.incompleteScan,
   });
@@ -2517,6 +2556,7 @@ function collectHarnessControls(files) {
       || lower.includes('template-fitness')
       || lower.includes('validate-harness')
       || lower.includes('harness-metrics')
+      || lower.includes('harness-doctor')
       || lower.includes('harness-health');
   }).sort();
 }
@@ -2700,7 +2740,625 @@ function sampleHintEvidence(items, limit = 5) {
 }
 
 function healthControlEvidence(survey) {
-  return survey.harnessControls.filter((path) => /template-fitness|validate-harness|harness-audit|harness-metrics|harness-health|health-report/i.test(path));
+  return survey.harnessControls.filter((path) => (
+    isHarnessValidationControlPath(path)
+    || /harness-metrics|harness-health|health-report/i.test(path)
+  ));
+}
+
+function isHarnessValidationControlPath(path) {
+  const value = String(path ?? '').replace(/\\/g, '/');
+  if (value.toLowerCase().startsWith('.github/workflows/')) return false;
+  return isHarnessValidationExecutableWord(value);
+}
+
+function harnessValidationAutomationEvidence(survey, harnessValidationControls = survey.harnessControls?.filter(isHarnessValidationControlPath) ?? []) {
+  const commandsByCommand = new Map(survey.commands.map((command) => [command.command, command]));
+  const evidence = [];
+
+  for (const run of survey.ci.runCommands.filter(hasHarnessValidationAutomationEvidence)) {
+    if (Array.isArray(run.harnessValidationEvidence)) {
+      evidence.push(...run.harnessValidationEvidence);
+      continue;
+    }
+    evidence.push(...harnessValidationEvidenceForRun(
+      run.source,
+      run.command,
+      commandsByCommand,
+      harnessValidationControls,
+    ));
+  }
+
+  return dedupe(evidence);
+}
+
+function hasHarnessValidationAutomationEvidence(command) {
+  if (command.safe) return true;
+  return Boolean(
+    command.workingDirectory
+    && command.harnessValidationSafe
+    && Array.isArray(command.harnessValidationEvidence)
+    && !command.packageScriptReason
+    && !command.packageScriptRuntimeSafetyReason
+    && !command.makeTargetRuntimeSafetyReason
+    && !command.runtimeSafetyReason
+    && command.inspectOnlyReason?.startsWith('it declares working-directory '),
+  );
+}
+
+function harnessValidationEvidenceForRun(source, command, commandsByCommand, harnessValidationControls = [], baseDirectory = '') {
+  const evidence = [];
+  let currentDirectory = normalizePackageDirectory(baseDirectory || '');
+
+  for (const part of splitShellCommandParts(command)) {
+    const cdCommand = inspectCdCommand(part, currentDirectory);
+    if (cdCommand.isCd) {
+      if (cdCommand.unsafeReason) return dedupe(evidence);
+      currentDirectory = cdCommand.directory;
+      continue;
+    }
+
+    if (isHarnessValidationCommand(part) && harnessValidationCommandMatchesControl(part, harnessValidationControls, currentDirectory)) {
+      evidence.push(`${source}: ${formatInlineValue(part)}`);
+      continue;
+    }
+
+    const wrapped = wrappedCommandForPart(part, commandsByCommand, currentDirectory);
+    const wrappedDirectory = wrappedCommandBaseDirectory(wrapped, currentDirectory);
+    const wrappedValidationParts = wrapped?.scriptBody
+      ? harnessValidationCommandParts(
+        wrapped.scriptBody,
+        commandsByCommand,
+        new Set([wrappedCommandVisitKey(part, wrapped, wrappedDirectory)]),
+        harnessValidationControls,
+        wrappedDirectory,
+      )
+      : [];
+    if (wrappedValidationParts.length && hasNoOpForwardedPackageScriptArgs(part)) continue;
+    for (const wrappedPart of wrappedValidationParts) {
+      evidence.push(`${source}: ${formatInlineValue(part)} -> ${formatInlineValue(wrappedPart)}`);
+    }
+  }
+
+  return dedupe(evidence);
+}
+
+function isSafeHarnessValidationCommand(source, command, commandsByCommand, harnessValidationControls = [], baseDirectory = '') {
+  let hasHarnessValidationPart = false;
+  let currentDirectory = normalizePackageDirectory(baseDirectory || '');
+
+  for (const part of splitShellCommandParts(command)) {
+    const cdCommand = inspectCdCommand(part, currentDirectory);
+    if (cdCommand.isCd) {
+      if (cdCommand.unsafeReason) return false;
+      currentDirectory = cdCommand.directory;
+      continue;
+    }
+    if (isHarmlessShellPrelude(part)) continue;
+
+    const partEvidence = harnessValidationEvidenceForRun(source, part, commandsByCommand, harnessValidationControls, currentDirectory);
+    if (partEvidence.length) {
+      hasHarnessValidationPart = true;
+      continue;
+    }
+
+    if (isSafeValidationCommandPart(part)) continue;
+    return false;
+  }
+
+  return hasHarnessValidationPart;
+}
+
+function isHarnessValidationCommand(command) {
+  return isHarnessValidationExecutableWord(harnessValidationCommandPayloadWord(command));
+}
+
+function harnessValidationCommandPayloadWord(command) {
+  return harnessValidationCommandPayload(command)?.word ?? null;
+}
+
+function harnessValidationCommandPayload(command) {
+  const value = String(command ?? '');
+  if (/(^|\s)--test(?:\s|$)|\.test\./i.test(value)) return null;
+  if (hasShellPipeline(value) || /(^|[^&])&(?!&)/.test(value)) return null;
+  const wrapperPayload = shellWrapperPayload(value);
+  if (wrapperPayload !== null) return harnessValidationCommandPayload(wrapperPayload);
+
+  const packageExecutorPayload = packageExecutorPayloads(value)
+    .map((payload) => harnessValidationCommandPayload(payload))
+    .find(Boolean);
+  if (packageExecutorPayload) return packageExecutorPayload;
+
+  const words = shellWords(stripPackageCommandPrefix(value));
+  if (!words.length) return null;
+  const commandWord = words[0]?.toLowerCase();
+
+  if (isHarnessValidationExecutableWord(commandWord)) {
+    if (hasHarnessValidationNoOpArgument(words.slice(1))) return null;
+    return { word: words[0], index: 0, words };
+  }
+  if (!isHarnessValidationRunner(commandWord)) return null;
+
+  return harnessValidationRunnerPayload(words);
+}
+
+function isHarnessValidationScriptBody(body, harnessValidationControls = null, baseDirectory = '') {
+  return harnessValidationCommandParts(
+    body,
+    new Map(),
+    new Set(),
+    harnessValidationControls,
+    baseDirectory,
+  ).length > 0;
+}
+
+function isHarnessValidationRunner(word) {
+  return ['node', 'tsx', 'ts-node', 'python', 'python3', 'bash', 'sh', 'pwsh', 'powershell'].includes(String(word ?? '').toLowerCase());
+}
+
+function harnessValidationRunnerPayloadWord(words) {
+  return harnessValidationRunnerPayload(words)?.word ?? null;
+}
+
+function harnessValidationRunnerPayload(words) {
+  for (let index = 1; index < words.length; index += 1) {
+    const word = words[index];
+    if (!word || word === '--') continue;
+    if (isHarnessValidationNoOpArgument(word)) return null;
+    if (runnerPayloadOption(word) && words[index + 1]) {
+      if (hasHarnessValidationNoOpArgument(words.slice(index + 2))) return null;
+      return { word: stripYamlQuotes(words[index + 1]), index: index + 1, words };
+    }
+    if (runnerOptionConsumesNext(word) && words[index + 1]) {
+      index += 1;
+      continue;
+    }
+    if (String(word).startsWith('-')) continue;
+    if (hasHarnessValidationNoOpArgument(words.slice(index + 1))) return null;
+    return { word: stripYamlQuotes(word), index, words };
+  }
+  return null;
+}
+
+function harnessValidationPayloadRepoTargetReason(payload, currentDirectory = '', expectedDirectory = null) {
+  const auditTarget = harnessValidationPayloadAuditTarget(payload, currentDirectory);
+  if (auditTarget.reason) return auditTarget.reason;
+  if (expectedDirectory === null) return null;
+  const actualDirectory = normalizePackageDirectoryOrRoot(auditTarget.directory || '');
+  const normalizedExpectedDirectory = normalizePackageDirectoryOrRoot(expectedDirectory || '');
+  if (actualDirectory === normalizedExpectedDirectory) return null;
+  return `it audits ${formatHarnessValidationAuditDirectory(actualDirectory)} instead of ${formatHarnessValidationAuditDirectory(normalizedExpectedDirectory)}`;
+}
+
+function harnessValidationPayloadAuditTarget(payload, currentDirectory = '') {
+  const repoTarget = harnessValidationPayloadRepoTarget(payload);
+  const normalizedCurrentDirectory = normalizePackageDirectoryOrRoot(currentDirectory || '');
+  if (repoTarget === null) {
+    return { directory: normalizedCurrentDirectory, reason: null };
+  }
+
+  const value = stripYamlQuotes(String(repoTarget ?? '')).trim();
+  if (!value) {
+    return { directory: null, reason: 'it passes --repo without a repository path' };
+  }
+  if (!isStaticRelativeDirectory(value)) {
+    return {
+      directory: null,
+      reason: `it passes --repo ${formatInlineValue(value)} instead of a static relative repository path`,
+    };
+  }
+  if (cdTargetEscapesRepo(value, normalizedCurrentDirectory)) {
+    return {
+      directory: null,
+      reason: `it passes --repo ${formatInlineValue(value)} outside the surveyed repository`,
+    };
+  }
+
+  return {
+    directory: normalizePackageDirectoryOrRoot(resolvePackageDirectory(value, normalizedCurrentDirectory)),
+    reason: null,
+  };
+}
+
+function formatHarnessValidationAuditDirectory(directory) {
+  const normalized = normalizePackageDirectoryOrRoot(directory || '');
+  return normalized ? formatInlineValue(normalized) : 'the repository root';
+}
+
+function harnessValidationPayloadRepoTarget(payload) {
+  const words = payload?.words;
+  if (!Array.isArray(words)) return null;
+  for (let index = (payload.index ?? -1) + 1; index < words.length; index += 1) {
+    const word = stripYamlQuotes(String(words[index] ?? ''));
+    const lower = word.toLowerCase();
+    if (lower === '--repo') return words[index + 1] ?? '';
+    if (lower.startsWith('--repo=')) return word.slice('--repo='.length);
+  }
+  return null;
+}
+
+function hasHarnessValidationNoOpArgument(args) {
+  return args.some((arg) => isHarnessValidationNoOpArgument(arg));
+}
+
+function isHarnessValidationNoOpArgument(arg) {
+  const lower = stripYamlQuotes(String(arg ?? '')).toLowerCase();
+  return [
+    '--help',
+    '-h',
+    '/help',
+    '/?',
+    '-?',
+    'help',
+    '--version',
+    'version',
+  ].includes(lower);
+}
+
+function runnerPayloadOption(option) {
+  return ['-file', '/file'].includes(String(option ?? '').toLowerCase());
+}
+
+function runnerOptionConsumesNext(option) {
+  const lower = String(option ?? '').toLowerCase();
+  if (lower.includes('=')) return false;
+  return [
+    '-r',
+    '--require',
+    '--loader',
+    '--import',
+    '--experimental-loader',
+    '--conditions',
+    '--env-file',
+    '-c',
+    '-lc',
+    '-command',
+    '/command',
+    '-configurationname',
+    '/configurationname',
+    '-encodedcommand',
+    '/encodedcommand',
+    '-executionpolicy',
+    '/executionpolicy',
+    '-inputformat',
+    '/inputformat',
+    '-outputformat',
+    '/outputformat',
+    '-workingdirectory',
+    '/workingdirectory',
+  ].includes(lower);
+}
+
+function isHarnessValidationExecutableWord(word) {
+  const value = stripYamlQuotes(String(word ?? '')).replace(/\\/g, '/').toLowerCase();
+  const name = value.split('/').pop() ?? '';
+  return /^(template-fitness|validate-harness|harness-audit|harness-doctor)(?:\.(?:mjs|cjs|js|ts|py|sh|ps1|cmd|bat))?$/.test(name);
+}
+
+function harnessValidationCommandMatchesControl(command, harnessValidationControls = [], currentDirectory = '') {
+  const payload = harnessValidationCommandPayload(command);
+  return harnessValidationPayloadMatchesControl(payload, harnessValidationControls, currentDirectory);
+}
+
+function harnessValidationPayloadMatchesControl(payload, harnessValidationControls = [], currentDirectory = '') {
+  if (!payload?.word || !harnessValidationControls.length) return false;
+  const auditTarget = harnessValidationPayloadAuditTarget(payload, currentDirectory);
+  if (auditTarget.reason) return false;
+  const auditDirectory = normalizePackageDirectoryOrRoot(auditTarget.directory || '');
+  const matchedControls = harnessValidationPayloadMatchingControls(payload, harnessValidationControls, currentDirectory);
+  if (auditDirectory === '') return matchedControls.length > 0;
+  return matchedControls.some((control) => harnessValidationControlAuditDirectory(control) === auditDirectory);
+}
+
+function harnessValidationPayloadMatchingControls(payload, harnessValidationControls = [], currentDirectory = '') {
+  if (!payload?.word || !harnessValidationControls.length) return [];
+  const payloadPath = normalizeHarnessValidationPayloadPath(payload.word);
+  const payloadIsPath = payloadPath.includes('/')
+    || payloadPath.startsWith('.')
+    || (normalizePackageDirectoryOrRoot(currentDirectory || '') && isHarnessValidationExecutableWord(payloadPath));
+  const payloadCandidates = harnessValidationPayloadPathCandidates(payloadPath, payloadIsPath, currentDirectory);
+
+  return harnessValidationControls.filter((control) => {
+    const controlPath = normalizeHarnessValidationPayloadPath(control);
+    return payloadCandidates.includes(controlPath);
+  });
+}
+
+function harnessValidationPayloadControlAuditReason(payload, harnessValidationControls = [], currentDirectory = '') {
+  const explicitReason = harnessValidationPayloadRepoTargetReason(payload, currentDirectory);
+  if (explicitReason) return explicitReason;
+  const matchedControls = harnessValidationPayloadMatchingControls(payload, harnessValidationControls, currentDirectory);
+  if (!matchedControls.length) return null;
+  const auditDirectory = normalizePackageDirectoryOrRoot(
+    harnessValidationPayloadAuditTarget(payload, currentDirectory).directory || '',
+  );
+  if (auditDirectory === '') return null;
+  if (matchedControls.some((control) => harnessValidationControlAuditDirectory(control) === auditDirectory)) return null;
+  return `it audits ${formatHarnessValidationAuditDirectory(auditDirectory)} instead of ${formatHarnessValidationAuditDirectory(harnessValidationControlAuditDirectory(matchedControls[0]))}`;
+}
+
+function harnessValidationControlAuditDirectory(control) {
+  const normalized = normalizePackageDirectory(normalizeHarnessValidationPayloadPath(control));
+  const parts = normalized.split('/').filter(Boolean);
+  if (!parts.length) return '';
+  const parent = parts[parts.length - 2]?.toLowerCase();
+  if (parent === 'scripts') {
+    const ownerDirectory = normalizePackageDirectoryOrRoot(parts.slice(0, -2).join('/'));
+    return isRepoOwnedHarnessScriptDirectory(ownerDirectory) ? '' : ownerDirectory;
+  }
+  return normalizePackageDirectoryOrRoot(parts.slice(0, -1).join('/'));
+}
+
+function isRepoOwnedHarnessScriptDirectory(directory) {
+  return ['', '.github', 'tools'].includes(normalizePackageDirectoryOrRoot(directory || ''));
+}
+
+function harnessValidationPayloadPathCandidates(payloadPath, payloadIsPath, currentDirectory = '') {
+  const normalizedDirectory = normalizePackageDirectory(currentDirectory || '');
+  if (!payloadIsPath || !normalizedDirectory || !isRelativeHarnessValidationPayloadPath(payloadPath)) {
+    return [payloadPath];
+  }
+  if (cdTargetEscapesRepo(payloadPath, normalizedDirectory)) return [];
+  return [resolvePackageDirectory(payloadPath, normalizedDirectory)];
+}
+
+function isRelativeHarnessValidationPayloadPath(payloadPath) {
+  return !/^(?:[a-z]:|\/|\/\/|~)/i.test(payloadPath);
+}
+
+function normalizeHarnessValidationPayloadPath(value) {
+  return stripYamlQuotes(String(value ?? ''))
+    .replace(/\\/g, '/')
+    .replace(/^\.\/+/, '');
+}
+
+function harnessValidationCommandParts(command, commandsByCommand = new Map(), visited = new Set(), harnessValidationControls = null, baseDirectory = '') {
+  const parts = [];
+  let currentDirectory = normalizePackageDirectory(baseDirectory || '');
+  for (const part of splitShellCommandParts(command)) {
+    const cdCommand = inspectCdCommand(part, currentDirectory);
+    if (cdCommand.isCd) {
+      if (cdCommand.unsafeReason) return parts;
+      currentDirectory = cdCommand.directory;
+      continue;
+    }
+
+    if (isHarnessValidationCommand(part)
+      && !harnessValidationPayloadRepoTargetReason(harnessValidationCommandPayload(part), currentDirectory)
+      && (!harnessValidationControls || harnessValidationCommandMatchesControl(part, harnessValidationControls, currentDirectory))) {
+      parts.push(part);
+      continue;
+    }
+
+    const wrapped = wrappedCommandForPart(part, commandsByCommand, currentDirectory);
+    const wrappedDirectory = wrappedCommandBaseDirectory(wrapped, currentDirectory);
+    const visitKey = wrappedCommandVisitKey(part, wrapped, wrappedDirectory);
+    if (!wrapped?.scriptBody || visited.has(visitKey)) continue;
+    visited.add(visitKey);
+    const wrappedParts = harnessValidationCommandParts(
+      wrapped.scriptBody,
+      commandsByCommand,
+      visited,
+      harnessValidationControls,
+      wrappedDirectory,
+    );
+    if (wrappedParts.length && hasNoOpForwardedPackageScriptArgs(part)) continue;
+    parts.push(...wrappedParts);
+  }
+  return parts;
+}
+
+function harnessValidationCommandRepoTargetReason(command, commandsByCommand = new Map(), visited = new Set(), baseDirectory = '', harnessValidationControls = []) {
+  let currentDirectory = normalizePackageDirectory(baseDirectory || '');
+  for (const part of splitShellCommandParts(command)) {
+    const cdCommand = inspectCdCommand(part, currentDirectory);
+    if (cdCommand.isCd) {
+      if (cdCommand.unsafeReason) return null;
+      currentDirectory = cdCommand.directory;
+      continue;
+    }
+
+    const reason = harnessValidationPayloadControlAuditReason(
+      harnessValidationCommandPayload(part),
+      harnessValidationControls,
+      currentDirectory,
+    );
+    if (reason) return reason;
+
+    const wrapped = wrappedCommandForPart(part, commandsByCommand, currentDirectory);
+    const wrappedDirectory = wrappedCommandBaseDirectory(wrapped, currentDirectory);
+    const visitKey = wrappedCommandVisitKey(part, wrapped, wrappedDirectory);
+    if (!wrapped?.scriptBody || visited.has(visitKey)) continue;
+    visited.add(visitKey);
+    const wrappedReason = harnessValidationCommandRepoTargetReason(
+      wrapped.scriptBody,
+      commandsByCommand,
+      visited,
+      wrappedDirectory,
+      harnessValidationControls,
+    );
+    if (wrappedReason) return wrappedReason;
+  }
+  return null;
+}
+
+function wrappedCommandForPart(part, commandsByCommand, currentDirectory = '') {
+  const scriptName = packageScriptNameFromCommand(part);
+  if (scriptName && hasPackageWrapperContext(part, currentDirectory)) {
+    for (const candidate of packageScriptWrapperCommandCandidates(part, currentDirectory)) {
+      const wrapped = commandsByCommand.get(candidate);
+      if (wrapped) return wrapped;
+    }
+    return null;
+  }
+
+  const exact = commandsByCommand.get(part);
+  if (exact) return exact;
+
+  for (const candidate of packageScriptWrapperCommandCandidates(part, currentDirectory)) {
+    const wrapped = commandsByCommand.get(candidate);
+    if (wrapped) return wrapped;
+  }
+
+  return null;
+}
+
+function wrappedCommandBaseDirectory(wrapped, fallbackDirectory = '') {
+  if (wrapped?.directory !== undefined && wrapped.directory !== null) {
+    return normalizePackageDirectory(wrapped.directory || '');
+  }
+  if (wrapped?.source && /(^|[/\\])package\.json$/i.test(wrapped.source)) {
+    const directory = normalizePackageDirectory(dirname(wrapped.source));
+    return directory === '.' ? '' : directory;
+  }
+  return normalizePackageDirectory(fallbackDirectory || '');
+}
+
+function wrappedCommandVisitKey(part, wrapped, directory) {
+  return `${wrapped?.source ?? ''}\0${normalizePackageDirectory(directory || '')}\0${part}`;
+}
+
+function hasPackageWrapperContext(part, currentDirectory = '') {
+  return Boolean(normalizePackageDirectoryOrRoot(currentDirectory || ''))
+    || scopedPackageDirectoryValues(part).length > 0
+    || packageWorkspacesFromCommand(part).length > 0;
+}
+
+function packageScriptWrapperCommandCandidates(part, currentDirectory = '') {
+  const scriptName = packageScriptNameFromCommand(part);
+  if (!scriptName) return [];
+
+  const words = shellWords(stripPackageCommandPrefix(part));
+  const manager = words[0]?.toLowerCase();
+  if (!['npm', 'pnpm', 'yarn', 'bun'].includes(manager)) return [];
+
+  const workspaces = packageWorkspacesFromCommand(part);
+  if (workspaces.length) {
+    return workspaces.flatMap((workspace) => (
+      packageScriptWorkspaceCommandAliasesForSelector(manager, scriptName, workspace)
+    ));
+  }
+
+  const directories = scopedPackageDirectoryValues(part);
+  const currentScope = normalizePackageDirectoryOrRoot(currentDirectory || '');
+  const scopes = directories.length ? directories : [currentScope];
+  const candidates = scopes.map((directory) => packageScriptCommand(manager, scriptName, directory));
+  if (manager === 'yarn' && scriptName !== 'test' && !directories.length && !currentScope) {
+    candidates.push(`yarn ${scriptName}`);
+  }
+  return candidates;
+}
+
+function harnessValidationCommandMapForCi(packageManifests = [], makeTargets = []) {
+  const commandsByCommand = packageScriptCommandsByCommand(packageManifests);
+  for (const target of makeTargets) {
+    if (target?.command) commandsByCommand.set(target.command, target);
+  }
+  return commandsByCommand;
+}
+
+function packageScriptCommandsByCommand(packageManifests = []) {
+  const commandsByCommand = new Map();
+  const managers = ['npm', 'pnpm', 'yarn', 'bun'];
+
+  for (const manifest of packageManifests) {
+    const scripts = packageScriptsObject(manifest?.json?.scripts);
+    if (!scripts) continue;
+    for (const [name, body] of Object.entries(scripts)) {
+      for (const manager of managers) {
+        const command = packageScriptCommand(manager, name, manifest.directory);
+        commandsByCommand.set(command, {
+          source: manifest.path,
+          command,
+          scriptBody: String(body ?? ''),
+        });
+        for (const alias of packageScriptWorkspaceCommandAliases(manager, name, manifest)) {
+          commandsByCommand.set(alias, {
+            source: manifest.path,
+            command: alias,
+            scriptBody: String(body ?? ''),
+          });
+        }
+        if (manager === 'yarn' && name !== 'test' && !manifest.directory) {
+          const yarnCommand = `yarn ${name}`;
+          commandsByCommand.set(yarnCommand, {
+            source: manifest.path,
+            command: yarnCommand,
+            scriptBody: String(body ?? ''),
+          });
+        }
+      }
+    }
+  }
+
+  return commandsByCommand;
+}
+
+function packageScriptWorkspaceCommandAliases(packageManager, name, manifest) {
+  const selectors = packageScriptWorkspaceSelectors(manifest);
+  if (!selectors.length) return [];
+
+  return selectors.flatMap((selector) => packageScriptWorkspaceCommandAliasesForSelector(packageManager, name, selector));
+}
+
+function packageScriptWorkspaceCommandAliasesForSelector(packageManager, name, selector) {
+  const value = quotePath(selector);
+  if (packageManager === 'npm') {
+    return name === 'test'
+      ? [
+        `npm test --workspace ${value}`,
+        `npm test --workspace=${value}`,
+        `npm test -w ${value}`,
+        `npm test -w=${value}`,
+        `npm --workspace ${value} test`,
+        `npm --workspace=${value} test`,
+        `npm -w ${value} test`,
+        `npm -w=${value} test`,
+      ]
+      : [
+        `npm run ${name} --workspace ${value}`,
+        `npm run ${name} --workspace=${value}`,
+        `npm run ${name} -w ${value}`,
+        `npm run ${name} -w=${value}`,
+        `npm --workspace ${value} run ${name}`,
+        `npm --workspace=${value} run ${name}`,
+        `npm -w ${value} run ${name}`,
+        `npm -w=${value} run ${name}`,
+      ];
+  }
+  if (packageManager === 'pnpm') {
+    return name === 'test'
+      ? [
+        `pnpm --filter ${value} test`,
+        `pnpm --filter=${value} test`,
+        `pnpm -F ${value} test`,
+        `pnpm -F=${value} test`,
+      ]
+      : [
+        `pnpm --filter ${value} run ${name}`,
+        `pnpm --filter=${value} run ${name}`,
+        `pnpm -F ${value} run ${name}`,
+        `pnpm -F=${value} run ${name}`,
+      ];
+  }
+  if (packageManager === 'yarn') {
+    return name === 'test'
+      ? [`yarn workspace ${value} test`]
+      : [
+        `yarn workspace ${value} run ${name}`,
+        `yarn workspace ${value} ${name}`,
+      ];
+  }
+  return [];
+}
+
+function packageScriptWorkspaceSelectors(manifest) {
+  if (!manifest?.directory) return [];
+  return dedupe([
+    manifest.json?.name,
+    manifest.directory,
+    basename(manifest.directory),
+  ].filter(Boolean));
 }
 
 function sampleValues(items, limit = 5) {
@@ -2784,6 +3442,8 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
   const runtimeSafetyReason = options.runtimeSafetyReason ?? null;
   const unsafeMakeTargets = options.unsafeMakeTargets ?? new Set();
   const runtimeSafetyUnsafeMakeTargets = options.runtimeSafetyUnsafeMakeTargets ?? unsafeMakeTargets;
+  const harnessValidationCommandsByCommand = options.harnessValidationCommandsByCommand
+    ?? harnessValidationCommandMapForCi(packageManifests, options.makeTargets ?? []);
   const workingDirectoryReason = workingDirectory
     ? `it declares working-directory ${formatInlineValue(workingDirectory)}; inspect and run from that directory manually`
     : null;
@@ -2801,15 +3461,48 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
     currentDirectory: workingDirectory ?? '',
     runtimeSafety: true,
   });
+  const harnessValidationEvidence = harnessValidationEvidenceForRun(
+    source,
+    command,
+    harnessValidationCommandsByCommand,
+    options.harnessControls ?? [],
+    workingDirectory ?? '',
+  );
+  const harnessValidationSafe = isSafeHarnessValidationCommand(
+    source,
+    command,
+    harnessValidationCommandsByCommand,
+    options.harnessControls ?? [],
+    workingDirectory ?? '',
+  );
+  const harnessValidationRepoTargetReason = harnessValidationCommandRepoTargetReason(
+    command,
+    harnessValidationCommandsByCommand,
+    new Set(),
+    workingDirectory ?? '',
+    options.harnessControls ?? [],
+  );
+  const staleHarnessValidationWrapperReason = staleHarnessValidationWrapperReasonForCommand(
+    command,
+    harnessValidationCommandsByCommand,
+    options.harnessControls ?? [],
+    workingDirectory ?? '',
+  );
   const incompleteScanReason = options.incompleteScan && commandNeedsCompleteScan(command)
     ? 'it depends on package, workspace, or make targets that may be omitted by the truncated repository scan'
     : null;
+  const safeValidationCommand = isSafeValidationCommand(command);
   const safe = !workingDirectoryReason
     && !runtimeSafetyReason
     && !makeTargetReason
     && !packageScriptReason
+    && !harnessValidationRepoTargetReason
+    && !staleHarnessValidationWrapperReason
     && !incompleteScanReason
-    && isSafeValidationCommand(command);
+    && (
+      (safeValidationCommand && !hasHarnessValidationCommandText(command))
+      || harnessValidationSafe
+    );
   return {
     source,
     command,
@@ -2820,15 +3513,94 @@ function classifyCiRunCommand(source, command, multiline, packageManifests = [],
     makeTargetRuntimeSafetyReason,
     runtimeSafetyReason,
     safe,
+    ...(harnessValidationEvidence.length ? { harnessValidationEvidence } : {}),
+    ...(harnessValidationSafe ? { harnessValidationSafe } : {}),
     inspectOnlyReason: safe
       ? null
       : workingDirectoryReason
         || runtimeSafetyReason
         || makeTargetReason
         || packageScriptReason
+        || harnessValidationRepoTargetReason
+        || staleHarnessValidationWrapperReason
         || incompleteScanReason
         || 'it is not a known-safe validation command or it may mutate external state',
   };
+}
+
+function staleHarnessValidationWrapperReasonForCommand(command, commandsByCommand = new Map(), harnessValidationControls = [], baseDirectory = '', visited = new Set()) {
+  let currentDirectory = normalizePackageDirectory(baseDirectory || '');
+  for (const part of splitShellCommandParts(command)) {
+    const cdCommand = inspectCdCommand(part, currentDirectory);
+    if (cdCommand.isCd) {
+      if (cdCommand.unsafeReason) return null;
+      currentDirectory = cdCommand.directory;
+      continue;
+    }
+
+    const wrapped = wrappedCommandForPart(part, commandsByCommand, currentDirectory);
+    if (!wrapped?.scriptBody) continue;
+    const wrappedDirectory = wrappedCommandBaseDirectory(wrapped, currentDirectory);
+    const visitKey = wrappedCommandVisitKey(part, wrapped, wrappedDirectory);
+    if (visited.has(visitKey)) continue;
+    visited.add(visitKey);
+
+    if (hasHarnessValidationCommandText(wrapped.scriptBody)
+      && !harnessValidationCommandParts(
+        wrapped.scriptBody,
+        commandsByCommand,
+        new Set([visitKey]),
+        harnessValidationControls,
+        wrappedDirectory,
+      ).length) {
+      return 'it wraps a harness doctor or validator command that does not match an existing control';
+    }
+
+    const nestedReason = staleHarnessValidationWrapperReasonForCommand(
+      wrapped.scriptBody,
+      commandsByCommand,
+      harnessValidationControls,
+      wrappedDirectory,
+      visited,
+    );
+    if (nestedReason) return nestedReason;
+  }
+  return null;
+}
+
+function hasHarnessValidationCommandText(command) {
+  return harnessValidationCommandParts(command).length > 0;
+}
+
+function packageScriptRunsHarnessValidation(command, packageManifest, packageManifests = [], currentDirectory = '') {
+  const scriptName = packageScriptNameFromCommand(command);
+  if (!scriptName) return false;
+  const commandsByCommand = packageScriptCommandsByCommand(packageManifests);
+
+  for (const targetManifest of packageScriptManifestsForCommand(
+    command,
+    packageManifest,
+    packageManifests,
+    currentDirectory,
+  )) {
+    const scripts = packageScriptsObject(targetManifest?.json?.scripts);
+    if (!scripts || !Object.hasOwn(scripts, scriptName)) continue;
+    if (harnessValidationCommandParts(
+      scripts[scriptName],
+      commandsByCommand,
+      new Set([command]),
+    ).length) return true;
+  }
+
+  return false;
+}
+
+function makeTargetRunsHarnessValidation(command, makeTargets = []) {
+  const targetsByCommand = new Map(makeTargets.map((target) => [target.command, target]));
+  return splitShellCommandParts(command).some((part) => {
+    const target = targetsByCommand.get(part);
+    return target?.scriptBody && isHarnessValidationScriptBody(target.scriptBody);
+  });
 }
 
 function unsafeMakeTargetReason(command, unsafeMakeTargets, baseDirectory = '') {
@@ -3838,6 +4610,11 @@ function normalizePackageDirectory(directory) {
     .replace(/^\.\/+/, '')
     .replace(/\/\.$/, '')
     .replace(/\/$/, '');
+}
+
+function normalizePackageDirectoryOrRoot(directory) {
+  const normalized = normalizePackageDirectory(directory);
+  return normalized === '.' ? '' : normalized;
 }
 
 function normalizePnpmWorkspaceSelector(selector) {
@@ -5036,6 +5813,8 @@ function isSafeValidationCommandPart(part) {
   if (hasEnvChdirOption(shellWords(part)) || hasUnsupportedSubshellSyntax(part)) return false;
   const normalizedPart = stripPackageCommandPrefix(part);
   const lower = normalizedPart.toLowerCase();
+  if (isHarnessValidationNoOpCommandPart(normalizedPart)) return false;
+  if (hasNoOpForwardedPackageScriptArgs(normalizedPart)) return false;
   if (dangerousCommandPatterns.some((pattern) => pattern.test(lower))) return false;
   if (hasDangerousRmCommand(normalizedPart) || hasTerraformFmtWriteCommand(normalizedPart)) return false;
   if (hasPackageValidationWriteFlags(normalizedPart)) return false;
@@ -5044,6 +5823,8 @@ function isSafeValidationCommandPart(part) {
   if (commandPartReferencesRuntimeSurface(normalizedPart)) return false;
   if (/(^|[^&])&(?!&)/.test(lower)) return false;
   if (unsafeScopedPackageDirectoryReason(normalizedPart)) return false;
+  if (harnessValidationPayloadRepoTargetReason(harnessValidationCommandPayload(normalizedPart))) return false;
+  if (isHarnessValidationCommand(normalizedPart)) return true;
 
   const validationPatterns = [
     /^node\s+--test(?:\s+.*)?$/,
@@ -5057,14 +5838,25 @@ function isSafeValidationCommandPart(part) {
     /^(pytest|python\s+-m\s+pytest|go\s+test|cargo\s+test|mvn\s+test|gradle\s+test|(?:\.\/|\.\\)?mvnw(?:\.cmd)?\s+test|(?:\.\/|\.\\)?gradlew(?:\.bat)?\s+test)(?:\s+.*)?$/,
     /^make\s+(test|build|lint|check|quality|validate|coverage)(?:\s+\w+=\S+)?$/,
     /^(terraform\s+validate|terraform\s+fmt\s+-check)(?:\s+.*)?$/,
-    /^node\s+\S*(template-fitness|validate-harness|harness-audit)\S*(?:\s+.*)?$/,
-    /^(template-fitness|validate-harness|harness-audit)(?:\s+.*)?$/,
     /^npm\s+ci(?:\s+.*)?$/,
     /^pnpm\s+install(?:\s+.*)?$/,
     /^yarn\s+install(?:\s+.*)?$/,
   ];
 
   return validationPatterns.some((pattern) => pattern.test(lower));
+}
+
+function isHarnessValidationNoOpCommandPart(part) {
+  const words = shellWords(part);
+  if (!words.length || !hasHarnessValidationNoOpArgument(words)) return false;
+  const commandWord = words[0]?.toLowerCase();
+  if (isHarnessValidationExecutableWord(commandWord)) return true;
+  if (!isHarnessValidationRunner(commandWord)) return false;
+  return words.some((word) => isHarnessValidationExecutableWord(stripYamlQuotes(word)));
+}
+
+function hasNoOpForwardedPackageScriptArgs(part) {
+  return hasHarnessValidationNoOpArgument(forwardedPackageScriptArgs(part));
 }
 
 function hasPackageValidationWriteFlags(command) {

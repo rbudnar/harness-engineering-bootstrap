@@ -20,6 +20,7 @@
     "REFERENCES.md",
     "VERSION",
     "docs/",
+    "scripts/harness-doctor.mjs",
     "scripts/harness-bootstrap-plan.mjs",
     "scripts/template-fitness.mjs",
     "templates/"

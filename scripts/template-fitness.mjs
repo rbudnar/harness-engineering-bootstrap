@@ -701,7 +701,7 @@ function checkSkillStandards() {
 function checkReleasePolicy() {
   metric('\nRelease policy:');
 
-  const requiredFiles = ['docs/releases.md', 'CHANGELOG.md', 'README.md', '.github/workflows/stable-release.yml'];
+  const requiredFiles = ['docs/releases.md', 'CHANGELOG.md', 'README.md', '.github/workflows/template-fitness.yml', '.github/workflows/stable-release.yml'];
   for (const path of requiredFiles) {
     if (exists(path)) metric(`- ${path}: present`);
     else fail(`${path} is required for the HEB release contract.`);
@@ -711,6 +711,7 @@ function checkReleasePolicy() {
     !exists('docs/releases.md') ||
     !exists('CHANGELOG.md') ||
     !exists('README.md') ||
+    !exists('.github/workflows/template-fitness.yml') ||
     !exists('.github/workflows/stable-release.yml') ||
     !exists('VERSION')
   ) return;
@@ -736,9 +737,11 @@ function checkReleasePolicy() {
     'release:minor',
     'HEB_RELEASE_DEPLOY_KEY',
     'node --test scripts/harness-bootstrap-plan.test.mjs',
+    'node --test scripts/harness-doctor.test.mjs',
     'node --test scripts/package-entrypoint.test.mjs',
     'node --test scripts/prepare-stable-release.test.mjs',
     'node scripts/template-fitness.mjs',
+    'node scripts/harness-doctor.mjs',
     'node scripts/harness-bootstrap-plan.mjs --repo . --mode update --target-version v<VERSION>',
   ];
 
@@ -747,6 +750,15 @@ function checkReleasePolicy() {
   }
 
   const stableReleaseWorkflow = read('.github/workflows/stable-release.yml');
+  const templateFitnessWorkflow = read('.github/workflows/template-fitness.yml');
+  const templateFitnessWorkflowAnchors = [
+    'node --test scripts/harness-doctor.test.mjs',
+    'node scripts/harness-doctor.mjs',
+  ];
+  for (const text of templateFitnessWorkflowAnchors) {
+    if (!templateFitnessWorkflow.includes(text)) fail(`.github/workflows/template-fitness.yml must include template-fitness safety anchor: ${text}`);
+  }
+
   const stableWorkflowAnchors = [
     'pull_request_target:',
     'github.event.pull_request.merged == true',
@@ -767,7 +779,9 @@ function checkReleasePolicy() {
     'not completed release commit',
     'UNRELEASED_HAS_CONTENT',
     'RELEASE_TYPE=current',
+    'node --test scripts/harness-doctor.test.mjs',
     'node --test scripts/package-entrypoint.test.mjs',
+    'node scripts/harness-doctor.mjs',
     'node scripts/prepare-stable-release.mjs',
     'git add VERSION CHANGELOG.md package.json',
     'git diff --cached --quiet',
