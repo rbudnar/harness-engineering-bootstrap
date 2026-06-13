@@ -469,7 +469,7 @@ Validation should check that URL maps point to existing files, exclude disallowe
 
 ### `docs/task-contracts/` or `docs/exec-plans/`
 
-Use only for long-running, multi-agent, or handoff-heavy work where a short prompt is not enough to preserve intent.
+Use only for long-running, multi-agent, or handoff-heavy work where a short prompt is not enough to preserve intent. This module does not prescribe provider-native compaction, summarization, or memory behavior; it defines only the repo-visible state needed for safe resume and handoff.
 
 Purpose:
 
@@ -486,14 +486,29 @@ Trigger conditions:
 Each task contract should include:
 
 - Goal and non-goals
+- Owner, branch, issue or PR links, and the last validated commit or artifact
 - User-visible acceptance criteria
 - Architecture and contract constraints already known
 - Sprint or slice boundaries, if useful
 - Testable behaviors and verification commands for each slice
-- Handoff state: current status, open questions, and next action
+- Handoff state: current status, open questions, known failures, blocked assumptions, and next action
+- Resume preflight: reload the contract, compare repo/issue/PR drift, check the latest user request, and continue only from the next unchecked action
+- Closeout note: what changed, what was validated, what remains, and whether any repeated miss should be promoted into durable memory
 - Retirement rule: delete, archive, or convert durable lessons into docs/ADRs/contracts after the work lands
 
 Do not turn every task into a checked-in plan. For short work, an agent's session-local plan is enough. Checked-in task contracts are for work where durable coordination is worth the maintenance cost.
+
+Compact handoff template:
+
+```markdown
+Status:
+Current branch / PR:
+Last validated:
+Known failures or blocked assumptions:
+Next action:
+Validation command:
+Closeout / promotion candidate:
+```
 
 ### `docs/evidence-packs/` or `docs/research/`
 
@@ -1181,6 +1196,18 @@ When a repeated or high-risk failure appears, classify the fix:
 - Existing control fired but was ignored or too noisy: improve the control's output, lifecycle, or severity before adding another rule.
 
 Do not add every one-off mistake to always-on instructions. Promote only repeated, costly, or high-risk lessons.
+
+Failure-to-memory classifier:
+
+- `doc`: missing or stale current fact; update the smallest routed doc.
+- `decision`: missing rationale or changed tradeoff; add or update decision memory.
+- `contract`: external data or cross-repo assumption; add or update a data or repo contract.
+- `skill/procedure`: repeated workflow error; update procedural memory or package a triggered skill.
+- `validator`: mechanically checkable mistake; add or update a script, CI check, or warning-mode doctor rule.
+- `review-rule`: semantic miss that review should catch; update the review harness or adapter.
+- `reject-as-bloat`: one-off low-risk issue or already-covered issue; leave a PR/issue note instead of adding durable memory.
+
+For every promoted item, record trigger evidence, smaller-control check, validation signal, owner, and retirement or demotion rule. If the classifier is uncertain, keep the note as a marker such as `harness:context-rot`, `harness:wrong-command`, `harness:handoff-claim`, or `harness:prediction-miss` until a second occurrence or fresh-context review proves it is worth promotion.
 
 Self-improving memory loops are experimental unless the repo has a controlled eval setup. If the repo tries failure-to-memory learning, keep it outside always-on instructions at first:
 
