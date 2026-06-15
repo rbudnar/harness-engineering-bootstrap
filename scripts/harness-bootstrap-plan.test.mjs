@@ -28,11 +28,17 @@ test('surveys a small JavaScript repo and renders the review-ready plan contract
     ['npm ci\nnpm test', 'npm run build', 'npm run lint', 'npm test'],
   );
   assert.equal(plan.requiredCore.find((item) => item.id === 'thin-agent-entrypoint').status, 'present');
+  assert.deepEqual(
+    plan.activationAssumptions.find((item) => item.mode === 'Always-on').surfaces,
+    ['AGENTS.md'],
+  );
   assert.match(
     plan.requiredCore.find((item) => item.id === 'harness-validation').action,
     /canonical quality gate and CI or equivalent automation/,
   );
   assert.match(validationStepsText(plan), /wired into the repo's canonical quality gate and CI or equivalent automation/);
+  assert.match(markdown, /## Activation Assumptions/);
+  assert.match(markdown, /\*\*Always-on\*\*: `AGENTS\.md`/);
   assert.match(markdown, /## Review And Handoff Contract/);
   assert.match(markdown, /Planner/);
   assert.match(markdown, /Explicitly Rejected Modules/);
@@ -1799,6 +1805,11 @@ test('json CLI output is reusable by the future scaffolder surface', () => {
   assert(plan.validationSteps.some((step) => (
     step.text?.includes('future runs do not depend on human memory')
   )));
+  assert(plan.activationAssumptions.some((item) => (
+    item.mode === 'Always-on'
+    && item.surfaces.includes('AGENTS.md')
+    && item.assumption.includes('provider adapters')
+  )));
   assert(plan.reviewContract.some((item) => item.role === 'Reviewer'));
 });
 
@@ -2264,11 +2275,60 @@ test('detects nested MCP config files as runtime surfaces', () => {
 
 test('detects directory-backed instruction adapters', () => {
   const survey = surveyRepository(resolve(fixturesRoot, 'directory-instruction-adapters'));
+  const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+  const pathGlob = plan.activationAssumptions.find((item) => item.mode === 'Path/glob');
 
   assert(survey.instructionFiles.includes('.cursor/rules'));
   assert(survey.instructionFiles.includes('.windsurf/rules'));
   assert(survey.harnessControls.includes('.cursor/rules/repo.mdc'));
   assert(survey.harnessControls.includes('.windsurf/rules/repo.md'));
+  assert(pathGlob.surfaces.includes('.cursor/rules'));
+  assert(pathGlob.surfaces.includes('.windsurf/rules'));
+});
+
+test('classifies nested AGENTS.md files as path-glob activation surfaces', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-nested-agents-'));
+  try {
+    mkdirSync(resolve(tempRoot, 'packages', 'api'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'packages', 'api', 'AGENTS.md'), '# API Agent Instructions\n');
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+    const pathGlob = plan.activationAssumptions.find((item) => item.mode === 'Path/glob');
+
+    assert(!survey.instructionFiles.includes('packages/api/AGENTS.md'));
+    assert(survey.harnessControls.includes('packages/api/AGENTS.md'));
+    assert(pathGlob.surfaces.includes('packages/api/AGENTS.md'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('classifies repo-local skills as description-triggered activation surfaces', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-skill-activation-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.agents', 'skills', 'contract-memory'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, '.agents', 'skills', 'contract-memory', 'SKILL.md'), [
+      '---',
+      'name: contract-memory',
+      'description: Use when contract work needs durable memory.',
+      '---',
+      '',
+      '# Contract Memory',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+    const descriptionTriggered = plan.activationAssumptions.find((item) => item.mode === 'Description-triggered');
+
+    assert(survey.harnessControls.includes('.agents/skills/contract-memory/SKILL.md'));
+    assert.deepEqual(descriptionTriggered.surfaces, ['.agents/skills/contract-memory/SKILL.md']);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test('keeps unsafe Makefile recipes out of validation commands', () => {
@@ -5072,6 +5132,35 @@ test('ignores committed Yarn caches before truncating large repository walks', (
     assert.equal(survey.files.truncated, false);
     assert(survey.packageFiles.includes('packages/api/package.json'));
     assert(survey.commands.some((run) => run.command === 'npm --prefix packages/api test'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('ignores local worktree helper directories during surveys', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-local-worktrees-'));
+  try {
+    mkdirSync(resolve(tempRoot, '.worktrees', 'copy', '.agents', 'skills', 'contract-memory'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({ private: true }));
+    writeFileSync(resolve(tempRoot, '.worktrees', 'copy', 'package.json'), JSON.stringify({
+      scripts: { test: 'node --test' },
+    }));
+    writeFileSync(resolve(tempRoot, '.worktrees', 'copy', '.agents', 'skills', 'contract-memory', 'SKILL.md'), [
+      '---',
+      'name: contract-memory',
+      'description: Use when contract work needs durable memory.',
+      '---',
+      '',
+    ].join('\n'));
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+    const descriptionTriggered = plan.activationAssumptions.find((item) => item.mode === 'Description-triggered');
+
+    assert(!survey.packageFiles.includes('.worktrees/copy/package.json'));
+    assert(!survey.harnessControls.some((path) => path.startsWith('.worktrees/')));
+    assert.deepEqual(descriptionTriggered.surfaces, []);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }

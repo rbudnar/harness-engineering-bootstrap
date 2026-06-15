@@ -29,6 +29,7 @@ const ignoredDirectories = new Set([
   '.cache',
   '.parcel-cache',
   '.turbo',
+  '.worktrees',
   '.venv',
   'venv',
   '__pycache__',
@@ -439,6 +440,7 @@ export function buildBootstrapPlan(survey, options = {}) {
     currentVersionOverride,
     date,
   });
+  const activationAssumptions = buildActivationAssumptions(survey);
   const openQuestions = buildOpenQuestions(survey, requiredCore, modules);
   const updatePlan = buildUpdatePlan({
     survey,
@@ -479,6 +481,7 @@ export function buildBootstrapPlan(survey, options = {}) {
     },
     survey,
     requiredCore,
+    activationAssumptions,
     triggeredModules: modules.filter((module) => module.status === 'triggered'),
     rejectedModules: modules.filter((module) => module.status === 'rejected'),
     updatePlan,
@@ -525,6 +528,13 @@ export function renderMarkdownPlan(plan) {
   lines.push(`- CI files: ${formatList(survey.ci.files)}`);
   lines.push(`- Source roots: ${formatList(survey.sourceRoots)}`);
   lines.push(`- Existing harness controls: ${formatList(sampleValues(survey.harnessControls, 12))}`);
+  lines.push('');
+
+  lines.push('## Activation Assumptions');
+  lines.push('');
+  for (const assumption of plan.activationAssumptions) {
+    lines.push(`- **${assumption.mode}**: ${formatList(assumption.surfaces)}. ${assumption.assumption}`);
+  }
   lines.push('');
 
   lines.push('## Bootstrap State');
@@ -811,6 +821,52 @@ function buildRequiredCore(survey) {
         ? 'Use the latest metrics or health output during harness audits.'
         : 'Record a small baseline only after the core routes and checks exist.',
       smallerControl: 'Do not build PR metrics or scheduled reports until local metrics show useful signal.',
+    },
+  ];
+}
+
+function buildActivationAssumptions(survey) {
+  const instructionSurfaces = survey.instructionFiles ?? [];
+  const harnessControls = survey.harnessControls ?? [];
+  const docs = survey.docs ?? {};
+  const docsFiles = docs.files ?? [];
+  const alwaysOnSurfaces = instructionSurfaces.filter((path) => [
+    'AGENTS.md',
+    'CLAUDE.md',
+    'GEMINI.md',
+    '.github/copilot-instructions.md',
+  ].includes(path));
+  const pathGlobSurfaces = instructionSurfaces.filter((path) => [
+    '.cursor/rules',
+    '.windsurf/rules',
+  ].includes(path)).concat(harnessControls.filter(isNestedAgentInstructionPath));
+  const skillSurfaces = harnessControls.filter(isSkillPackagePath);
+  const manualSurfaces = dedupe([
+    docs.hasDocsReadme ? 'docs/README.md' : null,
+    ...sampleValues(docs.decisionFiles ?? [], 3),
+    ...sampleValues(docsFiles.filter(isManualContextSurface), 6),
+  ].filter(Boolean));
+
+  return [
+    {
+      mode: 'Always-on',
+      surfaces: alwaysOnSurfaces,
+      assumption: 'Loaded for every agent session; keep `AGENTS.md` canonical and provider adapters as thin redirects.',
+    },
+    {
+      mode: 'Path/glob',
+      surfaces: pathGlobSurfaces,
+      assumption: 'Loaded by provider path or glob metadata; use only for subtree- or pattern-specific policy such as nested `AGENTS.md`, Cursor rules, or Windsurf rules.',
+    },
+    {
+      mode: 'Description-triggered',
+      surfaces: skillSurfaces,
+      assumption: 'Loaded when a matching task description calls for a reusable workflow; keep repo skills trigger-gated instead of always-on.',
+    },
+    {
+      mode: 'Manual',
+      surfaces: manualSurfaces,
+      assumption: 'Opened by explicit route, issue, PR, or reviewer need; do not rely on agents browsing deep docs without a pointer.',
     },
   ];
 }
@@ -2546,6 +2602,8 @@ function collectHarnessControls(files) {
   return files.filter((path) => {
     const lower = path.toLowerCase();
     return isInstructionFilePath(lower)
+      || isNestedAgentInstructionPath(lower)
+      || isSkillPackagePath(lower)
       || lower === 'docs/dogfooding.md'
       || lower.includes('/harness')
       || lower.includes('/decisions')
@@ -2563,6 +2621,21 @@ function collectHarnessControls(files) {
 
 function detectInstructionFiles(files, fileSet) {
   return instructionFiles.filter((path) => fileSet.has(path) || files.some((file) => file.startsWith(`${path}/`)));
+}
+
+function isSkillPackagePath(path) {
+  return /(^|\/)\.agents\/skills\/[^/]+\/skill\.md$/.test(path.toLowerCase());
+}
+
+function isNestedAgentInstructionPath(path) {
+  const lower = path.toLowerCase();
+  return lower !== 'agents.md' && /(^|\/)agents\.md$/.test(lower);
+}
+
+function isManualContextSurface(path) {
+  return /(^|\/)(references|evidence)(\.md|\/)/i.test(path)
+    || /(^|\/)(data-contracts|repo-contracts)\/index\.md$/i.test(path)
+    || /(^|\/)(adr|adrs)\/index\.md$/i.test(path);
 }
 
 function isInstructionFilePath(path) {

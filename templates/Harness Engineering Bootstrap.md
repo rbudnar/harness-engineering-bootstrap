@@ -75,7 +75,7 @@ Triggered modules:
 ## Core Principles
 
 1. **Small always-on context.** Files that every agent auto-loads must stay short and actionable. Put maps and routing instructions there, not full architecture manuals.
-2. **Context is pulled, not pushed.** Agents should load the smallest relevant context at the time they need it.
+2. **Context is pulled, not pushed.** Agents should load the smallest relevant context at the time they need it. Classify routable surfaces by activation mode so repo owners know whether context is always-on, path/glob-scoped, description-triggered, or manual.
 3. **Facts have owners and lifecycle.** Decisions, contracts, and references can be active, draft, deprecated, or superseded. Stale instructions are bugs.
 4. **Memory is typed.** Keep instructions, decisions, semantic facts, data contracts, repo contracts, and episode history separate so agents do not confuse old events with current truth.
 5. **Missing context is a harness signal.** If an agent must guess, repeatedly ask, or rediscover the same fact, the harness is missing a durable context route.
@@ -105,6 +105,19 @@ Use this ETCLOVG layer map when auditing coverage or explaining where a control 
 
 Every nontrivial control should map to at least one layer. If the map reveals a missing layer, add the smallest useful guide or sensor; do not create empty layer files.
 
+## Activation Modes
+
+Activation mode describes when a context surface loads; it does not change which source is authoritative. Keep `AGENTS.md` canonical for shared repo rules, and use provider-specific activation features only as thin adapters into the same routes.
+
+| Mode | Loads When | HEB Surfaces | Guardrail |
+|---|---|---|---|
+| Always-on | Every agent session or review | Root `AGENTS.md`, tiny provider adapters | Keep to routes, commands, non-obvious constraints, and precedence rules |
+| Path/glob | Changed or opened files match a subtree or pattern | Nested `AGENTS.md`, `.cursor/rules`, `.windsurf/rules` | Use only for real subtree policy; do not repeat global rules |
+| Description-triggered | Task intent matches a reusable procedure | Agent Skills `SKILL.md`, optional module skills, review or safety workflows | Use clear descriptions and MECE trigger language so agents can pick one route |
+| Manual | A human, PR, issue, router, or command explicitly asks for it | `docs/README.md`, ADR indexes, contract indexes, references, evidence packs | Link it from the router; do not expect agents to browse for it |
+
+If two surfaces can activate for the same task, document whether they chain or which one owns the rule. If a provider requires frontmatter such as globs, descriptions, or manual invocation names, treat that syntax as adapter metadata and point back to the canonical route instead of copying policy.
+
 ## Phase 0: Repository Survey and Bootstrap Plan
 
 If this repository has the HEB planner helper available, start with the read-only survey:
@@ -121,7 +134,7 @@ For repositories that are already bootstrapped, use update mode before applying 
 
 Before writing files, inspect:
 
-- Existing instruction files: `AGENTS.md`, nested `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.cursor/rules`, `.windsurf/rules`
+- Existing instruction files and activation behavior: `AGENTS.md`, nested `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.cursor/rules`, `.windsurf/rules`
 - Existing docs: `README.md`, `docs/`, `CONTRIBUTING.md`, architecture notes, ADRs
 - Build and test commands from package files, Makefiles, CI workflows, scripts, and README
 - Source layout, module boundaries, generated files, migrations, deployment scripts
@@ -854,13 +867,13 @@ Metadata exists to reduce context rot. It should not become a bureaucracy.
 
 ## Phase 4: Agent Entry Points
 
-Create one canonical shared instruction source and thin wrappers for tools that need their own filenames.
+Create one canonical shared instruction source and thin wrappers for tools that need their own filenames or activation metadata.
 
 ### `AGENTS.md` - Canonical Shared Entry Point
 
 Commit `AGENTS.md` at the repository root.
 
-Use the open `AGENTS.md` format: plain Markdown, no required frontmatter, and headings chosen for the repository's needs. Put shared repository guidance here, then use nested `AGENTS.md` files only when a subtree has real local policy. If a tool supports provider-specific files, keep those files as adapters that point back to `AGENTS.md`.
+Use the open `AGENTS.md` format: plain Markdown, no required frontmatter, and headings chosen for the repository's needs. Put shared repository guidance here as the always-on source, then use nested `AGENTS.md` files only when a subtree has real path/glob policy. If a tool supports provider-specific files, keep those files as adapters that point back to `AGENTS.md`.
 
 Target 60-90 lines. It may be longer only if the repo has a strong reason, but keep it well below tool instruction-size limits.
 
@@ -979,9 +992,9 @@ Read and follow `AGENTS.md`; it is the canonical repository instruction file.
 Do not duplicate repository rules here. Add Gemini-only notes only when necessary.
 ```
 
-### Nested and Path-Scoped Instructions
+### Nested and Path/Glob-Scoped Instructions
 
-Use nested instruction files or path-specific rule systems only when a subtree has real local policy.
+Use nested instruction files or path/glob-specific rule systems only when a subtree has real local policy.
 
 Good uses:
 

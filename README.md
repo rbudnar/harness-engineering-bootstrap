@@ -63,7 +63,7 @@ node scripts/harness-bootstrap-plan.mjs --repo /absolute/path/to/target-repo --m
 ## What This Template Emphasizes
 
 - Thin cross-agent entry points such as `AGENTS.md`.
-- Thin Claude, Gemini, and Copilot adapters that route back to the same source of truth.
+- Activation-mode vocabulary for always-on, path/glob, description-triggered, and manual context surfaces, with thin provider adapters that route back to the same source of truth.
 - Compatibility with the open `AGENTS.md` format and Agent Skills specification-aligned `SKILL.md` packages.
 - Task-routed docs instead of broad context loading.
 - Signature, trigger-gated contract memory for external data and cross-repo assumptions.
