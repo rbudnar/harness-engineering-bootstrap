@@ -706,6 +706,7 @@ export function parseArgs(args) {
 
 function buildRequiredCore(survey) {
   const commandEvidence = survey.commands.map((command) => command.command);
+  const docsReadme = findDocsReadmePath(survey.docs.files);
   const hasDecisionMemory = survey.docs.hasDecisionMemory;
   const harnessValidationControls = survey.harnessControls.filter(isHarnessValidationControlPath);
   const harnessValidationAutomation = harnessValidationAutomationEvidence(survey, harnessValidationControls);
@@ -730,9 +731,9 @@ function buildRequiredCore(survey) {
       id: 'task-router',
       title: 'Task-routed docs map',
       status: survey.docs.hasDocsReadme ? 'present' : 'missing',
-      evidence: survey.docs.hasDocsReadme ? ['docs/README.md'] : sampleValues(survey.docs.files, 5),
+      evidence: survey.docs.hasDocsReadme ? [docsReadme ?? 'docs/README.md'] : sampleValues(survey.docs.files, 5),
       action: survey.docs.hasDocsReadme
-        ? 'Use docs/README.md as the first-read task router and keep deeper docs behind routes.'
+        ? `Use ${docsReadme ?? 'docs/README.md'} as the first-read task router and keep deeper docs behind routes.`
         : 'Add docs/README.md as a compact task router instead of asking agents to read the whole docs tree.',
       smallerControl: 'If the repo has only a README and one or two tasks, keep the router compact and link existing docs instead of creating new manuals.',
     },
@@ -841,8 +842,11 @@ function buildActivationAssumptions(survey) {
     '.windsurf/rules',
   ].includes(path)).concat(harnessControls.filter(isNestedAgentInstructionPath));
   const skillSurfaces = harnessControls.filter(isSkillPackagePath);
+  const docsReadme = findDocsReadmePath(docsFiles);
+  const rootReadme = docsFiles.find((path) => path.toLowerCase() === 'readme.md');
   const manualSurfaces = dedupe([
-    docs.hasDocsReadme ? 'docs/README.md' : null,
+    docsReadme,
+    rootReadme,
     ...sampleValues(docs.decisionFiles ?? [], 3),
     ...sampleValues(docsFiles.filter(isManualContextSurface), 6),
   ].filter(Boolean));
@@ -1048,6 +1052,10 @@ function collectDocs(files) {
     hasHumanGuide: humanGuideFiles.length > 0,
     humanGuideFiles,
   };
+}
+
+function findDocsReadmePath(docsFiles = []) {
+  return docsFiles.find((path) => path.toLowerCase() === 'docs/readme.md');
 }
 
 function collectVersionState(root, files) {
@@ -2660,7 +2668,7 @@ function walkFiles(root, options) {
   for (const path of [...prioritySurveyPaths, ...packageFiles]) {
     const fullPath = join(root, path);
     try {
-      if (existsSync(fullPath) && statSync(fullPath).isFile()) addPath(path);
+      if (existsSync(fullPath) && statSync(fullPath).isFile()) addPath(resolveExistingRelativePath(root, path));
     } catch {
       // Ignore unreadable priority paths; the normal walk has the same tolerance.
     }
@@ -2708,6 +2716,30 @@ function walkFiles(root, options) {
     count: paths.length,
     truncated,
   };
+}
+
+function resolveExistingRelativePath(root, path) {
+  let current = root;
+  const parts = normalizePath(path).split('/');
+  const resolvedParts = [];
+
+  for (const part of parts) {
+    let entries;
+    try {
+      entries = readdirSync(current, { withFileTypes: true });
+    } catch {
+      return path;
+    }
+
+    const matched = entries.find((entry) => entry.name === part)
+      ?? entries.find((entry) => entry.name.toLowerCase() === part.toLowerCase());
+    if (!matched) return path;
+
+    resolvedParts.push(matched.name);
+    current = join(current, matched.name);
+  }
+
+  return normalizePath(resolvedParts.join('/'));
 }
 
 function readJson(root, path) {

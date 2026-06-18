@@ -28,10 +28,13 @@ test('surveys a small JavaScript repo and renders the review-ready plan contract
     ['npm ci\nnpm test', 'npm run build', 'npm run lint', 'npm test'],
   );
   assert.equal(plan.requiredCore.find((item) => item.id === 'thin-agent-entrypoint').status, 'present');
-  assert.deepEqual(
-    plan.activationAssumptions.find((item) => item.mode === 'Always-on').surfaces,
-    ['AGENTS.md'],
-  );
+  const alwaysOnActivation = plan.activationAssumptions.find((item) => item.mode === 'Always-on');
+  const manualActivation = plan.activationAssumptions.find((item) => item.mode === 'Manual');
+
+  assert(alwaysOnActivation);
+  assert(manualActivation);
+  assert.deepEqual(alwaysOnActivation.surfaces, ['AGENTS.md']);
+  assert(manualActivation.surfaces.includes('README.md'));
   assert.match(
     plan.requiredCore.find((item) => item.id === 'harness-validation').action,
     /canonical quality gate and CI or equivalent automation/,
@@ -39,6 +42,7 @@ test('surveys a small JavaScript repo and renders the review-ready plan contract
   assert.match(validationStepsText(plan), /wired into the repo's canonical quality gate and CI or equivalent automation/);
   assert.match(markdown, /## Activation Assumptions/);
   assert.match(markdown, /\*\*Always-on\*\*: `AGENTS\.md`/);
+  assert.match(markdown, /\*\*Manual\*\*: `README\.md`/);
   assert.match(markdown, /## Review And Handoff Contract/);
   assert.match(markdown, /Planner/);
   assert.match(markdown, /Explicitly Rejected Modules/);
@@ -51,6 +55,29 @@ test('surveys a small JavaScript repo and renders the review-ready plan contract
   assert.match(markdown, /superseded_by: none/);
   assert(!plan.triggeredModules.some((module) => module.id === 'pr-workflow-metrics'));
   assert(plan.rejectedModules.some((module) => module.id === 'pr-workflow-metrics'));
+});
+
+test('uses actual docs README casing in activation and task-router evidence', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-docs-readme-casing-'));
+  try {
+    mkdirSync(resolve(tempRoot, 'docs'), { recursive: true });
+    writeFileSync(resolve(tempRoot, 'AGENTS.md'), '# Agent Instructions\n');
+    writeFileSync(resolve(tempRoot, 'docs', 'readme.md'), '# Docs Router\n');
+
+    const survey = surveyRepository(tempRoot);
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28' });
+    const taskRouter = plan.requiredCore.find((item) => item.id === 'task-router');
+    const manualActivation = plan.activationAssumptions.find((item) => item.mode === 'Manual');
+
+    assert(taskRouter);
+    assert(manualActivation);
+    assert.deepEqual(taskRouter.evidence, ['docs/readme.md']);
+    assert.match(taskRouter.action, /docs\/readme\.md/);
+    assert(manualActivation.surfaces.includes('docs/readme.md'));
+    assert(!manualActivation.surfaces.includes('docs/README.md'));
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test('counts automated harness-doctor as existing harness validation', () => {
@@ -2282,6 +2309,7 @@ test('detects directory-backed instruction adapters', () => {
   assert(survey.instructionFiles.includes('.windsurf/rules'));
   assert(survey.harnessControls.includes('.cursor/rules/repo.mdc'));
   assert(survey.harnessControls.includes('.windsurf/rules/repo.md'));
+  assert(pathGlob);
   assert(pathGlob.surfaces.includes('.cursor/rules'));
   assert(pathGlob.surfaces.includes('.windsurf/rules'));
 });
@@ -2299,6 +2327,7 @@ test('classifies nested AGENTS.md files as path-glob activation surfaces', () =>
 
     assert(!survey.instructionFiles.includes('packages/api/AGENTS.md'));
     assert(survey.harnessControls.includes('packages/api/AGENTS.md'));
+    assert(pathGlob);
     assert(pathGlob.surfaces.includes('packages/api/AGENTS.md'));
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
@@ -2325,6 +2354,7 @@ test('classifies repo-local skills as description-triggered activation surfaces'
     const descriptionTriggered = plan.activationAssumptions.find((item) => item.mode === 'Description-triggered');
 
     assert(survey.harnessControls.includes('.agents/skills/contract-memory/SKILL.md'));
+    assert(descriptionTriggered);
     assert.deepEqual(descriptionTriggered.surfaces, ['.agents/skills/contract-memory/SKILL.md']);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
@@ -5160,6 +5190,7 @@ test('ignores local worktree helper directories during surveys', () => {
 
     assert(!survey.packageFiles.includes('.worktrees/copy/package.json'));
     assert(!survey.harnessControls.some((path) => path.startsWith('.worktrees/')));
+    assert(descriptionTriggered);
     assert.deepEqual(descriptionTriggered.surfaces, []);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
