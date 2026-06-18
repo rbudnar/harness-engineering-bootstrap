@@ -15,6 +15,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - Added a warning-mode `harness-doctor` audit for durable-memory metadata, route rot, and always-on leakage, with CI/release automation and Markdown fence hardening so humans do not have to remember to run it.
 - Made downstream bootstrap acceptance require wiring the harness doctor or validator into the target repo's quality gate and CI or equivalent automation by default.
 - Added a compact long-running handoff/resume contract and failure-to-memory classifier so repeated misses can become the smallest durable harness update instead of chat-only lore, while leaving provider-native compaction and summarization behavior outside HEB's scope.
+- Added activation-mode vocabulary so downstream repos can distinguish always-on, path/glob, description-triggered, and manual context surfaces without turning provider adapters into divergent sources of truth.
 - Pointed repo-local skill guidance at the public Agent Skills specification for both this repo and downstream template consumers.
 - Updated the MCP specification reference to the current dated version (2025-11-25).
 
@@ -25,6 +26,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - Split deeper measurement-layer implementation guidance into a routed template reference and tightened the main-template line budget.
 - Added a compact contract-memory skill and routed contract shapes for data/repo contract work without making contract folders mandatory.
 - Tightened task-contract guidance with current-state, known-failure, resume-preflight, closeout, and promotion-candidate fields for handoff-heavy work.
+- Mapped HEB instruction files, provider adapters, skills, and routed docs to activation modes while keeping `AGENTS.md` canonical.
 
 ### Planner And Metadata
 
@@ -32,6 +34,8 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - Included repo-local skills in the GitHub package file list when skills are present and advertised from packaged docs.
 - Added package metadata validation, release-preparation version sync, and release-workflow staging for `package.json`.
 - Updated the read-only bootstrap planner so required-core and validation output call for automatic downstream harness-doctor or validator runs, recognize existing doctor controls, and avoid manual reminders.
+- Rendered activation assumptions in Markdown and JSON planner output so downstream bootstrap reviews can distinguish always-on, path/glob, description-triggered, and manual context surfaces.
+- Ignored local `.worktrees` helper checkouts during planner surveys so generated plans do not double-count agent-created working copies.
 
 ### Migration
 
