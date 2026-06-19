@@ -141,6 +141,7 @@ async function buildIndex({ ledgerPath, allowParseErrors }) {
   let lineNumber = 0;
   let entryCount = 0;
   let parseErrors = 0;
+  let skippedNonObjectRows = 0;
 
   const stream = createReadStream(absLedgerPath, { encoding: 'utf8' });
   const reader = createInterface({ input: stream, crlfDelay: Infinity });
@@ -158,6 +159,11 @@ async function buildIndex({ ledgerPath, allowParseErrors }) {
       if (!allowParseErrors) {
         throw new Error(`Ledger parse error at line ${lineNumber}: ${error.message}`);
       }
+      continue;
+    }
+
+    if (!record || typeof record !== 'object' || Array.isArray(record)) {
+      skippedNonObjectRows += 1;
       continue;
     }
 
@@ -216,6 +222,7 @@ async function buildIndex({ ledgerPath, allowParseErrors }) {
     counts: {
       entries: entryCount,
       parse_errors: parseErrors,
+      skipped_non_object_rows: skippedNonObjectRows,
       recommendation_keys: safeCount(byKey),
       canonical_urls: safeCount(byUrl),
     },

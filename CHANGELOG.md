@@ -18,6 +18,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - Added activation-mode vocabulary so downstream repos can distinguish always-on, path/glob, description-triggered, and manual context surfaces without turning provider adapters into divergent sources of truth.
 - Pointed repo-local skill guidance at the public Agent Skills specification for both this repo and downstream template consumers.
 - Updated the MCP specification reference to the current dated version (2025-11-25).
+- Hardened `scripts/scout-ledger-index.mjs` so malformed historical ledger rows no longer break the scout's mechanical dedupe path.
 
 ### Template Changes
 
