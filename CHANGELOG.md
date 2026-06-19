@@ -46,6 +46,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - `node --test scripts/harness-doctor.test.mjs`
 - `node --test scripts/package-entrypoint.test.mjs`
 - `node --test scripts/prepare-stable-release.test.mjs`
+- `node --test scripts/scout-ledger-index.test.mjs`
 - `node scripts/template-fitness.mjs`
 - `node scripts/harness-doctor.mjs`
 - `node scripts/harness-bootstrap-plan.mjs --repo .`
