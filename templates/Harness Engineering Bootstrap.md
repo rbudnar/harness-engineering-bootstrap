@@ -1013,9 +1013,9 @@ Rules:
 
 ### `.github/copilot-instructions.md`
 
-Commit this file when GitHub Copilot Chat, Copilot coding agent, or Copilot code review is used.
+Commit this file when GitHub Copilot Chat, Copilot coding agent, or Copilot code review needs repository-wide Copilot custom instructions. Keep it as a thin adapter; do not mirror `AGENTS.md` even on Copilot surfaces that also read root `AGENTS.md`.
 
-This file is a Copilot adapter for the canonical review harness. Keep the canonical review rules in `docs/review-harness.md` or `docs/human-guide.md`, then have Copilot-specific instructions point back to that source.
+When present, this file is a Copilot adapter for the canonical review harness. Keep the canonical review rules in `docs/review-harness.md` or `docs/human-guide.md`, then have Copilot-specific instructions point back to that source.
 
 Required sections:
 
