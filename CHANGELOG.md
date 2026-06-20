@@ -19,10 +19,12 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - Pointed repo-local skill guidance at the public Agent Skills specification for both this repo and downstream template consumers.
 - Updated the MCP specification reference to the current dated version (2025-11-25).
 - Hardened `scripts/scout-ledger-index.mjs` so malformed historical ledger rows no longer break the scout's mechanical dedupe path.
+- Tightened Copilot adapter guidance so `.github/copilot-instructions.md` remains available for Copilot custom-instruction routes without mirroring root `AGENTS.md`.
 
 ### Template Changes
 
 - Documented HEB as a governance layer over `AGENTS.md`, with optional procedural capabilities packaged as Agent Skills-standard `SKILL.md` directories only when smaller controls are insufficient.
+- Clarified that `.github/copilot-instructions.md` should stay a thin Copilot adapter rather than a duplicate copy of root `AGENTS.md`.
 - Added a Getting Started section with requirements, clone/run commands, Windows usage, output sections to review, and the update-mode command.
 - Split deeper measurement-layer implementation guidance into a routed template reference and tightened the main-template line budget.
 - Added a compact contract-memory skill and routed contract shapes for data/repo contract work without making contract folders mandatory.
