@@ -93,11 +93,12 @@ Update metadata only after the bootstrap or update PR passes validation. A consu
 5. Run `node --test scripts/harness-doctor.test.mjs`.
 6. Run `node --test scripts/package-entrypoint.test.mjs`.
 7. Run `node --test scripts/prepare-stable-release.test.mjs`.
-8. Run `node scripts/template-fitness.mjs`.
-9. Run `node scripts/harness-doctor.mjs`.
-10. Run `node scripts/harness-bootstrap-plan.mjs --repo . --mode update --target-version v<VERSION>` as the template-repo update-mode smoke test.
-11. For a bootstrapper/manual consumer smoke test, run the planner against a separate target repository before publishing release notes as final.
-12. Merge the PR with exactly one stable release label and let `.github/workflows/stable-release.yml` create the release commit, tag, and GitHub Release.
+8. Run `node --test scripts/weekly-harness-report.test.mjs`.
+9. Run `node scripts/template-fitness.mjs`.
+10. Run `node scripts/harness-doctor.mjs`.
+11. Run `node scripts/harness-bootstrap-plan.mjs --repo . --mode update --target-version v<VERSION>` as the template-repo update-mode smoke test.
+12. For a bootstrapper/manual consumer smoke test, run the planner against a separate target repository before publishing release notes as final.
+13. Merge the PR with exactly one stable release label and let `.github/workflows/stable-release.yml` create the release commit, tag, and GitHub Release.
 
 ## Consuming Repository Update Flow
 

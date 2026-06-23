@@ -170,6 +170,7 @@ jobs:
           node --test scripts/harness-doctor.test.mjs
           node --test scripts/package-entrypoint.test.mjs
           node --test scripts/prepare-stable-release.test.mjs
+          node --test scripts/weekly-harness-report.test.mjs
           node scripts/template-fitness.mjs
           node scripts/harness-doctor.mjs
 

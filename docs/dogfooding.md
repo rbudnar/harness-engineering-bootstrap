@@ -96,8 +96,8 @@ Use these headings when automation writes a suggestion file:
 node scripts/template-fitness.mjs
 ```
 
-CI runs `node scripts/harness-doctor.mjs` as a warning-mode rot audit so humans do not have to remember it. Run it locally for fast feedback when changing durable memory, routes, contracts, or references. Doctor warnings are not failures until a later issue proves the signal is low-noise.
-
+CI runs `node scripts/harness-doctor.mjs` as a warning-mode rot audit so humans do not have to remember it. Run `node scripts/harness-doctor.mjs` locally for fast feedback when changing durable memory, routes, contracts, or references.
+Weekly reporting runs `.github/workflows/weekly-harness-report.yml`, comments on the standing "Weekly Harness Report" issue for notification, uploads artifacts, and creates or updates "Harness problems detected by weekly report" before failing when checks fail or doctor warnings appear.
 To validate a proposal file from automation, run:
 
 ```bash
