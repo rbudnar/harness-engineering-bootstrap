@@ -1,0 +1,113 @@
+name: Weekly Harness Report
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '20 13 * * 1'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  harness-report:
+    name: Harness report
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Generate weekly harness report
+        id: report
+        run: node scripts/weekly-harness-report.mjs
+
+      - name: Publish job summary
+        if: always()
+        run: cat .harness/weekly-harness-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload harness report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-harness-report
+          include-hidden-files: true
+          path: |
+            .harness/weekly-harness-report.json
+            .harness/weekly-harness-report.md
+          if-no-files-found: warn
+
+      - name: Notify via report issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT_TITLE: Weekly Harness Report
+        run: |
+          gh label create harness-report --color 5319e7 --description "Scheduled HEB harness reports" >/dev/null 2>&1 || true
+
+          REPORT_ISSUE="$(
+            gh issue list --state open --search "$REPORT_TITLE in:title" --limit 20 --json number,title \
+              --jq ".[] | select(.title == \"$REPORT_TITLE\") | .number" | head -n 1
+          )"
+
+          if [ -z "$REPORT_ISSUE" ]; then
+            {
+              echo "Standing notification thread for weekly HEB harness reports."
+              echo
+              echo "GitHub notification email delivery depends on repository watch and notification settings."
+              echo
+              cat .harness/weekly-harness-report.md
+            } > .harness/weekly-harness-report-issue.md
+
+            gh issue create \
+              --title "$REPORT_TITLE" \
+              --body-file .harness/weekly-harness-report-issue.md \
+              --assignee "$GITHUB_REPOSITORY_OWNER" \
+              --label harness-report || gh issue create \
+                --title "$REPORT_TITLE" \
+                --body-file .harness/weekly-harness-report-issue.md
+          else
+            gh issue comment "$REPORT_ISSUE" --body-file .harness/weekly-harness-report.md
+          fi
+
+      - name: Create or update problem issue
+        if: always() && steps.report.outputs.has_problems == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROBLEM_TITLE: Harness problems detected by weekly report
+        run: |
+          gh label create harness-problem --color d73a4a --description "Scheduled harness report detected a problem" >/dev/null 2>&1 || true
+
+          PROBLEM_ISSUE="$(
+            gh issue list --state open --search "$PROBLEM_TITLE in:title" --limit 20 --json number,title \
+              --jq ".[] | select(.title == \"$PROBLEM_TITLE\") | .number" | head -n 1
+          )"
+
+          {
+            echo "The scheduled HEB harness report detected a problem."
+            echo
+            cat .harness/weekly-harness-report.md
+          } > .harness/weekly-harness-problem.md
+
+          if [ -z "$PROBLEM_ISSUE" ]; then
+            gh issue create \
+              --title "$PROBLEM_TITLE" \
+              --body-file .harness/weekly-harness-problem.md \
+              --assignee "$GITHUB_REPOSITORY_OWNER" \
+              --label harness-problem || gh issue create \
+                --title "$PROBLEM_TITLE" \
+                --body-file .harness/weekly-harness-problem.md
+          else
+            gh issue comment "$PROBLEM_ISSUE" --body-file .harness/weekly-harness-problem.md
+          fi
+
+      - name: Fail when harness problems were detected
+        if: always() && steps.report.outputs.has_problems == 'true'
+        run: |
+          echo "Harness problems were detected; notification and issue handling completed."
+          exit 1

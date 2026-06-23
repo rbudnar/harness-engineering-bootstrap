@@ -740,6 +740,7 @@ function checkReleasePolicy() {
     'node --test scripts/harness-doctor.test.mjs',
     'node --test scripts/package-entrypoint.test.mjs',
     'node --test scripts/prepare-stable-release.test.mjs',
+    'node --test scripts/weekly-harness-report.test.mjs',
     'node scripts/template-fitness.mjs',
     'node scripts/harness-doctor.mjs',
     'node scripts/harness-bootstrap-plan.mjs --repo . --mode update --target-version v<VERSION>',
@@ -753,6 +754,7 @@ function checkReleasePolicy() {
   const templateFitnessWorkflow = read('.github/workflows/template-fitness.yml');
   const templateFitnessWorkflowAnchors = [
     'node --test scripts/harness-doctor.test.mjs',
+    'node --test scripts/weekly-harness-report.test.mjs',
     'node scripts/harness-doctor.mjs',
   ];
   for (const text of templateFitnessWorkflowAnchors) {
@@ -781,6 +783,7 @@ function checkReleasePolicy() {
     'RELEASE_TYPE=current',
     'node --test scripts/harness-doctor.test.mjs',
     'node --test scripts/package-entrypoint.test.mjs',
+    'node --test scripts/weekly-harness-report.test.mjs',
     'node scripts/harness-doctor.mjs',
     'node scripts/prepare-stable-release.mjs',
     'git add VERSION CHANGELOG.md package.json',
@@ -807,6 +810,50 @@ function checkReleasePolicy() {
     if (!releaseSection.includes(`### ${heading}`)) {
       fail(`CHANGELOG.md release ${tag} must include "### ${heading}".`);
     }
+  }
+}
+
+function checkWeeklyHarnessReporting() {
+  metric('\nWeekly harness reporting:');
+
+  const requiredFiles = [
+    'scripts/weekly-harness-report.mjs',
+    'scripts/weekly-harness-report.test.mjs',
+    '.github/workflows/weekly-harness-report.yml',
+  ];
+  for (const path of requiredFiles) {
+    if (exists(path)) metric(`- ${path}: present`);
+    else fail(`${path} is required for scheduled HEB dogfooding reports.`);
+  }
+
+  if (!requiredFiles.every((path) => exists(path))) return;
+
+  const workflow = read('.github/workflows/weekly-harness-report.yml');
+  const workflowAnchors = [
+    'schedule:',
+    "cron: '20 13 * * 1'",
+    'issues: write',
+    'node scripts/weekly-harness-report.mjs',
+    'actions/upload-artifact@v4',
+    'Weekly Harness Report',
+    'Harness problems detected by weekly report',
+    "steps.report.outputs.has_problems == 'true'",
+    'exit 1',
+  ];
+  for (const text of workflowAnchors) {
+    if (!workflow.includes(text)) fail(`.github/workflows/weekly-harness-report.yml must include weekly-report anchor: ${text}`);
+  }
+
+  const script = read('scripts/weekly-harness-report.mjs');
+  const scriptAnchors = [
+    'node scripts/template-fitness.mjs',
+    'node scripts/harness-doctor.mjs --json',
+    'weekly-harness-report.json',
+    'weekly-harness-report.md',
+    'has_problems=',
+  ];
+  for (const text of scriptAnchors) {
+    if (!script.includes(text)) fail(`scripts/weekly-harness-report.mjs must include weekly-report anchor: ${text}`);
   }
 }
 
@@ -931,6 +978,7 @@ function main() {
   checkTemplateShape();
   checkReleaseMarker();
   checkReleasePolicy();
+  checkWeeklyHarnessReporting();
   checkSkillStandards();
 
   for (const suggestionPath of suggestionPaths) {

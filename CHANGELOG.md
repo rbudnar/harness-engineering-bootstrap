@@ -20,6 +20,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - Updated the MCP specification reference to the current dated version (2025-11-25).
 - Hardened `scripts/scout-ledger-index.mjs` so malformed historical ledger rows no longer break the scout's mechanical dedupe path.
 - Tightened Copilot adapter guidance so `.github/copilot-instructions.md` remains available for Copilot custom-instruction routes without mirroring root `AGENTS.md`.
+- Added weekly HEB dogfooding reports with standing issue notification, artifacts, and problem-issue creation when harness checks fail or doctor warnings appear.
 
 ### Template Changes
 
@@ -36,6 +37,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - Added template-fitness validation for repo-local `SKILL.md` packages so future repository skills use valid standard frontmatter.
 - Included repo-local skills in the GitHub package file list when skills are present and advertised from packaged docs.
 - Added package metadata validation, release-preparation version sync, and release-workflow staging for `package.json`.
+- Added a weekly harness report workflow and report generator so this repo gets scheduled HEB health summaries instead of relying on manual checks.
 - Updated the read-only bootstrap planner so required-core and validation output call for automatic downstream harness-doctor or validator runs, recognize existing doctor controls, and avoid manual reminders.
 - Rendered activation assumptions in Markdown and JSON planner output so downstream bootstrap reviews can distinguish always-on, path/glob, description-triggered, and manual context surfaces.
 - Ignored local `.worktrees` helper checkouts during planner surveys so generated plans do not double-count agent-created working copies.
@@ -49,6 +51,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - `node --test scripts/package-entrypoint.test.mjs`
 - `node --test scripts/prepare-stable-release.test.mjs`
 - `node --test scripts/scout-ledger-index.test.mjs`
+- `node --test scripts/weekly-harness-report.test.mjs`
 - `node scripts/template-fitness.mjs`
 - `node scripts/harness-doctor.mjs`
 - `node scripts/harness-bootstrap-plan.mjs --repo .`
