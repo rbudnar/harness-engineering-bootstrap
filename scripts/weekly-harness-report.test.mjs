@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildReport, renderMarkdown, runCheck } from './weekly-harness-report.mjs';
+import { isAbsolute } from 'node:path';
+import { buildReport, defaultOutputDir, renderMarkdown, runCheck } from './weekly-harness-report.mjs';
 
 test('clean checks produce a non-problem report', () => {
   const report = buildReport({
@@ -120,6 +121,14 @@ test('signal-terminated checks fail closed', () => {
   });
   assert.equal(report.summary.hasProblems, true);
   assert.match(renderMarkdown(report), /failed \(1\)/);
+});
+
+test('default output stays in repo only for GitHub Actions artifacts', () => {
+  assert.equal(defaultOutputDir({ GITHUB_ACTIONS: 'true' }), '.harness');
+
+  const localOutput = defaultOutputDir({});
+  assert.equal(isAbsolute(localOutput), true);
+  assert(!localOutput.endsWith('.harness'));
 });
 
 function check(options = {}) {

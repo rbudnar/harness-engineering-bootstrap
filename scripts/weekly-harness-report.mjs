@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -62,7 +63,7 @@ export const defaultCheckSpecs = [
 export function parseArgs(argv = process.argv.slice(2)) {
   const options = {
     repo: repoRoot,
-    outputDir: '.harness',
+    outputDir: defaultOutputDir(),
     date: new Date().toISOString().slice(0, 10),
   };
 
@@ -90,11 +91,17 @@ export function parseArgs(argv = process.argv.slice(2)) {
   return options;
 }
 
+export function defaultOutputDir(env = process.env) {
+  if (env.GITHUB_ACTIONS === 'true') return '.harness';
+  return resolve(tmpdir(), 'heb-weekly-harness-report');
+}
+
 export function helpText() {
   return [
     'Usage: node scripts/weekly-harness-report.mjs [--repo <path>] [--output-dir <path>] [--date YYYY-MM-DD]',
     '',
     'Runs the HEB harness checks, writes a Markdown/JSON report, and records whether follow-up is needed.',
+    'CI writes to .harness for artifact upload; local runs default to a temp directory unless --output-dir is set.',
     'The command exits zero so scheduled workflows can upload artifacts and notify before failing deliberately.',
   ].join('\n');
 }
