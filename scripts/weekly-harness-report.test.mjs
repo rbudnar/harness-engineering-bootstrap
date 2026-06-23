@@ -93,6 +93,35 @@ test('runCheck records command output from an injected runner', () => {
   assert.equal(result.durationMs, 12);
 });
 
+test('signal-terminated checks fail closed', () => {
+  const result = runCheck(
+    {
+      id: 'signal',
+      name: 'Signal',
+      display: 'node signal.mjs',
+    },
+    {
+      repo: process.cwd(),
+      runner: () => ({
+        status: null,
+        signal: 'SIGTERM',
+        stdout: '',
+        stderr: '',
+      }),
+    },
+  );
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.signal, 'SIGTERM');
+
+  const report = buildReport({
+    date: '2026-06-23',
+    checkResults: [result],
+  });
+  assert.equal(report.summary.hasProblems, true);
+  assert.match(renderMarkdown(report), /failed \(1\)/);
+});
+
 function check(options = {}) {
   return {
     id: options.id ?? 'check',

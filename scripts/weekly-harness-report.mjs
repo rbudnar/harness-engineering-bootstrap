@@ -109,7 +109,7 @@ export function runCheck(spec, options = {}) {
     id: spec.id,
     name: spec.name,
     command: spec.display,
-    exitCode: Number.isInteger(result.exitCode) ? result.exitCode : result.status ?? 1,
+    exitCode: normalizeExitCode(result),
     signal: result.signal ?? null,
     durationMs: result.durationMs ?? finished - started,
     stdout: result.stdout ?? '',
@@ -129,12 +129,19 @@ export function spawnCheck(spec, root) {
   });
 
   return {
-    exitCode: result.status ?? (result.error ? 1 : 0),
+    exitCode: normalizeExitCode(result),
     signal: result.signal ?? null,
     durationMs: Date.now() - started,
     stdout: result.stdout ?? '',
     stderr: result.stderr ?? (result.error ? result.error.message : ''),
   };
+}
+
+function normalizeExitCode(result) {
+  if (Number.isInteger(result.exitCode)) return result.exitCode;
+  if (Number.isInteger(result.status)) return result.status;
+  if (result.signal || result.error) return 1;
+  return 1;
 }
 
 export function buildReport({
