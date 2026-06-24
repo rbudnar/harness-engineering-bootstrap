@@ -51,7 +51,7 @@ node scripts/harness-bootstrap-plan.mjs --repo /absolute/path/to/target-repo --m
 
 - [Getting Started](#getting-started) - how to run the read-only bootstrap planner against a downstream repository.
 - [Template](templates/Harness%20Engineering%20Bootstrap.md) - the current bootstrap template.
-- [Dogfooding guide](docs/dogfooding.md) - how this repo keeps the template from becoming a fat harness.
+- [Dogfooding guide](docs/dogfooding.md) and [benchmark protocol](docs/benchmark-protocol.md) - how this repo keeps the template trim and evaluates adoption outcomes.
 - [Template fitness check](scripts/template-fitness.mjs) and [harness doctor](scripts/harness-doctor.mjs) - local bloat guard plus warning-mode rot audit.
 - [Bootstrap planner](scripts/harness-bootstrap-plan.mjs) - read-only repo survey that emits review-ready markdown or JSON.
 - [Package metadata](package.json) - local and GitHub-ref bin entrypoint for the read-only planner.
