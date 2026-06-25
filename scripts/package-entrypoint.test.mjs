@@ -71,6 +71,22 @@ test('package init subcommand matches direct bootstrap mode without writing targ
   }
 });
 
+test('README documents the current GitHub package-bin command state', () => {
+  const readme = readFileSync(resolve(repoRoot, 'README.md'), 'utf8');
+
+  assert.match(readme, /`v0\.1\.0` tag predates `package\.json`/);
+  assert.match(readme, /github:rbudnar\/harness-engineering-bootstrap#main/);
+  assert.match(
+    readme,
+    /npm exec --yes --package "github:rbudnar\/harness-engineering-bootstrap#main" -- harness-bootstrap init -- --repo/,
+  );
+  assert.match(readme, /replace `#main` with that tag/);
+  assert.doesNotMatch(
+    readme,
+    /--package=github:rbudnar\/harness-engineering-bootstrap#vX\.Y\.Z -c "harness-bootstrap init --repo/,
+  );
+});
+
 test('package includes the warning-mode harness doctor script', () => {
   const packRoot = mkdtempSync(resolve(tmpdir(), 'heb-bin-doctor-pack-'));
 
