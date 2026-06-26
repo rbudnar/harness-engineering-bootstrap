@@ -33,6 +33,8 @@ Run each task against these variants with the same model, agent surface, time bu
 4. HEB planned core: the read-only planner output is applied as the smallest accepted HEB core for that repo, including routed docs and validation commands only when trigger evidence exists.
 5. Bloated or memory-bank comparator: optional and excluded by default. Add only when there is clear trigger evidence and a concrete comparator to test, because otherwise it mainly proves that noisy context is noisy.
 
+Normalize pre-existing agent guidance before applying a variant. If a pinned public repo already contains agent-facing files such as `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, Cursor rules, Windsurf rules, local skills, or memory-bank docs, either exclude that repo from the first suite or create a fixture patch that removes or masks those files consistently before variant overlays are applied. No variant should inherit upstream agent guidance unless the experiment explicitly studies that guidance as its own comparator.
+
 HEB can lose honestly. A result where variant 1 or 2 beats HEB on success, cost, or mistake recurrence must be treated as evidence to tighten or remove HEB guidance, not as a benchmarking failure.
 
 ## Run Configuration
@@ -65,6 +67,8 @@ Record the correction policy, correction patch, and harness snapshot for every s
 Start with 10 to 20 small public fixture or public open-source repositories. Exclude private repositories, private credentials, paid services, and tasks that require hidden human knowledge.
 
 Every task must pin the repository or fixture to an immutable starting point: commit SHA, release tag, fixture archive checksum, or generated fixture checksum. Do not use a moving default branch as the benchmark input.
+
+Every task must also record the pre-existing guidance inventory and the normalization policy used before variants run. If existing guidance cannot be removed, masked, or deliberately modeled without changing the task's meaning, exclude the task from the first benchmark.
 
 Each task should belong to one primary category:
 
@@ -144,6 +148,8 @@ Issue #52 should turn this into a machine-readable schema. The runner-facing man
   "id": "domain-gotcha-cache-invalidation-001",
   "repo": "public fixture or public repo URL",
   "revision": "commit SHA, tag, or fixture archive checksum",
+  "preexisting_guidance_files": ["AGENTS.md", ".github/copilot-instructions.md"],
+  "guidance_normalization": "removed, masked, excluded, or explicit-comparator",
   "category": "domain gotcha",
   "episode": "cache-invalidation-family",
   "episode_stage": "first-encounter",
