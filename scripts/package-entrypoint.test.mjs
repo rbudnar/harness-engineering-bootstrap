@@ -85,6 +85,7 @@ test('README documents the current GitHub package-bin command state', () => {
     readme,
     /--package=github:rbudnar\/harness-engineering-bootstrap#vX\.Y\.Z -c "harness-bootstrap init --repo/,
   );
+  assert.doesNotMatch(readme, /github:rbudnar\/harness-engineering-bootstrap#v0\.1\.0/);
 });
 
 test('package includes the warning-mode harness doctor script', () => {
