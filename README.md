@@ -8,7 +8,7 @@ HEB is a governance and routing layer built on open agent instruction formats. U
 
 ## Getting Started
 
-Start with the bootstrap planner. It is read-only: it surveys a target repository and prints a review-ready harness plan, but it does not write files into that repository. Run it from a checkout, or from a tagged GitHub package spec once that tag includes the package entrypoint.
+Start with the bootstrap planner. It is read-only: it surveys a target repository and prints a review-ready harness plan, but it does not write files into that repository. Run it from a checkout, from `#main` while package metadata is unreleased, or from a tagged GitHub package spec after a post-`v0.1.0` tag includes the package entrypoint.
 
 Requirements: Git, Node.js 20 or newer, and no `npm install` step.
 
@@ -18,13 +18,13 @@ cd harness-engineering-bootstrap
 node scripts/harness-bootstrap-plan.mjs --repo /absolute/path/to/target-repo
 ```
 
-GitHub tag usage avoids the public npm registry while still using the dry-run package bin:
+GitHub package-bin usage avoids the public npm registry while still using the dry-run package bin. The `v0.1.0` tag predates `package.json`, so use `#main` until a newer stable release tag exists:
 
 ```bash
-npm exec --yes --package=github:rbudnar/harness-engineering-bootstrap#vX.Y.Z -c "harness-bootstrap init --repo /absolute/path/to/target-repo"
+npm exec --yes --package "github:rbudnar/harness-engineering-bootstrap#main" -- harness-bootstrap init -- --repo /absolute/path/to/target-repo
 ```
 
-On Windows, direct checkout usage is `node .\scripts\harness-bootstrap-plan.mjs init --repo C:\Users\you\Documents\repos\target-repo`. `init` prints a plan only; `--write` is intentionally unsupported until a separate issue approves write-mode evidence, rollback, and generated-file scope. Public npm registry usage, such as `npm exec --package=@rbudnar/harness-engineering-bootstrap -c "harness-bootstrap init --repo <repo>"`, is also unsupported until a publishing issue approves package contents, provenance, rollback, and credentials.
+On Windows, quote the repo path and keep both separators: `npm exec --yes --package "github:rbudnar/harness-engineering-bootstrap#main" -- harness-bootstrap init -- --repo "C:\Users\you\Documents\repos\target-repo" --json`. Once a newer stable tag includes package metadata, replace `#main` with that tag, for example `#vX.Y.Z`. Direct checkout usage is `node .\scripts\harness-bootstrap-plan.mjs init --repo C:\Users\you\Documents\repos\target-repo`. `init` prints a plan only; `--write` is intentionally unsupported until a separate issue approves write-mode evidence, rollback, and generated-file scope. Public npm registry usage, such as `npm exec --package=@rbudnar/harness-engineering-bootstrap -c "harness-bootstrap init --repo <repo>"`, is also unsupported until a publishing issue approves package contents, provenance, rollback, and credentials.
 
 Read the generated plan before copying or creating anything. The most important sections are:
 

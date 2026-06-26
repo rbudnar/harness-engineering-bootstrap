@@ -10,6 +10,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - Clarified the README front door so first-time downstream users can run the read-only bootstrap planner without hunting through repo-internal dogfooding notes.
 - Added private package metadata, npm publish guards, and a `harness-bootstrap` bin so the read-only planner can run from a checkout or GitHub package spec without publishing to npm.
 - Added `harness-bootstrap init` as a dry-run first-time bootstrap command while keeping `--write` explicitly unsupported.
+- Clarified package-bin bootstrap docs so consumers use the working `#main` GitHub package spec until a post-`v0.1.0` stable tag includes package metadata.
 - Added a trigger-gated `contract-memory` Agent Skill prototype as the first progressive-disclosure optional module.
 - Added compact trigger-gated examples for data and repo contract shapes.
 - Added a warning-mode `harness-doctor` audit for durable-memory metadata, route rot, and always-on leakage, with CI/release automation and Markdown fence hardening so humans do not have to remember to run it.
