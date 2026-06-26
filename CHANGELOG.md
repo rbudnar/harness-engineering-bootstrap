@@ -6,6 +6,20 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 
 ### Summary
 
+### Template Changes
+
+### Planner And Metadata
+
+### Migration
+
+### Validation
+
+### Rollback
+
+## v0.1.1 - 2026-06-26
+
+### Summary
+
 - Aligned HEB with the public `AGENTS.md` and Agent Skills `SKILL.md` standards while keeping optional skills trigger-gated.
 - Clarified the README front door so first-time downstream users can run the read-only bootstrap planner without hunting through repo-internal dogfooding notes.
 - Added private package metadata, npm publish guards, and a `harness-bootstrap` bin so the read-only planner can run from a checkout or GitHub package spec without publishing to npm.

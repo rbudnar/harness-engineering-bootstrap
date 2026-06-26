@@ -1,6 +1,6 @@
 {
   "name": "@rbudnar/harness-engineering-bootstrap",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Read-only bootstrap planner and template for thin, task-routed agent harnesses.",
   "license": "CC0-1.0",
   "private": true,
