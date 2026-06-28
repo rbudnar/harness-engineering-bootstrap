@@ -1,0 +1,149 @@
+name: PR Agent Inbox
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, edited]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+  pull_request_review_comment:
+    types: [created, edited, deleted]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number to refresh; omit to sweep open PRs.
+        required: false
+  schedule:
+    - cron: '*/15 * * * *'
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+  checks: read
+  statuses: write
+
+concurrency:
+  group: pr-agent-inbox-${{ github.event.pull_request.number || github.event.issue.number || github.event.inputs.pr || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  agent-inbox:
+    if: github.event_name != 'issue_comment' || github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    steps:
+      - name: Decide inbox refresh scope
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          COMMENT_AUTHOR: ${{ github.event.comment.user.login || '' }}
+          COMMENT_BODY: ${{ github.event.comment.body || '' }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name || '' }}
+          INPUT_PR: ${{ github.event.inputs.pr || '' }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number || github.event.inputs.pr || '' }}
+          CHECKOUT_REF: ${{ github.event.pull_request.base.sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          mode="skip"
+          pr="${PR_NUMBER}"
+          checkout_ref="${CHECKOUT_REF:-$GITHUB_SHA}"
+
+          case "$EVENT_NAME" in
+            pull_request_target)
+              mode="assert"
+              ;;
+            pull_request_review|pull_request_review_comment)
+              if [[ -n "$HEAD_REPO" && "$HEAD_REPO" != "$REPO" ]]; then
+                echo "::notice::Skipping write-backed review refresh for fork PR ${pr}; scheduled or manual refresh will reconcile the PR-head status."
+              else
+                mode="assert"
+              fi
+              ;;
+            issue_comment)
+              if [[ "$COMMENT_BODY" == "/agent-inbox refresh"* ]]; then
+                permission="$(gh api "repos/${REPO}/collaborators/${COMMENT_AUTHOR}/permission" --jq '.permission' 2>/dev/null || echo none)"
+                case "$permission" in
+                  admin|maintain|write) mode="assert" ;;
+                  *) echo "::notice::Ignoring /agent-inbox refresh from ${COMMENT_AUTHOR}; permission is ${permission}." ;;
+                esac
+              fi
+              ;;
+            workflow_dispatch)
+              if [[ -n "$INPUT_PR" ]]; then
+                mode="assert"
+                pr="$INPUT_PR"
+              else
+                mode="sweep"
+              fi
+              ;;
+            schedule)
+              mode="sweep"
+              ;;
+          esac
+
+          {
+            echo "mode=$mode"
+            echo "pr=$pr"
+            echo "checkout_ref=$checkout_ref"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.decide.outputs.mode != 'skip'
+        with:
+          ref: ${{ steps.decide.outputs.checkout_ref }}
+
+      - uses: actions/setup-node@v4
+        if: steps.decide.outputs.mode != 'skip'
+        with:
+          node-version: '20'
+
+      - name: Refresh one PR inbox
+        if: steps.decide.outputs.mode == 'assert'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/pr-agent-inbox.mjs \
+            --repo "$GITHUB_REPOSITORY" \
+            --pr "${{ steps.decide.outputs.pr }}" \
+            --assert-clean \
+            --update-comment \
+            --ensure-label \
+            --sync-label \
+            --publish-status \
+            --allow-pending-checks \
+            --ignore-check "PR Agent Inbox" \
+            --ignore-check "PR Agent Inbox / agent-inbox"
+
+      - name: Refresh open PR inboxes
+        if: steps.decide.outputs.mode == 'sweep'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          pr_list="$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 100 --json number --jq '.[].number')"
+          if [[ -z "$pr_list" ]]; then
+            echo "No open pull requests to refresh."
+            exit 0
+          fi
+          mapfile -t prs <<< "$pr_list"
+
+          status=0
+          for pr in "${prs[@]}"; do
+            node scripts/pr-agent-inbox.mjs \
+              --repo "$GITHUB_REPOSITORY" \
+              --pr "$pr" \
+              --refresh \
+              --update-comment \
+              --ensure-label \
+              --sync-label \
+              --publish-status \
+              --allow-pending-checks \
+              --ignore-check "PR Agent Inbox" \
+              --ignore-check "PR Agent Inbox / agent-inbox" || status=1
+          done
+
+          exit "$status"

@@ -6,6 +6,7 @@ This repo maintains the Harness Engineering Bootstrap template. Dogfood it as an
 
 - Start with `README.md` for the repo map.
 - Read `docs/dogfooding.md` before accepting automated harness suggestions.
+- Open `docs/repo-contracts/INDEX.md` only when changing automation that depends on external repository, service, or API semantics.
 - Open `templates/Harness Engineering Bootstrap.md` only when editing or reviewing the template.
 
 ## Editing Rules
