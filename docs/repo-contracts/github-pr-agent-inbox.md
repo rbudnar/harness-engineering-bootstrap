@@ -35,6 +35,7 @@ Read this before changing `.github/workflows/pr-agent-inbox.yml`, `scripts/pr-ag
 ## Known Edges
 
 - GitHub has a `pull_request_review_thread` webhook event, but it is not a GitHub Actions workflow trigger in the checked Actions docs. Thread resolution may therefore need `/agent-inbox refresh` or the scheduled sweep to turn the `agent-inbox-clean` status green quickly.
+- The PR that introduces this workflow checks out base-owned code under `pull_request_target`; if the base ref does not yet contain `scripts/pr-agent-inbox.mjs`, the workflow must pass with a bootstrap notice instead of running PR-head code.
 - Fork PRs must run repository-owned code only. Keep `pull_request_target` checkouts pinned to the base commit unless a later contract explicitly proves a safe alternative.
 - Fork PR review/comment events may have read-only tokens. Skip write-backed review-event refreshes for forks and rely on `pull_request_target`, `/agent-inbox refresh`, or scheduled refresh to publish the PR-head status.
 
