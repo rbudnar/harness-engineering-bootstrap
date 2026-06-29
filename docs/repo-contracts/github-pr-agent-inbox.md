@@ -35,6 +35,29 @@ Read this before changing `.github/workflows/pr-agent-inbox.yml`, `scripts/pr-ag
 - `node scripts/template-fitness.mjs`
 - `node scripts/harness-doctor.mjs`
 
+## Lift-And-Shift Adoption
+
+For another GitHub-hosted repository, copy only the portable inbox pieces first:
+
+- `.github/workflows/pr-agent-inbox.yml`
+- `scripts/pr-agent-inbox.mjs`
+- `scripts/pr-agent-inbox.test.mjs`
+
+Then adapt the target repo in this order:
+
+1. Add the inbox test to the target repo's normal CI gate.
+2. Add one short agent instruction: before calling a PR done, read the sticky `PR Agent Inbox` comment or `agent-inbox-clean` status.
+3. Decide whether `agent-inbox-clean` starts as advisory or required branch protection. Prefer advisory until the first live PR proves token permissions and check-name matching.
+4. If the repo has weekly harness reporting, include `node --test scripts/pr-agent-inbox.test.mjs` in that report.
+5. Keep target-specific docs separate from this script. Do not copy HEB-only `template-fitness`, `harness-doctor`, or `CHANGELOG` wiring unless the target repo already has equivalent harness gates.
+
+Validate the target adoption with:
+
+- `node --test scripts/pr-agent-inbox.test.mjs`
+- `node scripts/pr-agent-inbox.mjs --repo <owner/name> --pr <number> --format markdown`
+- A manual `PR Agent Inbox` workflow dispatch against a real open PR.
+- `gh pr checks <number> --repo <owner/name>` to confirm `agent-inbox-clean` publishes the expected `success`, `failure`, or `pending` state.
+
 ## Known Edges
 
 - GitHub has a `pull_request_review_thread` webhook event, but it is not a GitHub Actions workflow trigger in the checked Actions docs. Thread resolution may therefore need `/agent-inbox refresh` or the scheduled sweep to turn the `agent-inbox-clean` status green quickly.

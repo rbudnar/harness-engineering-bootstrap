@@ -13,6 +13,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 ### Planner And Metadata
 
 - Added repo-contract routing for GitHub PR inbox automation semantics and included the inbox classifier tests in CI and weekly harness reporting.
+- Documented the portable lift-and-shift adoption path for applying the PR Agent Inbox to sibling repositories.
 
 ### Migration
 
