@@ -211,7 +211,7 @@ export function fetchReviewThreads(client, { owner, name, pr }) {
               path
               line
               startLine
-              comments(first: 50) {
+              comments(first: 1) {
                 nodes {
                   id
                   url
@@ -247,7 +247,8 @@ export function fetchReviewThreads(client, { owner, name, pr }) {
     if (cursor) args.push('-f', `cursor=${cursor}`);
 
     const response = client.json(args);
-    const page = response?.repository?.pullRequest?.reviewThreads;
+    const page = response?.data?.repository?.pullRequest?.reviewThreads
+      ?? response?.repository?.pullRequest?.reviewThreads;
     if (!page) return nodes;
     nodes.push(...(page.nodes ?? []));
     if (!page.pageInfo?.hasNextPage) return nodes;
@@ -284,7 +285,7 @@ export function fetchBranchProtection(client, { owner, name, branch }) {
 export function fetchBranchRules(client, { owner, name, branch }) {
   const encodedBranch = encodeURIComponent(branch);
   try {
-    return client.json(['api', `repos/${owner}/${name}/rules/branches/${encodedBranch}`]);
+    return fetchRestPages(client, `repos/${owner}/${name}/rules/branches/${encodedBranch}`);
   } catch {
     return null;
   }
@@ -538,7 +539,7 @@ export function publishStatus(client, result, options = {}) {
 export function updateStickyComment(client, result) {
   const comments = fetchRestPages(client, `repos/${result.repo}/issues/${result.pr}/comments`);
   const body = renderMarkdown(result);
-  const existing = comments.find(isOwnedStickyComment);
+  const existing = comments.filter(isOwnedStickyComment).at(-1);
   if (existing) {
     client.json([
       'api',

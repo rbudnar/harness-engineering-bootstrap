@@ -5,6 +5,7 @@ import {
   defaultAttentionLabel,
   ensureLabel,
   fetchBranchProtection,
+  fetchReviewThreads,
   parseArgs,
   publishStatus,
   renderMarkdown,
@@ -35,6 +36,28 @@ test('unresolved outdated review thread still blocks until resolved', () => {
   assert.equal(result.agentAttention, true);
   assert.equal(result.statusState, 'failure');
   assert.equal(result.items[0].kind, 'review_thread');
+});
+
+test('fetchReviewThreads unwraps gh GraphQL data responses', () => {
+  const rows = fetchReviewThreads(fakeClient({
+    responses: {
+      graphql: {
+        data: {
+          repository: {
+            pullRequest: {
+              reviewThreads: {
+                pageInfo: { hasNextPage: false, endCursor: null },
+                nodes: [thread({ body: 'live thread' })],
+              },
+            },
+          },
+        },
+      },
+    },
+  }), { owner: 'owner', name: 'repo', pr: 1 });
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].comments.nodes[0].body, 'live thread');
 });
 
 test('body-only requested changes block without inline threads', () => {
@@ -274,6 +297,45 @@ test('ruleset-only branch metadata is honored after classic protection 404', () 
   assert.deepEqual(result.checks.failed, ['Template Fitness']);
 });
 
+test('ruleset branch metadata is paginated before required checks are trusted', () => {
+  const firstPage = Array.from({ length: 100 }, (_, index) => ({
+    type: 'deletion',
+    parameters: { index },
+  }));
+  const branchProtection = fetchBranchProtection({
+    json(args) {
+      const path = args.at(-1);
+      if (path.includes('/protection')) {
+        throw new Error('gh api repos/o/r/branches/main/protection failed: gh: Branch not protected (HTTP 404)');
+      }
+      if (path.includes('page=1')) return firstPage;
+      if (path.includes('page=2')) {
+        return [
+          {
+            type: 'required_status_checks',
+            parameters: {
+              required_status_checks: [{ context: 'Template Fitness' }],
+            },
+          },
+        ];
+      }
+      return [];
+    },
+  }, { owner: 'o', name: 'r', branch: 'main' });
+
+  const result = analyzeInbox(data({
+    prView: {
+      statusCheckRollup: [
+        { name: 'Template Fitness', conclusion: 'FAILURE' },
+      ],
+    },
+    branchProtection,
+  }));
+
+  assert.equal(result.clean, false);
+  assert.deepEqual(result.checks.failed, ['Template Fitness']);
+});
+
 test('unavailable branch protection metadata keeps fail-closed check fallback', () => {
   const branchProtection = fetchBranchProtection({
     json() {
@@ -413,6 +475,7 @@ test('sticky comment updates only the owned inbox report', () => {
       'repos/owner/repo/issues/1/comments?per_page=100&page=1': [
         { id: 11, body: '<!-- agent-inbox:v1 -->\nordinary comment', user: { login: 'reviewer' } },
         { id: 12, body: '<!-- agent-inbox:v1 -->\n# PR Agent Inbox\nold report', user: { login: 'github-actions[bot]' } },
+        { id: 13, body: '<!-- agent-inbox:v1 -->\n# PR Agent Inbox\nnewer report', user: { login: 'github-actions[bot]' } },
       ],
     },
   });
@@ -427,9 +490,10 @@ test('sticky comment updates only the owned inbox report', () => {
     nativeProtection: {},
   });
 
-  const patch = client.calls.find((call) => call.args.includes('repos/owner/repo/issues/comments/12'));
+  const patch = client.calls.find((call) => call.args.includes('repos/owner/repo/issues/comments/13'));
   assert.ok(patch);
   assert.equal(client.calls.some((call) => call.args.includes('repos/owner/repo/issues/comments/11')), false);
+  assert.equal(client.calls.some((call) => call.args.includes('repos/owner/repo/issues/comments/12')), false);
 });
 
 function data(overrides = {}) {
@@ -483,7 +547,7 @@ function fakeClient({ responses = {} } = {}) {
     calls: [],
     json(args, callOptions = {}) {
       this.calls.push({ method: 'json', args, options: callOptions });
-      const key = args.at(-1);
+      const key = args.includes('graphql') ? 'graphql' : args.at(-1);
       if (Object.hasOwn(responses, key)) return responses[key];
       return {};
     },
