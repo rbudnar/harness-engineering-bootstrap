@@ -15,6 +15,7 @@ jobs:
       - run: node --test scripts/harness-bootstrap-plan.test.mjs
       - run: node --test scripts/harness-doctor.test.mjs
       - run: node --test scripts/package-entrypoint.test.mjs
+      - run: node --test scripts/pr-agent-inbox.test.mjs
       - run: node --test scripts/prepare-stable-release.test.mjs
       - run: node --test scripts/scout-ledger-index.test.mjs
       - run: node --test scripts/weekly-harness-report.test.mjs
