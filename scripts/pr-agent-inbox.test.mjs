@@ -7,6 +7,7 @@ import {
   fetchBranchProtection,
   fetchReviewThreads,
   parseArgs,
+  publishInboxSideEffects,
   publishStatus,
   renderMarkdown,
   syncAttentionLabel,
@@ -586,6 +587,43 @@ test('sticky comment updates only the owned inbox report', () => {
   assert.equal(client.calls.some((call) => call.args.includes('repos/owner/repo/issues/comments/12')), false);
 });
 
+test('publishing side effects continue when write permissions are unavailable', () => {
+  const denied = new Error('gh: Resource not accessible by integration (HTTP 403)');
+  const client = fakeClient({
+    responses: {
+      'repos/owner/repo/issues/1/comments?per_page=100&page=1': [],
+      'repos/owner/repo/issues/1/comments': denied,
+      'repos/owner/repo/commits/abc123/statuses': [],
+      'repos/owner/repo/statuses/abc123': denied,
+    },
+  });
+  const warnings = [];
+
+  const failures = publishInboxSideEffects(client, {
+    repo: 'owner/repo',
+    pr: 1,
+    headRefOid: 'abc123',
+    clean: false,
+    agentAttention: false,
+    statusState: 'pending',
+    statusDescription: 'PR is waiting on non-agent state',
+    items: [],
+    nativeProtection: {},
+  }, {
+    updateComment: true,
+    publishStatus: true,
+    statusContext: 'agent-inbox-clean',
+  }, {
+    onWarning: (message) => warnings.push(message),
+  });
+
+  assert.equal(failures.length, 2);
+  assert.equal(warnings.length, 2);
+  assert.match(warnings[0], /update sticky inbox comment failed/);
+  assert.match(warnings[1], /publish inbox status failed/);
+  assert.ok(client.calls.some((call) => call.args.includes('repos/owner/repo/statuses/abc123')));
+});
+
 function data(overrides = {}) {
   return {
     repo: 'owner/repo',
@@ -637,8 +675,13 @@ function fakeClient({ responses = {} } = {}) {
     calls: [],
     json(args, callOptions = {}) {
       this.calls.push({ method: 'json', args, options: callOptions });
-      const key = args.includes('graphql') ? 'graphql' : args.at(-1);
-      if (Object.hasOwn(responses, key)) return responses[key];
+      const key = args.includes('graphql')
+        ? 'graphql'
+        : (args.find((arg) => Object.hasOwn(responses, arg)) ?? args.at(-1));
+      if (Object.hasOwn(responses, key)) {
+        if (responses[key] instanceof Error) throw responses[key];
+        return responses[key];
+      }
       return {};
     },
     text(args, callOptions = {}) {

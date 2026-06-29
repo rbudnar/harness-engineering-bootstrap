@@ -622,6 +622,37 @@ export function syncAttentionLabel(client, result, label = defaultAttentionLabel
   }
 }
 
+export function publishInboxSideEffects(client, result, options, hooks = {}) {
+  const onWarning = hooks.onWarning ?? ((message) => console.warn(message));
+  const failures = [];
+
+  const runStep = (name, enabled, action) => {
+    if (!enabled) return;
+    try {
+      action();
+    } catch (error) {
+      const message = `${name} failed: ${error.message}`;
+      failures.push({ name, message });
+      onWarning(formatGitHubWarning(message));
+    }
+  };
+
+  runStep('ensure attention label', options.ensureLabel, () => {
+    ensureLabel(client, result.repo, options.attentionLabel);
+  });
+  runStep('update sticky inbox comment', options.updateComment, () => {
+    updateStickyComment(client, result);
+  });
+  runStep('sync attention label', options.syncLabel, () => {
+    syncAttentionLabel(client, result, options.attentionLabel);
+  });
+  runStep('publish inbox status', options.publishStatus, () => {
+    publishStatus(client, result, options);
+  });
+
+  return failures;
+}
+
 export function writeGitHubOutputs(result) {
   if (!process.env.GITHUB_OUTPUT) return;
   appendFileSync(process.env.GITHUB_OUTPUT, [
@@ -758,6 +789,11 @@ function formatBoolean(value) {
   return value ? 'yes' : 'no';
 }
 
+function formatGitHubWarning(message) {
+  if (process.env.GITHUB_ACTIONS !== 'true') return message;
+  return `::warning::${String(message).replace(/\r?\n/g, ' ')}`;
+}
+
 function githubRunUrl() {
   const server = process.env.GITHUB_SERVER_URL;
   const repo = process.env.GITHUB_REPOSITORY;
@@ -787,17 +823,14 @@ function main() {
   try {
     const data = fetchInboxData(client, options);
     result = analyzeInbox(data, options);
-
-    if (options.ensureLabel) ensureLabel(client, result.repo, options.attentionLabel);
-    if (options.updateComment) updateStickyComment(client, result);
-    if (options.syncLabel) syncAttentionLabel(client, result, options.attentionLabel);
-    if (options.publishStatus) publishStatus(client, result, options);
-    writeGitHubOutputs(result);
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;
     return;
   }
+
+  const publishFailures = publishInboxSideEffects(client, result, options);
+  writeGitHubOutputs(result);
 
   if (options.json) {
     console.log(JSON.stringify(result, null, 2));
@@ -807,6 +840,7 @@ function main() {
     console.log(renderSummary(result));
   }
 
+  if (publishFailures.length > 0) process.exitCode = 1;
   if (options.assertClean && !result.clean) process.exitCode = 1;
 }
 
