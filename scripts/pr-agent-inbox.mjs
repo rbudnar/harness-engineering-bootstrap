@@ -270,16 +270,17 @@ export function fetchRestPages(client, path) {
 
 export function fetchBranchProtection(client, { owner, name, branch }) {
   const encodedBranch = encodeURIComponent(branch);
+  let classicProtection = null;
+  let classicUnavailable = false;
   try {
-    return client.json(['api', `repos/${owner}/${name}/branches/${encodedBranch}/protection`]);
+    classicProtection = client.json(['api', `repos/${owner}/${name}/branches/${encodedBranch}/protection`]);
   } catch (error) {
-    if (/Branch not protected.*HTTP 404|HTTP 404.*Branch not protected/i.test(error.message)) {
-      const rules = fetchBranchRules(client, { owner, name, branch });
-      if (rules === null) return null;
-      return branchProtectionFromRules(rules);
-    }
-    return null;
+    classicUnavailable = !/Branch not protected.*HTTP 404|HTTP 404.*Branch not protected/i.test(error.message);
   }
+
+  const rules = fetchBranchRules(client, { owner, name, branch });
+  if (classicUnavailable || rules === null) return null;
+  return mergeBranchProtection(classicProtection, rules ?? []);
 }
 
 export function fetchBranchRules(client, { owner, name, branch }) {
@@ -324,6 +325,23 @@ export function branchProtectionFromRules(rules) {
     required_status_checks: { contexts: [...contexts] },
     required_pull_request_reviews: requiredPullRequestReviews,
     required_conversation_resolution: requiredConversationResolution,
+  };
+}
+
+export function mergeBranchProtection(classicProtection, rules) {
+  const rulesProtection = branchProtectionFromRules(rules);
+  const contexts = new Set([
+    ...requiredCheckNames(classicProtection ?? { required_status_checks: { contexts: [] } }),
+    ...requiredCheckNames(rulesProtection),
+  ]);
+
+  return {
+    ...(classicProtection ?? {}),
+    required_status_checks: { contexts: [...contexts] },
+    required_pull_request_reviews: classicProtection?.required_pull_request_reviews
+      ?? rulesProtection.required_pull_request_reviews,
+    required_conversation_resolution: classicProtection?.required_conversation_resolution
+      ?? rulesProtection.required_conversation_resolution,
   };
 }
 
@@ -453,7 +471,7 @@ function addCheckItems(items, prView, branchProtection, options) {
   for (const check of checks) {
     const name = checkName(check);
     if (!name || shouldIgnoreCheck(check, options.ignoreChecks)) continue;
-    if (requiredKnown && !requiredNames.has(name)) continue;
+    if (requiredKnown && !checkMatchesRequired(check, requiredNames)) continue;
 
     const state = checkState(check);
     if (state === 'success' || state === 'skipped' || state === 'neutral') continue;
@@ -630,7 +648,7 @@ function requiredCheckNames(branchProtection) {
     ...(statusChecks.contexts ?? []),
     ...(statusChecks.checks ?? []).map((check) => check.context).filter(Boolean),
   ];
-  return new Set(names);
+  return new Set(names.map(normalizeCheckName));
 }
 
 function checkName(check) {
@@ -647,6 +665,22 @@ function shouldIgnoreCheck(check, ignoreChecks) {
   ].filter(Boolean).map(normalizeCheckName);
 
   return names.some((name) => ignoreChecks.has(name));
+}
+
+function checkMatchesRequired(check, requiredNames) {
+  return checkNameCandidates(check).some((name) => requiredNames.has(name));
+}
+
+function checkNameCandidates(check) {
+  const jobName = check.name ?? check.context ?? null;
+  const workflowName = check.workflowName ?? check.checkSuite?.workflowRun?.workflow?.name ?? null;
+  return [
+    checkName(check),
+    check.context,
+    check.name,
+    check.workflowName,
+    workflowName && jobName ? `${workflowName} / ${jobName}` : null,
+  ].filter(Boolean).map(normalizeCheckName);
 }
 
 function normalizeIgnoreChecks(values) {

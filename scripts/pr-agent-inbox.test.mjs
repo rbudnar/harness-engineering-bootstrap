@@ -219,6 +219,25 @@ test('failed required check blocks and inbox check is ignored', () => {
   assert.deepEqual(result.checks.failed, ['Template Fitness']);
 });
 
+test('required workflow slash job contexts match split check rollup names', () => {
+  const result = analyzeInbox(data({
+    prView: {
+      statusCheckRollup: [
+        { workflowName: 'Template Fitness', name: 'template-fitness', conclusion: 'FAILURE' },
+      ],
+    },
+    branchProtection: {
+      required_status_checks: {
+        contexts: ['Template Fitness / template-fitness'],
+      },
+    },
+  }));
+
+  assert.equal(result.clean, false);
+  assert.equal(result.agentAttention, true);
+  assert.deepEqual(result.checks.failed, ['template-fitness']);
+});
+
 test('fallback required-check scan treats non-inbox failures as required', () => {
   const result = analyzeInbox(data({
     prView: {
@@ -297,6 +316,51 @@ test('ruleset-only branch metadata is honored after classic protection 404', () 
   assert.deepEqual(result.checks.failed, ['Template Fitness']);
 });
 
+test('classic branch protection is merged with ruleset-only required checks', () => {
+  const branchProtection = fetchBranchProtection({
+    json(args) {
+      const path = args.at(-1);
+      if (path.includes('/protection')) {
+        return {
+          required_status_checks: { contexts: [] },
+          required_pull_request_reviews: { required_approving_review_count: 1 },
+        };
+      }
+      if (path.includes('/rules/branches/')) {
+        return [
+          {
+            type: 'required_status_checks',
+            parameters: {
+              required_status_checks: [{ context: 'Template Fitness' }],
+            },
+          },
+          {
+            type: 'pull_request',
+            parameters: {
+              required_review_thread_resolution: true,
+            },
+          },
+        ];
+      }
+      return [];
+    },
+  }, { owner: 'o', name: 'r', branch: 'main' });
+
+  const result = analyzeInbox(data({
+    prView: {
+      statusCheckRollup: [
+        { name: 'Template Fitness', conclusion: 'FAILURE' },
+      ],
+    },
+    branchProtection,
+  }));
+
+  assert.equal(result.nativeProtection.requiredReviews, true);
+  assert.equal(result.nativeProtection.requiredConversationResolution, true);
+  assert.equal(result.clean, false);
+  assert.deepEqual(result.checks.failed, ['Template Fitness']);
+});
+
 test('ruleset branch metadata is paginated before required checks are trusted', () => {
   const firstPage = Array.from({ length: 100 }, (_, index) => ({
     type: 'deletion',
@@ -308,8 +372,9 @@ test('ruleset branch metadata is paginated before required checks are trusted', 
       if (path.includes('/protection')) {
         throw new Error('gh api repos/o/r/branches/main/protection failed: gh: Branch not protected (HTTP 404)');
       }
-      if (path.includes('page=1')) return firstPage;
-      if (path.includes('page=2')) {
+      const page = Number(new URL(`https://example.test/${path}`).searchParams.get('page'));
+      if (page === 1) return firstPage;
+      if (page === 2) {
         return [
           {
             type: 'required_status_checks',
@@ -340,6 +405,31 @@ test('unavailable branch protection metadata keeps fail-closed check fallback', 
   const branchProtection = fetchBranchProtection({
     json() {
       throw new Error('gh api repos/o/r/branches/main/protection failed: gh: Resource not accessible by integration (HTTP 403)');
+    },
+  }, { owner: 'o', name: 'r', branch: 'main' });
+
+  const result = analyzeInbox(data({
+    prView: {
+      statusCheckRollup: [
+        { name: 'Optional maybe required', conclusion: 'FAILURE' },
+      ],
+    },
+    branchProtection,
+  }));
+
+  assert.equal(branchProtection, null);
+  assert.equal(result.clean, false);
+  assert.deepEqual(result.checks.failed, ['Optional maybe required']);
+});
+
+test('unavailable ruleset metadata keeps fail-closed check fallback', () => {
+  const branchProtection = fetchBranchProtection({
+    json(args) {
+      const path = args.at(-1);
+      if (path.includes('/protection')) {
+        return { required_status_checks: { contexts: [] } };
+      }
+      throw new Error('gh api repos/o/r/rules/branches/main failed: gh: Resource not accessible by integration (HTTP 403)');
     },
   }, { owner: 'o', name: 'r', branch: 'main' });
 

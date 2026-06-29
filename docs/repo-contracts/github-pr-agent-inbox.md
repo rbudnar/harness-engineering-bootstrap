@@ -20,11 +20,11 @@ Read this before changing `.github/workflows/pr-agent-inbox.yml`, `scripts/pr-ag
 - Body-only requested changes come from `reviewDecision` and review lists; they block even without inline review threads.
 - When multiple owned sticky reports exist, update the newest one so stale duplicates do not become the durable inbox.
 - Native GitHub branch protection remains authoritative for required reviews and required conversation resolution; the inbox reports those gates but does not replace them.
-- Scheduled and manual full-repo sweeps share a stable concurrency group so overlapping sweeps cancel instead of racing comment/status writes; PR event refreshes use unique run groups so review bursts do not leave cancelled check runs on the PR head.
+- Inbox refreshes serialize per PR, and scheduled/manual full-repo sweeps share a stable concurrency group, without cancelling in-progress runs into failed PR checks.
 - Failed required checks block. Pending required checks are allowed in the workflow to avoid self-deadlock and are caught by later PR events, `/agent-inbox refresh`, or the scheduled sweep.
 - `UNSTABLE`, `BLOCKED`, and `HAS_HOOKS` merge states are not blocking by themselves; structured review-thread, review-decision, draft, merge-conflict, branch-behind, and required-check classification decide whether inbox items exist.
 - Same-repo `BEHIND` merge state is agent-actionable merge-readiness work because the branch needs an update before it can merge.
-- Read and paginate effective branch rules after a classic branch-protection 404 because this repo may be protected by rulesets. Only branches with no classic protection and no effective rules are explicitly unprotected; failed optional checks do not block there. When protection metadata is unavailable to the workflow token, treat failed non-inbox checks as potentially required instead of reporting clean.
+- Read, paginate, and merge effective branch rules with classic branch protection because this repo may be protected by rulesets. Only branches with no classic protection and no effective rules are explicitly unprotected; failed optional checks do not block there. When protection metadata is unavailable to the workflow token, treat failed non-inbox checks as potentially required instead of reporting clean.
 - The sticky PR comment must include `<!-- agent-inbox:v1 -->` so any agent can find the current report without provider-specific state.
 
 ## Validation

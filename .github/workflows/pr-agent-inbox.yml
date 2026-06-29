@@ -25,8 +25,8 @@ permissions:
   statuses: write
 
 concurrency:
-  group: pr-agent-inbox-${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !github.event.inputs.pr)) && 'sweep' || github.run_id }}
-  cancel-in-progress: true
+  group: pr-agent-inbox-${{ github.event.pull_request.number || github.event.issue.number || github.event.inputs.pr || 'sweep' }}
+  cancel-in-progress: false
 
 jobs:
   agent-inbox:
