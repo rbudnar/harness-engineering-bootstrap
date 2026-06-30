@@ -10,6 +10,7 @@ import {
   publishInboxSideEffects,
   publishStatus,
   renderMarkdown,
+  shouldExitNonzero,
   syncAttentionLabel,
   updateStickyComment,
 } from './pr-agent-inbox.mjs';
@@ -501,6 +502,56 @@ test('assert-clean is parsed as normalized clean assertion', () => {
   assert.equal(options.allowPendingChecks, true);
 });
 
+test('assert-no-agent-attention is parsed as actionable-only assertion', () => {
+  const options = parseArgs(['--pr', '60', '--refresh', '--assert-no-agent-attention']);
+  assert.equal(options.pr, 60);
+  assert.equal(options.refresh, true);
+  assert.equal(options.assertNoAgentAttention, true);
+});
+
+test('assert-clean and assert-no-agent-attention cannot be combined', () => {
+  assert.throws(() => parseArgs(['--pr', '60', '--assert-clean', '--assert-no-agent-attention']), {
+    message: '--assert-clean and --assert-no-agent-attention are mutually exclusive',
+  });
+});
+
+test('exit policy distinguishes waiting state from agent attention', () => {
+  assert.equal(shouldExitNonzero({
+    clean: false,
+    agentAttention: false,
+  }, {
+    assertClean: true,
+  }), true);
+
+  assert.equal(shouldExitNonzero({
+    clean: false,
+    agentAttention: false,
+  }, {
+    assertNoAgentAttention: true,
+  }), false);
+
+  assert.equal(shouldExitNonzero({
+    clean: false,
+    agentAttention: true,
+  }, {
+    assertNoAgentAttention: true,
+  }), true);
+
+  assert.equal(shouldExitNonzero({
+    clean: true,
+    agentAttention: false,
+  }, {
+    assertNoAgentAttention: true,
+  }, [{ name: 'publish inbox status' }]), true);
+
+  assert.equal(shouldExitNonzero({
+    clean: true,
+    agentAttention: false,
+  }, {
+    assertNoAgentAttention: true,
+  }, [{ name: 'update sticky inbox comment' }]), false);
+});
+
 test('label sync adds and removes based on agentAttention', () => {
   const client = fakeClient();
   syncAttentionLabel(client, { repo: 'owner/repo', pr: 1, agentAttention: true }, defaultAttentionLabel);
@@ -560,13 +611,18 @@ test('status publishing skips unchanged head status', () => {
   assert.equal(client.calls.some((call) => call.args.includes('repos/owner/repo/statuses/abc123')), false);
 });
 
-test('sticky comment updates only the owned inbox report', () => {
+test('sticky comment updates the newest well-formed inbox report', () => {
   const client = fakeClient({
     responses: {
       'repos/owner/repo/issues/1/comments?per_page=100&page=1': [
         { id: 11, body: '<!-- agent-inbox:v1 -->\nordinary comment', user: { login: 'reviewer' } },
         { id: 12, body: '<!-- agent-inbox:v1 -->\n# PR Agent Inbox\nold report', user: { login: 'github-actions[bot]' } },
-        { id: 13, body: '<!-- agent-inbox:v1 -->\n# PR Agent Inbox\nnewer report', user: { login: 'github-actions[bot]' } },
+        {
+          id: 13,
+          body: '<!-- agent-inbox:v1 -->\n# PR Agent Inbox\nnewer report',
+          user: { login: 'rbudnar' },
+          author_association: 'OWNER',
+        },
       ],
     },
   });
@@ -585,6 +641,77 @@ test('sticky comment updates only the owned inbox report', () => {
   assert.ok(patch);
   assert.equal(client.calls.some((call) => call.args.includes('repos/owner/repo/issues/comments/11')), false);
   assert.equal(client.calls.some((call) => call.args.includes('repos/owner/repo/issues/comments/12')), false);
+});
+
+test('sticky comment ignores untrusted marker spoof comments', () => {
+  const client = fakeClient({
+    responses: {
+      'repos/owner/repo/issues/1/comments?per_page=100&page=1': [
+        { id: 12, body: '<!-- agent-inbox:v1 -->\n# PR Agent Inbox\ntrusted report', user: { login: 'github-actions[bot]' } },
+        {
+          id: 13,
+          body: '<!-- agent-inbox:v1 -->\n# PR Agent Inbox\nspoofed report',
+          user: { login: 'outside-contributor' },
+          author_association: 'CONTRIBUTOR',
+        },
+      ],
+    },
+  });
+
+  updateStickyComment(client, {
+    repo: 'owner/repo',
+    pr: 1,
+    clean: true,
+    agentAttention: false,
+    statusState: 'success',
+    items: [],
+    nativeProtection: {},
+  });
+
+  const patch = client.calls.find((call) => call.args.includes('repos/owner/repo/issues/comments/12'));
+  assert.ok(patch);
+  assert.equal(client.calls.some((call) => call.args.includes('repos/owner/repo/issues/comments/13')), false);
+});
+
+test('sticky comment update failure does not create a duplicate inbox report', () => {
+  const denied = new Error('gh: Resource not accessible by integration (HTTP 403)');
+  const client = fakeClient({
+    responses: {
+      'repos/owner/repo/issues/1/comments?per_page=100&page=1': [
+        {
+          id: 13,
+          body: '<!-- agent-inbox:v1 -->\n# PR Agent Inbox\nnewer report',
+          user: { login: 'rbudnar' },
+          author_association: 'OWNER',
+        },
+      ],
+      'repos/owner/repo/issues/comments/13': denied,
+    },
+  });
+  const warnings = [];
+
+  const failures = publishInboxSideEffects(client, {
+    repo: 'owner/repo',
+    pr: 1,
+    clean: true,
+    agentAttention: false,
+    statusState: 'success',
+    items: [],
+    nativeProtection: {},
+  }, {
+    updateComment: true,
+  }, {
+    onWarning: (message) => warnings.push(message),
+  });
+
+  assert.equal(failures.length, 1);
+  assert.match(warnings[0], /update sticky inbox comment failed/);
+  assert.equal(
+    client.calls.some((call) => call.args.includes('-X')
+      && call.args.includes('POST')
+      && call.args.includes('repos/owner/repo/issues/1/comments')),
+    false,
+  );
 });
 
 test('publishing side effects continue when write permissions are unavailable', () => {

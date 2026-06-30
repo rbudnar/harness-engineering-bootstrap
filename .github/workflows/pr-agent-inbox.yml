@@ -105,16 +105,21 @@ jobs:
         if: steps.decide.outputs.mode == 'assert'
         env:
           GH_TOKEN: ${{ github.token }}
+          TARGET_PR: ${{ steps.decide.outputs.pr }}
         run: |
           set -euo pipefail
           if [[ ! -f scripts/pr-agent-inbox.mjs ]]; then
             echo "::notice::PR Agent Inbox script is not installed on the checked-out base ref yet; skipping bootstrap refresh."
             exit 0
           fi
+          if ! node scripts/pr-agent-inbox.mjs --help 2>&1 | grep -q -- '--assert-no-agent-attention'; then
+            echo "::notice::PR Agent Inbox script on the checked-out ref does not support actionable-only assertion yet; skipping bootstrap refresh."
+            exit 0
+          fi
           node scripts/pr-agent-inbox.mjs \
             --repo "$GITHUB_REPOSITORY" \
-            --pr "${{ steps.decide.outputs.pr }}" \
-            --assert-clean \
+            --pr "$TARGET_PR" \
+            --assert-no-agent-attention \
             --update-comment \
             --ensure-label \
             --sync-label \
@@ -133,6 +138,10 @@ jobs:
             echo "::notice::PR Agent Inbox script is not installed on the checked-out base ref yet; skipping bootstrap sweep."
             exit 0
           fi
+          if ! node scripts/pr-agent-inbox.mjs --help 2>&1 | grep -q -- '--assert-no-agent-attention'; then
+            echo "::notice::PR Agent Inbox script on the checked-out ref does not support actionable-only assertion yet; skipping bootstrap sweep."
+            exit 0
+          fi
           pr_list="$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 100 --json number --jq '.[].number')"
           if [[ -z "$pr_list" ]]; then
             echo "No open pull requests to refresh."
@@ -146,6 +155,7 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --pr "$pr" \
               --refresh \
+              --assert-no-agent-attention \
               --update-comment \
               --ensure-label \
               --sync-label \
