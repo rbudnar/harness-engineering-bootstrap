@@ -62,6 +62,7 @@ Validate the target adoption with:
 
 - GitHub has a `pull_request_review_thread` webhook event, but it is not a GitHub Actions workflow trigger in the checked Actions docs. Thread resolution may therefore need `/agent-inbox refresh` or the scheduled sweep to turn the `agent-inbox-clean` status green quickly.
 - The PR that introduces this workflow checks out base-owned code under `pull_request_target`; if the base ref does not yet contain `scripts/pr-agent-inbox.mjs`, the workflow must pass with a bootstrap notice instead of running PR-head code.
+- PR-branch review and comment workflows can run newer workflow YAML against an older checked-out base script. If the base script lacks a required CLI option, the workflow must pass with a bootstrap notice instead of reporting a false compatibility failure.
 - Manual dispatches from a PR branch may be able to read the PR but receive `Resource not accessible by integration` on comment/status writes. Treat that as a publishing warning, then rely on the printed inbox result and the normal post-merge/base workflow permissions.
 - Local maintainer refreshes and GitHub Actions refreshes share the same sticky comment marker. Do not treat author identity as a separate inbox channel; otherwise local refreshes can create multiple `PR Agent Inbox` posts for the same PR.
 - Fork PRs must run repository-owned code only. Keep `pull_request_target` checkouts pinned to the base commit unless a later contract explicitly proves a safe alternative.

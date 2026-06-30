@@ -112,6 +112,10 @@ jobs:
             echo "::notice::PR Agent Inbox script is not installed on the checked-out base ref yet; skipping bootstrap refresh."
             exit 0
           fi
+          if ! node scripts/pr-agent-inbox.mjs --help 2>&1 | grep -q -- '--assert-no-agent-attention'; then
+            echo "::notice::PR Agent Inbox script on the checked-out ref does not support actionable-only assertion yet; skipping bootstrap refresh."
+            exit 0
+          fi
           node scripts/pr-agent-inbox.mjs \
             --repo "$GITHUB_REPOSITORY" \
             --pr "$TARGET_PR" \
@@ -132,6 +136,10 @@ jobs:
           set -euo pipefail
           if [[ ! -f scripts/pr-agent-inbox.mjs ]]; then
             echo "::notice::PR Agent Inbox script is not installed on the checked-out base ref yet; skipping bootstrap sweep."
+            exit 0
+          fi
+          if ! node scripts/pr-agent-inbox.mjs --help 2>&1 | grep -q -- '--assert-no-agent-attention'; then
+            echo "::notice::PR Agent Inbox script on the checked-out ref does not support actionable-only assertion yet; skipping bootstrap sweep."
             exit 0
           fi
           pr_list="$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 100 --json number --jq '.[].number')"
