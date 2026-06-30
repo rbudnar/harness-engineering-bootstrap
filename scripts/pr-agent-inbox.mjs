@@ -557,7 +557,7 @@ export function publishStatus(client, result, options = {}) {
 export function updateStickyComment(client, result) {
   const comments = fetchRestPages(client, `repos/${result.repo}/issues/${result.pr}/comments`);
   const body = renderMarkdown(result);
-  const existing = comments.filter(isOwnedStickyComment).at(-1);
+  const existing = comments.filter(isStickyInboxComment).at(-1);
   if (existing) {
     client.json([
       'api',
@@ -579,12 +579,10 @@ export function updateStickyComment(client, result) {
   }
 }
 
-function isOwnedStickyComment(comment) {
+function isStickyInboxComment(comment) {
   const body = String(comment.body ?? '');
-  const author = String(comment.user?.login ?? '');
   return body.includes(stickyMarker)
-    && body.includes('# PR Agent Inbox')
-    && (author === 'github-actions[bot]' || author === 'github-actions');
+    && body.includes('# PR Agent Inbox');
 }
 
 export function ensureLabel(client, repo, label = defaultAttentionLabel) {
