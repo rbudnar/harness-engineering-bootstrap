@@ -28,6 +28,12 @@ export const defaultCheckSpecs = [
     display: 'node --test scripts/package-entrypoint.test.mjs',
   },
   {
+    id: 'pr-agent-inbox-tests',
+    name: 'PR agent inbox tests',
+    command: [process.execPath, '--test', 'scripts/pr-agent-inbox.test.mjs'],
+    display: 'node --test scripts/pr-agent-inbox.test.mjs',
+  },
+  {
     id: 'release-prep-tests',
     name: 'Release preparation tests',
     command: [process.execPath, '--test', 'scripts/prepare-stable-release.test.mjs'],
