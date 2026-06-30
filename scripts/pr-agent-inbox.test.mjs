@@ -560,13 +560,13 @@ test('status publishing skips unchanged head status', () => {
   assert.equal(client.calls.some((call) => call.args.includes('repos/owner/repo/statuses/abc123')), false);
 });
 
-test('sticky comment updates only the owned inbox report', () => {
+test('sticky comment updates the newest well-formed inbox report', () => {
   const client = fakeClient({
     responses: {
       'repos/owner/repo/issues/1/comments?per_page=100&page=1': [
         { id: 11, body: '<!-- agent-inbox:v1 -->\nordinary comment', user: { login: 'reviewer' } },
         { id: 12, body: '<!-- agent-inbox:v1 -->\n# PR Agent Inbox\nold report', user: { login: 'github-actions[bot]' } },
-        { id: 13, body: '<!-- agent-inbox:v1 -->\n# PR Agent Inbox\nnewer report', user: { login: 'github-actions[bot]' } },
+        { id: 13, body: '<!-- agent-inbox:v1 -->\n# PR Agent Inbox\nnewer report', user: { login: 'rbudnar' } },
       ],
     },
   });
@@ -585,6 +585,42 @@ test('sticky comment updates only the owned inbox report', () => {
   assert.ok(patch);
   assert.equal(client.calls.some((call) => call.args.includes('repos/owner/repo/issues/comments/11')), false);
   assert.equal(client.calls.some((call) => call.args.includes('repos/owner/repo/issues/comments/12')), false);
+});
+
+test('sticky comment update failure does not create a duplicate inbox report', () => {
+  const denied = new Error('gh: Resource not accessible by integration (HTTP 403)');
+  const client = fakeClient({
+    responses: {
+      'repos/owner/repo/issues/1/comments?per_page=100&page=1': [
+        { id: 13, body: '<!-- agent-inbox:v1 -->\n# PR Agent Inbox\nnewer report', user: { login: 'rbudnar' } },
+      ],
+      'repos/owner/repo/issues/comments/13': denied,
+    },
+  });
+  const warnings = [];
+
+  const failures = publishInboxSideEffects(client, {
+    repo: 'owner/repo',
+    pr: 1,
+    clean: true,
+    agentAttention: false,
+    statusState: 'success',
+    items: [],
+    nativeProtection: {},
+  }, {
+    updateComment: true,
+  }, {
+    onWarning: (message) => warnings.push(message),
+  });
+
+  assert.equal(failures.length, 1);
+  assert.match(warnings[0], /update sticky inbox comment failed/);
+  assert.equal(
+    client.calls.some((call) => call.args.includes('-X')
+      && call.args.includes('POST')
+      && call.args.includes('repos/owner/repo/issues/1/comments')),
+    false,
+  );
 });
 
 test('publishing side effects continue when write permissions are unavailable', () => {

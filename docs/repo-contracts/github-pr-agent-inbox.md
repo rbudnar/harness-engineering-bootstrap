@@ -18,7 +18,7 @@ Read this before changing `.github/workflows/pr-agent-inbox.yml`, `scripts/pr-ag
 - The `agent-inbox-clean` status is append-only on GitHub; skip publishing when the latest status for the same head SHA and context already has the same state and description.
 - Review-thread state comes from GraphQL `PullRequest.reviewThreads`; unresolved threads block even when GitHub marks them outdated.
 - Body-only requested changes come from `reviewDecision` and review lists; they block even without inline review threads.
-- When multiple owned sticky reports exist, update the newest one so stale duplicates do not become the durable inbox.
+- When any well-formed sticky inbox report exists, update the newest one regardless of whether it was created locally by a maintainer token or by `github-actions[bot]`; if the token cannot edit that existing report, log the publication failure instead of creating another sticky duplicate.
 - Native GitHub branch protection remains authoritative for required reviews and required conversation resolution; the inbox reports those gates but does not replace them.
 - Inbox refreshes serialize per PR, and scheduled/manual full-repo sweeps share a stable concurrency group, without cancelling in-progress runs into failed PR checks.
 - Failed required checks block. Pending required checks are allowed in the workflow to avoid self-deadlock and are caught by later PR events, `/agent-inbox refresh`, or the scheduled sweep.
@@ -63,6 +63,7 @@ Validate the target adoption with:
 - GitHub has a `pull_request_review_thread` webhook event, but it is not a GitHub Actions workflow trigger in the checked Actions docs. Thread resolution may therefore need `/agent-inbox refresh` or the scheduled sweep to turn the `agent-inbox-clean` status green quickly.
 - The PR that introduces this workflow checks out base-owned code under `pull_request_target`; if the base ref does not yet contain `scripts/pr-agent-inbox.mjs`, the workflow must pass with a bootstrap notice instead of running PR-head code.
 - Manual dispatches from a PR branch may be able to read the PR but receive `Resource not accessible by integration` on comment/status writes. Treat that as a publishing warning, then rely on the printed inbox result and the normal post-merge/base workflow permissions.
+- Local maintainer refreshes and GitHub Actions refreshes share the same sticky comment marker. Do not treat author identity as a separate inbox channel; otherwise local refreshes can create multiple `PR Agent Inbox` posts for the same PR.
 - Fork PRs must run repository-owned code only. Keep `pull_request_target` checkouts pinned to the base commit unless a later contract explicitly proves a safe alternative.
 - Fork PR review/comment events may have read-only tokens. Skip write-backed review-event refreshes for forks and rely on `pull_request_target`, `/agent-inbox refresh`, or scheduled refresh to publish the PR-head status.
 
