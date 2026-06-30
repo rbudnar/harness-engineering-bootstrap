@@ -18,7 +18,7 @@ Read this before changing `.github/workflows/pr-agent-inbox.yml`, `scripts/pr-ag
 - The `agent-inbox-clean` status is append-only on GitHub; skip publishing when the latest status for the same head SHA and context already has the same state and description.
 - Review-thread state comes from GraphQL `PullRequest.reviewThreads`; unresolved threads block even when GitHub marks them outdated.
 - Body-only requested changes come from `reviewDecision` and review lists; they block even without inline review threads.
-- When any well-formed sticky inbox report exists, update the newest one regardless of whether it was created locally by a maintainer token or by `github-actions[bot]`; if the token cannot edit that existing report, log the publication failure instead of creating another sticky duplicate.
+- When any well-formed trusted sticky inbox report exists, update the newest one regardless of whether it was created locally by a maintainer token or by `github-actions[bot]`; if the token cannot edit that existing report, log the publication failure instead of creating another sticky duplicate. Ignore marker/title comments from untrusted PR commenters.
 - Native GitHub branch protection remains authoritative for required reviews and required conversation resolution; the inbox reports those gates but does not replace them.
 - Inbox refreshes serialize per PR, and scheduled/manual full-repo sweeps share a stable concurrency group, without cancelling in-progress runs into failed PR checks.
 - Failed required checks block. Pending required checks are allowed in the workflow to avoid self-deadlock and are caught by later PR events, `/agent-inbox refresh`, or the scheduled sweep.

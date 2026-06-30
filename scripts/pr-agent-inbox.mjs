@@ -587,7 +587,16 @@ export function updateStickyComment(client, result) {
 function isStickyInboxComment(comment) {
   const body = String(comment.body ?? '');
   return body.includes(stickyMarker)
-    && body.includes('# PR Agent Inbox');
+    && body.includes('# PR Agent Inbox')
+    && isTrustedInboxCommentAuthor(comment);
+}
+
+function isTrustedInboxCommentAuthor(comment) {
+  const author = String(comment.user?.login ?? '');
+  const association = String(comment.author_association ?? comment.authorAssociation ?? '').toUpperCase();
+  return author === 'github-actions[bot]'
+    || author === 'github-actions'
+    || ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(association);
 }
 
 export function ensureLabel(client, repo, label = defaultAttentionLabel) {
