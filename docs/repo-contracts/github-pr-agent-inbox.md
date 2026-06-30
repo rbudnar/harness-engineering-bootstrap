@@ -13,7 +13,7 @@ Read this before changing `.github/workflows/pr-agent-inbox.yml`, `scripts/pr-ag
 
 ## Contract
 
-- The durable required-check candidate is the PR-head commit status named `agent-inbox-clean`; the PR-attached workflow also fails while the normalized inbox is not clean.
+- The durable required-check candidate is the PR-head commit status named `agent-inbox-clean`; the PR-attached workflow fails for agent-actionable inbox items or publication failures, but waiting-only state such as required human review remains a pending status instead of a red workflow check.
 - The script owns the portable state model: `clean`, `agentAttention`, `statusState`, item list, sticky comment marker, `agent-inbox-clean` status, and `agent-attention` label.
 - The `agent-inbox-clean` status is append-only on GitHub; skip publishing when the latest status for the same head SHA and context already has the same state and description.
 - Review-thread state comes from GraphQL `PullRequest.reviewThreads`; unresolved threads block even when GitHub marks them outdated.

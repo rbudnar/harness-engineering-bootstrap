@@ -10,6 +10,7 @@ import {
   publishInboxSideEffects,
   publishStatus,
   renderMarkdown,
+  shouldExitNonzero,
   syncAttentionLabel,
   updateStickyComment,
 } from './pr-agent-inbox.mjs';
@@ -499,6 +500,43 @@ test('assert-clean is parsed as normalized clean assertion', () => {
   assert.equal(options.pr, 60);
   assert.equal(options.assertClean, true);
   assert.equal(options.allowPendingChecks, true);
+});
+
+test('assert-no-agent-attention is parsed as actionable-only assertion', () => {
+  const options = parseArgs(['--pr', '60', '--refresh', '--assert-no-agent-attention']);
+  assert.equal(options.pr, 60);
+  assert.equal(options.refresh, true);
+  assert.equal(options.assertNoAgentAttention, true);
+});
+
+test('exit policy distinguishes waiting state from agent attention', () => {
+  assert.equal(shouldExitNonzero({
+    clean: false,
+    agentAttention: false,
+  }, {
+    assertClean: true,
+  }), true);
+
+  assert.equal(shouldExitNonzero({
+    clean: false,
+    agentAttention: false,
+  }, {
+    assertNoAgentAttention: true,
+  }), false);
+
+  assert.equal(shouldExitNonzero({
+    clean: false,
+    agentAttention: true,
+  }, {
+    assertNoAgentAttention: true,
+  }), true);
+
+  assert.equal(shouldExitNonzero({
+    clean: true,
+    agentAttention: false,
+  }, {
+    assertNoAgentAttention: true,
+  }, [{ name: 'publish inbox status' }]), true);
 });
 
 test('label sync adds and removes based on agentAttention', () => {
