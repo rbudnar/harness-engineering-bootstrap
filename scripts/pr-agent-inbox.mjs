@@ -676,7 +676,7 @@ export function writeGitHubOutputs(result) {
 }
 
 export function shouldExitNonzero(result, options = {}, publishFailures = []) {
-  if (publishFailures.length > 0) return true;
+  if (publishFailures.some((failure) => failure.name === 'publish inbox status')) return true;
   if (options.assertClean && !result.clean) return true;
   if (options.assertNoAgentAttention && result.agentAttention) return true;
   return false;

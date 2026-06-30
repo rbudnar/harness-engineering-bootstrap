@@ -537,6 +537,13 @@ test('exit policy distinguishes waiting state from agent attention', () => {
   }, {
     assertNoAgentAttention: true,
   }, [{ name: 'publish inbox status' }]), true);
+
+  assert.equal(shouldExitNonzero({
+    clean: true,
+    agentAttention: false,
+  }, {
+    assertNoAgentAttention: true,
+  }, [{ name: 'update sticky inbox comment' }]), false);
 });
 
 test('label sync adds and removes based on agentAttention', () => {
