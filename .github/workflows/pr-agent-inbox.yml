@@ -103,6 +103,7 @@ jobs:
 
       - name: Refresh one PR inbox
         if: steps.decide.outputs.mode == 'assert'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -125,6 +126,7 @@ jobs:
 
       - name: Refresh open PR inboxes
         if: steps.decide.outputs.mode == 'sweep'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
