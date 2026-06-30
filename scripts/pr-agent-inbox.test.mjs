@@ -509,6 +509,12 @@ test('assert-no-agent-attention is parsed as actionable-only assertion', () => {
   assert.equal(options.assertNoAgentAttention, true);
 });
 
+test('assert-clean and assert-no-agent-attention cannot be combined', () => {
+  assert.throws(() => parseArgs(['--pr', '60', '--assert-clean', '--assert-no-agent-attention']), {
+    message: '--assert-clean and --assert-no-agent-attention are mutually exclusive',
+  });
+});
+
 test('exit policy distinguishes waiting state from agent attention', () => {
   assert.equal(shouldExitNonzero({
     clean: false,

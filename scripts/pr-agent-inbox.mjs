@@ -100,6 +100,9 @@ export function parseArgs(argv = process.argv.slice(2)) {
   }
 
   if (!['summary', 'markdown'].includes(options.format)) throw new Error('--format must be summary or markdown');
+  if (options.assertClean && options.assertNoAgentAttention) {
+    throw new Error('--assert-clean and --assert-no-agent-attention are mutually exclusive');
+  }
   if (options.refresh && options.assertClean) throw new Error('--refresh and --assert-clean are mutually exclusive');
   return options;
 }
