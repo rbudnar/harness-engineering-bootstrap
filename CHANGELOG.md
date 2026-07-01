@@ -7,6 +7,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 ### Summary
 
 - Added the first HEB benchmark protocol so empirical validation can measure repeated self-correction against simpler context baselines before a runner exists.
+- Added a minimal HEB benchmark runner and JSONL result schema so the first pilot can prepare pinned fixtures and compare partial-telemetry rows reproducibly.
 - Added a PR Agent Inbox check that keeps a sticky PR status comment current and fails while agent-actionable review or merge-readiness work remains.
 
 ### Template Changes
@@ -14,6 +15,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 ### Planner And Metadata
 
 - Added repo-contract routing for GitHub PR inbox automation semantics and included the inbox classifier tests in CI and weekly harness reporting.
+- Added benchmark-runner tests to CI and weekly harness reporting so the empirical-validation path stays mechanically checked before the first pilot.
 - Documented the portable lift-and-shift adoption path for applying the PR Agent Inbox to sibling repositories.
 - Adjusted the PR Agent Inbox workflow so `agent-inbox-clean` reflects agent actionability: waiting-only states publish a green status while the sticky inbox comment and native GitHub gates still show required human review or other non-agent waits.
 - Made PR Agent Inbox sticky comment updates idempotent across local maintainer and GitHub Actions refreshes so one PR keeps one durable inbox post.

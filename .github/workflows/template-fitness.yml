@@ -12,6 +12,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - run: node --test scripts/benchmark-runner.test.mjs
       - run: node --test scripts/harness-bootstrap-plan.test.mjs
       - run: node --test scripts/harness-doctor.test.mjs
       - run: node --test scripts/package-entrypoint.test.mjs

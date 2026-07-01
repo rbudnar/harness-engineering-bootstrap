@@ -1,0 +1,49 @@
+{
+  "schema_version": "heb-benchmark-tasks.v1",
+  "suite_id": "issue-52-smoke",
+  "harness_version": "0.1.1",
+  "variants": [
+    {
+      "id": "no-added-guidance",
+      "correction_policy": "static",
+      "overlay_paths": []
+    },
+    {
+      "id": "static-minimal-agents",
+      "correction_policy": "static",
+      "overlay_paths": [
+        "variants/static-minimal-agents"
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "docs-only-fixture-001",
+      "category": "docs-only",
+      "source": {
+        "type": "fixture",
+        "path": "source-repo",
+        "revision": "sha256:5a87db4a439d22ccfdd431ffa43417ea438d06a6cc1585e331f4c146aa679968"
+      },
+      "preexisting_guidance_files": [
+        "AGENTS.md"
+      ],
+      "guidance_normalization": "removed",
+      "variant_ids": [
+        "no-added-guidance",
+        "static-minimal-agents"
+      ],
+      "prompt": "Update README.md with one sentence describing the fixture validation command.",
+      "graders": [
+        "npm test"
+      ],
+      "expected_routes": [
+        "AGENTS.md"
+      ],
+      "excluded_requirements": [
+        "private credentials",
+        "network-only service"
+      ]
+    }
+  ]
+}

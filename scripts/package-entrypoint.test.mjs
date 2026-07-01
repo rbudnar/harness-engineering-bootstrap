@@ -96,6 +96,7 @@ test('package includes the warning-mode harness doctor script', () => {
     const paths = packed[0].files.map((file) => file.path);
 
     assert(paths.includes('scripts/harness-doctor.mjs'));
+    assert(paths.includes('scripts/benchmark-runner.mjs'));
   } finally {
     rmSync(packRoot, { recursive: true, force: true });
   }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { isAbsolute } from 'node:path';
-import { buildReport, defaultOutputDir, renderMarkdown, runCheck } from './weekly-harness-report.mjs';
+import { buildReport, defaultCheckSpecs, defaultOutputDir, renderMarkdown, runCheck } from './weekly-harness-report.mjs';
 
 test('clean checks produce a non-problem report', () => {
   const report = buildReport({
@@ -129,6 +129,10 @@ test('default output stays in repo only for GitHub Actions artifacts', () => {
   const localOutput = defaultOutputDir({});
   assert.equal(isAbsolute(localOutput), true);
   assert(!localOutput.endsWith('.harness'));
+});
+
+test('weekly report includes benchmark runner validation', () => {
+  assert(defaultCheckSpecs.some((checkSpec) => checkSpec.id === 'benchmark-runner-tests'));
 });
 
 function check(options = {}) {

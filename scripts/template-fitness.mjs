@@ -736,6 +736,7 @@ function checkReleasePolicy() {
     'release:patch',
     'release:minor',
     'HEB_RELEASE_DEPLOY_KEY',
+    'node --test scripts/benchmark-runner.test.mjs',
     'node --test scripts/harness-bootstrap-plan.test.mjs',
     'node --test scripts/harness-doctor.test.mjs',
     'node --test scripts/package-entrypoint.test.mjs',
@@ -753,6 +754,7 @@ function checkReleasePolicy() {
   const stableReleaseWorkflow = read('.github/workflows/stable-release.yml');
   const templateFitnessWorkflow = read('.github/workflows/template-fitness.yml');
   const templateFitnessWorkflowAnchors = [
+    'node --test scripts/benchmark-runner.test.mjs',
     'node --test scripts/harness-doctor.test.mjs',
     'node --test scripts/weekly-harness-report.test.mjs',
     'node scripts/harness-doctor.mjs',
@@ -781,6 +783,7 @@ function checkReleasePolicy() {
     'not completed release commit',
     'UNRELEASED_HAS_CONTENT',
     'RELEASE_TYPE=current',
+    'node --test scripts/benchmark-runner.test.mjs',
     'node --test scripts/harness-doctor.test.mjs',
     'node --test scripts/package-entrypoint.test.mjs',
     'node --test scripts/weekly-harness-report.test.mjs',
