@@ -321,8 +321,10 @@ export function normalizeResultRow(rawResult, manifest, { artifactsDir = null } 
   const wallTimeSeconds = nullableNumber(rawResult.wall_time_seconds, 'wall_time_seconds')
     ?? computeWallTimeSeconds(startedAt, finishedAt);
 
-  const tokenEstimate = rawResult.token_estimate ?? null;
-  const costEstimate = rawResult.cost_estimate ?? null;
+  const runConfig = normalizeRunConfig(rawResult.run_config);
+  const tokenEstimate = normalizeTokenEstimate(rawResult.token_estimate);
+  const costEstimate = normalizeCostEstimate(rawResult.cost_estimate);
+  if (runConfig === null) warnings.add('run_config unavailable');
   if (tokenEstimate === null) warnings.add('token_estimate unavailable');
   if (costEstimate === null) warnings.add('cost_estimate unavailable');
   if (!artifactPaths.transcript && !artifactPaths.trace) warnings.add('transcript_or_trace artifact unavailable');
@@ -339,6 +341,7 @@ export function normalizeResultRow(rawResult, manifest, { artifactsDir = null } 
     agent_surface: requiredStringValue(rawResult.agent_surface, 'agent_surface'),
     model: stringOrNull(rawResult.model),
     tool_version: stringOrNull(rawResult.tool_version),
+    run_config: runConfig,
     started_at: startedAt,
     finished_at: finishedAt,
     success: nullableBoolean(rawResult.success, 'success'),
@@ -381,6 +384,9 @@ export function validateResultRow(row, manifest, { artifactsDir = null } = {}) {
   if (!Number.isInteger(row.trial) || row.trial < 1) errors.push('trial must be a positive integer.');
   for (const field of ['success', 'first_pass_green', 'tests_passed', 'validator_passed']) {
     if (row[field] !== null && typeof row[field] !== 'boolean') errors.push(`${field} must be boolean or null.`);
+  }
+  if (row.run_config !== null && (typeof row.run_config !== 'object' || Array.isArray(row.run_config))) {
+    errors.push('run_config must be an object or null.');
   }
   for (const field of ['route_hits', 'stale_hits', 'unnecessary_reads', 'docs_cited', 'files_read', 'files_modified']) {
     if (!Array.isArray(row[field]) || row[field].some((value) => typeof value !== 'string')) {
@@ -594,13 +600,86 @@ function normalizeArtifactPaths(value, artifactsDir, warnings) {
   for (const [key, rawValue] of Object.entries(value)) {
     if (rawValue === null || rawValue === undefined || rawValue === '') continue;
     if (typeof rawValue !== 'string') throw new Error(`artifact_paths.${key} must be a string.`);
-    if (root && isAbsolute(rawValue) && !isInside(root, resolve(rawValue))) {
+    const resolved = root ? (isAbsolute(rawValue) ? resolve(rawValue) : resolve(root, rawValue)) : null;
+    if (root && !isInside(root, resolved)) {
       throw new Error(`artifact_paths.${key} is outside artifacts_dir: ${rawValue}.`);
     }
-    if (root && isAbsolute(rawValue) && !existsSync(rawValue)) warnings.add(`artifact_paths.${key} does not exist`);
+    if (root && !existsSync(resolved)) warnings.add(`artifact_paths.${key} does not exist`);
     output[key] = rawValue;
   }
   return output;
+}
+
+function normalizeRunConfig(value) {
+  if (value === undefined || value === null) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('run_config must be an object or null.');
+  const output = {};
+  for (const [key, rawValue] of Object.entries(value)) {
+    if (rawValue === undefined) continue;
+    if (
+      rawValue === null ||
+      typeof rawValue === 'string' ||
+      typeof rawValue === 'number' ||
+      typeof rawValue === 'boolean' ||
+      (Array.isArray(rawValue) && rawValue.every((entry) => typeof entry === 'string'))
+    ) {
+      output[key] = rawValue;
+      continue;
+    }
+    throw new Error(`run_config.${key} must be a scalar, null, or array of strings.`);
+  }
+  return output;
+}
+
+function normalizeTokenEstimate(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'number') {
+    return { unit: 'tokens', input: null, output: null, total: nonNegativeNumber(value, 'token_estimate') };
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('token_estimate must be a non-negative number, object, or null.');
+  }
+  const input = nullableNonNegativeNumber(value.input, 'token_estimate.input');
+  const output = nullableNonNegativeNumber(value.output, 'token_estimate.output');
+  let total = nullableNonNegativeNumber(value.total, 'token_estimate.total');
+  if (total === null && input !== null && output !== null) total = input + output;
+  if (input === null && output === null && total === null) {
+    throw new Error('token_estimate must include input, output, or total when present.');
+  }
+  return {
+    unit: typeof value.unit === 'string' && value.unit.trim() ? value.unit : 'tokens',
+    input,
+    output,
+    total,
+  };
+}
+
+function normalizeCostEstimate(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'number') {
+    return { currency: 'USD', amount: nonNegativeNumber(value, 'cost_estimate') };
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('cost_estimate must be a non-negative number, object, or null.');
+  }
+  const amount = nullableNonNegativeNumber(value.amount, 'cost_estimate.amount');
+  if (amount === null) throw new Error('cost_estimate.amount is required when cost_estimate is present.');
+  return {
+    currency: typeof value.currency === 'string' && value.currency.trim() ? value.currency : 'USD',
+    amount,
+  };
+}
+
+function nullableNonNegativeNumber(value, field) {
+  if (value === undefined || value === null) return null;
+  return nonNegativeNumber(value, field);
+}
+
+function nonNegativeNumber(value, field) {
+  if (typeof value !== 'number' || Number.isNaN(value) || value < 0) {
+    throw new Error(`${field} must be a non-negative number.`);
+  }
+  return value;
 }
 
 function assertSafeWorkspace(workspace) {

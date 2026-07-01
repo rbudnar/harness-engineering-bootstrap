@@ -57,13 +57,16 @@ Runner-filled or normalized fields:
 Outcome and telemetry fields:
 
 - `success`, `first_pass_green`, `tests_passed`, `validator_passed`
+- `run_config` for model/context/tool/sandbox comparison controls
 - `route_hits`, `stale_hits`, `unnecessary_reads`, `docs_cited`
 - `commands_run`, `files_read`, `files_modified`
 - `human_touches`, `retry_loops`
 - `token_estimate`, `cost_estimate`
 - `artifact_paths`, `notes`
 
-Partial telemetry is allowed. If token, cost, transcript, or trace data is unavailable, record `null` or omit the artifact path; the runner adds warnings instead of failing the row.
+`token_estimate` may be a non-negative number or an object with `unit`, `input`, `output`, and `total`; if `input` and `output` are present, `total` is computed. `cost_estimate` may be a non-negative number or `{ "currency": "USD", "amount": 0.01 }`.
+
+Partial telemetry is allowed. If run configuration, token, cost, transcript, or trace data is unavailable, record `null` or omit the artifact path; the runner adds warnings instead of failing the row.
 
 ## Artifact Policy
 

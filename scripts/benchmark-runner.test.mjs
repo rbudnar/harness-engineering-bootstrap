@@ -31,6 +31,12 @@ test('validates the fixture manifest and pins the fixture checksum', () => {
   assert.equal(manifest.tasks[0].source.revision, hashDirectory(sourceRepo));
 });
 
+test('gitattributes pins benchmark fixture line endings for checksum portability', () => {
+  const attributes = readFileSync(resolve(testDir, '..', '.gitattributes'), 'utf8');
+
+  assert.match(attributes, /test\/fixtures\/benchmark-runner\/\*\* text eol=lf/);
+});
+
 test('prepares a clean no-guidance workspace from the pinned fixture', () => {
   const root = mkdtempSync(resolve(tmpdir(), 'heb-benchmark-prepare-'));
   const workspace = resolve(root, 'workspace');
@@ -140,6 +146,7 @@ test('records partial telemetry as JSONL with warnings instead of failing', () =
     assert.equal(rows[0].schema_version, resultSchemaVersion);
     assert.equal(rows[0].wall_time_seconds, 120);
     assert.deepEqual(rows[0].token_estimate, null);
+    assert(rows[0].warnings.includes('run_config unavailable'));
     assert(rows[0].warnings.includes('token_estimate unavailable'));
     assert(rows[0].warnings.includes('cost_estimate unavailable'));
     assert(rows[0].warnings.includes('transcript_or_trace artifact unavailable'));
@@ -158,6 +165,55 @@ test('records partial telemetry as JSONL with warnings instead of failing', () =
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('normalizes run configuration and numeric token and cost estimates', () => {
+  const { manifest } = readManifest(manifestPath);
+  const row = normalizeResultRow({
+    run_id: 'telemetry',
+    task_id: 'docs-only-fixture-001',
+    trial: 1,
+    variant: 'static-minimal-agents',
+    agent_surface: 'manual-adapter',
+    run_config: {
+      context_window: '128k',
+      reasoning_effort: 'medium',
+      mcp_servers: [],
+      timeout_minutes: 30,
+    },
+    token_estimate: { unit: 'provider_tokens', input: 10, output: 5 },
+    cost_estimate: { currency: 'USD', amount: 0.01 },
+  }, manifest);
+
+  assert.deepEqual(row.token_estimate, {
+    unit: 'provider_tokens',
+    input: 10,
+    output: 5,
+    total: 15,
+  });
+  assert.deepEqual(row.cost_estimate, { currency: 'USD', amount: 0.01 });
+  assert.equal(row.run_config.timeout_minutes, 30);
+});
+
+test('rejects invalid telemetry and artifact path traversal', () => {
+  const { manifest } = readManifest(manifestPath);
+  const base = {
+    run_id: 'bad-telemetry',
+    task_id: 'docs-only-fixture-001',
+    trial: 1,
+    variant: 'static-minimal-agents',
+    agent_surface: 'manual-adapter',
+  };
+
+  assert.throws(() => normalizeResultRow({
+    ...base,
+    token_estimate: 'lots',
+  }, manifest), /token_estimate must be a non-negative number/);
+
+  assert.throws(() => normalizeResultRow({
+    ...base,
+    artifact_paths: { transcript: '..\\outside.log' },
+  }, manifest, { artifactsDir: resolve(tmpdir(), 'heb-benchmark-artifacts') }), /outside artifacts_dir/);
 });
 
 test('rejects result rows for variants not allowed by the task', () => {
