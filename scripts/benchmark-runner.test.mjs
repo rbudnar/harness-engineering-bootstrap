@@ -373,6 +373,57 @@ test('validate-results rejects rows missing source provenance', () => {
   }
 });
 
+test('validate-results rejects rows whose source provenance does not match the manifest', () => {
+  const root = mkdtempSync(resolve(tmpdir(), 'heb-benchmark-mismatched-provenance-'));
+  const outPath = resolve(root, 'results.jsonl');
+
+  writeFileSync(outPath, `${JSON.stringify({
+    schema_version: resultSchemaVersion,
+    run_id: 'mismatched-provenance',
+    task_id: 'docs-only-fixture-001',
+    trial: 1,
+    repo: 'different-source',
+    source_revision: 'sha256:0000000000000000000000000000000000000000000000000000000000000000',
+    variant: 'static-minimal-agents',
+    harness_version: '0.1.1',
+    agent_surface: 'manual-adapter',
+    model: null,
+    tool_version: null,
+    run_config: null,
+    started_at: null,
+    finished_at: null,
+    success: true,
+    first_pass_green: true,
+    tests_passed: true,
+    validator_passed: null,
+    route_hits: [],
+    stale_hits: [],
+    unnecessary_reads: [],
+    docs_cited: [],
+    commands_run: [],
+    files_read: [],
+    files_modified: [],
+    human_touches: 0,
+    retry_loops: 0,
+    token_estimate: null,
+    cost_estimate: null,
+    wall_time_seconds: null,
+    artifact_paths: {},
+    notes: null,
+    warnings: [],
+  })}\n`);
+
+  try {
+    assert.throws(() => validateResultsFile({
+      manifestPath,
+      outPath,
+      artifactsDir: root,
+    }), /repo must match task source|source_revision must match task source revision/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('rejects result rows for variants not allowed by the task', () => {
   const { manifest } = readManifest(manifestPath);
 

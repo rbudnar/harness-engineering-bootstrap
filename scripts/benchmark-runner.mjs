@@ -384,6 +384,13 @@ export function validateResultRow(row, manifest, { artifactsDir = null } = {}) {
   for (const field of ['repo', 'source_revision']) {
     if (!row[field] || typeof row[field] !== 'string') errors.push(`${field} is required.`);
   }
+  if (task) {
+    const expectedRepo = task.source.repo ?? task.source.path;
+    if (row.repo !== expectedRepo) errors.push(`repo must match task source: ${expectedRepo}.`);
+    if (row.source_revision !== task.source.revision) {
+      errors.push('source_revision must match task source revision.');
+    }
+  }
   for (const field of ['model', 'tool_version', 'harness_version', 'notes']) {
     if (row[field] !== null && row[field] !== undefined && typeof row[field] !== 'string') {
       errors.push(`${field} must be a string or null when present.`);
