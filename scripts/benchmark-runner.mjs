@@ -6,10 +6,10 @@ import {
   cpSync,
   existsSync,
   mkdirSync,
+  lstatSync,
   readdirSync,
   readFileSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
@@ -224,6 +224,9 @@ export function prepareWorkspace({ manifestPath, taskId, variantId, workspace, f
   if (!task.variant_ids.includes(variantId)) {
     throw new Error(`Task ${taskId} does not allow variant ${variantId}.`);
   }
+  if (task.guidance_normalization !== 'none' && task.guidance_normalization !== 'removed') {
+    throw new Error(`guidance_normalization=${task.guidance_normalization} is not implemented by the runner.`);
+  }
 
   const target = resolve(workspace);
   assertSafeWorkspace(target);
@@ -256,8 +259,6 @@ export function prepareWorkspace({ manifestPath, taskId, variantId, workspace, f
     for (const guidanceFile of task.preexisting_guidance_files ?? []) {
       removeInside(target, guidanceFile);
     }
-  } else if (task.guidance_normalization === 'masked') {
-    warnings.push('guidance_normalization=masked is recorded but not modified by the runner.');
   }
 
   const appliedOverlays = [];
@@ -318,6 +319,7 @@ export function normalizeResultRow(rawResult, manifest, { artifactsDir = null } 
   const artifactPaths = normalizeArtifactPaths(rawResult.artifact_paths, artifactsDir, warnings);
   const startedAt = nullableIso(rawResult.started_at, 'started_at');
   const finishedAt = nullableIso(rawResult.finished_at, 'finished_at');
+  validateTimestampOrder(startedAt, finishedAt);
   const wallTimeSeconds = nullableNonNegativeNumber(rawResult.wall_time_seconds, 'wall_time_seconds')
     ?? computeWallTimeSeconds(startedAt, finishedAt);
 
@@ -404,6 +406,11 @@ export function validateResultRow(row, manifest, { artifactsDir = null } = {}) {
   }
   try {
     nullableIso(row.finished_at, 'finished_at');
+  } catch (error) {
+    errors.push(error.message);
+  }
+  try {
+    validateTimestampOrder(row.started_at, row.finished_at);
   } catch (error) {
     errors.push(error.message);
   }
@@ -514,8 +521,10 @@ function collectFiles(root, prefix = '') {
     .flatMap((entry) => {
       const relativePath = prefix ? join(prefix, entry) : entry;
       const child = resolve(root, relativePath);
-      const stats = statSync(child);
+      const stats = lstatSync(child);
+      if (stats.isSymbolicLink()) throw new Error(`Fixture source contains symlink: ${relativePath}.`);
       if (stats.isDirectory()) return collectFiles(root, relativePath);
+      if (!stats.isFile()) throw new Error(`Fixture source contains unsupported file type: ${relativePath}.`);
       return [child];
     });
 }
@@ -654,7 +663,17 @@ function nullableIso(value, field) {
 
 function computeWallTimeSeconds(startedAt, finishedAt) {
   if (!startedAt || !finishedAt) return null;
-  return Math.max(0, Math.round((Date.parse(finishedAt) - Date.parse(startedAt)) / 1000));
+  const seconds = Math.round((Date.parse(finishedAt) - Date.parse(startedAt)) / 1000);
+  if (seconds < 0) throw new Error('finished_at must be greater than or equal to started_at.');
+  return seconds;
+}
+
+function validateTimestampOrder(startedAt, finishedAt) {
+  if (!startedAt || !finishedAt) return;
+  const started = Date.parse(startedAt);
+  const finished = Date.parse(finishedAt);
+  if (Number.isNaN(started) || Number.isNaN(finished)) return;
+  if (finished < started) throw new Error('finished_at must be greater than or equal to started_at.');
 }
 
 function normalizeArtifactPaths(value, artifactsDir, warnings) {
@@ -707,7 +726,14 @@ function normalizeTokenEstimate(value) {
   const input = nullableNonNegativeNumber(value.input, 'token_estimate.input');
   const output = nullableNonNegativeNumber(value.output, 'token_estimate.output');
   let total = nullableNonNegativeNumber(value.total, 'token_estimate.total');
-  if (total === null && input !== null && output !== null) total = input + output;
+  if (input !== null && output !== null) {
+    const computedTotal = input + output;
+    if (total === null) {
+      total = computedTotal;
+    } else if (total !== computedTotal) {
+      throw new Error('token_estimate.total must equal input + output when both are present.');
+    }
+  }
   if (input === null && output === null && total === null) {
     throw new Error('token_estimate must include input, output, or total when present.');
   }
@@ -755,7 +781,7 @@ function assertSafeWorkspace(workspace) {
 
 function isInside(root, target) {
   const rel = relative(resolve(root), resolve(target));
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+  return rel === '' || (!isAbsolute(rel) && rel.split(/[\\/]+/)[0] !== '..');
 }
 
 function slash(path) {

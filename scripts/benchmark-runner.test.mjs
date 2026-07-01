@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -38,6 +38,31 @@ test('gitattributes pins benchmark fixture line endings for checksum portability
   assert.match(attributes, /test\/fixtures\/benchmark-runner\/\*\* text eol=lf/);
 });
 
+test('hashDirectory rejects fixture symlinks instead of dereferencing them', (t) => {
+  const root = mkdtempSync(resolve(tmpdir(), 'heb-benchmark-symlink-'));
+  const fixture = resolve(root, 'fixture');
+  const outside = resolve(root, 'outside.txt');
+  mkdirSync(fixture);
+  writeFileSync(resolve(fixture, 'README.md'), 'fixture\n');
+  writeFileSync(outside, 'outside\n');
+
+  try {
+    try {
+      symlinkSync(outside, resolve(fixture, 'outside-link.txt'), 'file');
+    } catch (error) {
+      if (error.code === 'EPERM' || error.code === 'EACCES') {
+        t.skip('symlink creation is not available in this Windows session');
+        return;
+      }
+      throw error;
+    }
+
+    assert.throws(() => hashDirectory(fixture), /Fixture source contains symlink/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('prepares a clean no-guidance workspace from the pinned fixture', () => {
   const root = mkdtempSync(resolve(tmpdir(), 'heb-benchmark-prepare-'));
   const workspace = resolve(root, 'workspace');
@@ -55,6 +80,27 @@ test('prepares a clean no-guidance workspace from the pinned fixture', () => {
     assert.equal(existsSync(resolve(workspace, 'README.md')), true);
     assert.equal(existsSync(resolve(workspace, 'AGENTS.md')), false);
     assert.equal(existsSync(resolve(workspace, '.heb-benchmark', 'task.json')), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('prepare rejects guidance normalization modes the runner does not implement', () => {
+  const root = mkdtempSync(resolve(tmpdir(), 'heb-benchmark-unimplemented-guidance-'));
+  const workspace = resolve(root, 'workspace');
+  const copiedManifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  copiedManifest.tasks[0].source.path = sourceRepo;
+  copiedManifest.tasks[0].guidance_normalization = 'masked';
+  const tempManifest = resolve(root, 'tasks.json');
+  writeFileSync(tempManifest, `${JSON.stringify(copiedManifest, null, 2)}\n`);
+
+  try {
+    assert.throws(() => prepareWorkspace({
+      manifestPath: tempManifest,
+      taskId: 'docs-only-fixture-001',
+      variantId: 'no-added-guidance',
+      workspace,
+    }), /guidance_normalization=masked is not implemented/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -215,6 +261,38 @@ test('rejects invalid telemetry and artifact path traversal', () => {
     ...base,
     artifact_paths: { transcript: '..\\outside.log' },
   }, manifest, { artifactsDir: resolve(tmpdir(), 'heb-benchmark-artifacts') }), /outside artifacts_dir/);
+
+  assert.throws(() => normalizeResultRow({
+    ...base,
+    token_estimate: { input: 10, output: 5, total: 999 },
+  }, manifest), /token_estimate\.total must equal input \+ output/);
+
+  assert.throws(() => normalizeResultRow({
+    ...base,
+    started_at: '2026-01-01T00:01:00.000Z',
+    finished_at: '2026-01-01T00:00:00.000Z',
+  }, manifest), /finished_at must be greater than or equal to started_at/);
+});
+
+test('artifact paths allow in-root names that start with two dots', () => {
+  const root = mkdtempSync(resolve(tmpdir(), 'heb-benchmark-dot-artifacts-'));
+  const { manifest } = readManifest(manifestPath);
+
+  try {
+    writeFileSync(resolve(root, '..config'), 'artifact\n');
+    const row = normalizeResultRow({
+      run_id: 'dot-artifact',
+      task_id: 'docs-only-fixture-001',
+      trial: 1,
+      variant: 'static-minimal-agents',
+      agent_surface: 'manual-adapter',
+      artifact_paths: { transcript: '..config' },
+    }, manifest, { artifactsDir: root });
+
+    assert.deepEqual(row.artifact_paths, { transcript: '..config' });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('validate-results rejects hand-authored invalid telemetry and relative traversal rows', () => {
@@ -317,6 +395,57 @@ test('validate-results rejects hand-authored invalid timestamps counters and com
       outPath,
       artifactsDir: root,
     }), /started_at must be an ISO timestamp|commands_run\\[0\\]\\.command|human_touches must be an integer|wall_time_seconds must be a number/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('validate-results rejects hand-authored inverted timestamps', () => {
+  const root = mkdtempSync(resolve(tmpdir(), 'heb-benchmark-inverted-timestamps-'));
+  const outPath = resolve(root, 'results.jsonl');
+
+  writeFileSync(outPath, `${JSON.stringify({
+    schema_version: resultSchemaVersion,
+    run_id: 'inverted-timestamps',
+    task_id: 'docs-only-fixture-001',
+    trial: 1,
+    repo: 'source-repo',
+    source_revision: 'sha256:5a87db4a439d22ccfdd431ffa43417ea438d06a6cc1585e331f4c146aa679968',
+    variant: 'static-minimal-agents',
+    harness_version: '0.1.1',
+    agent_surface: 'manual-adapter',
+    model: null,
+    tool_version: null,
+    run_config: null,
+    started_at: '2026-01-01T00:01:00.000Z',
+    finished_at: '2026-01-01T00:00:00.000Z',
+    success: true,
+    first_pass_green: true,
+    tests_passed: true,
+    validator_passed: null,
+    route_hits: [],
+    stale_hits: [],
+    unnecessary_reads: [],
+    docs_cited: [],
+    commands_run: [],
+    files_read: [],
+    files_modified: [],
+    human_touches: 0,
+    retry_loops: 0,
+    token_estimate: null,
+    cost_estimate: null,
+    wall_time_seconds: null,
+    artifact_paths: {},
+    notes: null,
+    warnings: [],
+  })}\n`);
+
+  try {
+    assert.throws(() => validateResultsFile({
+      manifestPath,
+      outPath,
+      artifactsDir: root,
+    }), /finished_at must be greater than or equal to started_at/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
