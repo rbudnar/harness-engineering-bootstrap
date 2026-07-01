@@ -15,7 +15,10 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 
 - Added repo-contract routing for GitHub PR inbox automation semantics and included the inbox classifier tests in CI and weekly harness reporting.
 - Documented the portable lift-and-shift adoption path for applying the PR Agent Inbox to sibling repositories.
+- Adjusted the PR Agent Inbox workflow so waiting-only states publish `agent-inbox-clean` as pending without making the workflow check red, while agent-actionable items and `agent-inbox-clean` status publication failures still fail the automation.
 - Made PR Agent Inbox sticky comment updates idempotent across local maintainer and GitHub Actions refreshes so one PR keeps one durable inbox post.
+- Hardened PR Agent Inbox workflow input handling by passing the target PR through a quoted environment variable instead of interpolating the Actions expression inside shell.
+- Added a PR Agent Inbox bootstrap guard for review/comment workflows that see newer workflow YAML before the base script supports the matching CLI flags.
 
 ### Migration
 

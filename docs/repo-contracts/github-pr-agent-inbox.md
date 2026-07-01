@@ -13,16 +13,16 @@ Read this before changing `.github/workflows/pr-agent-inbox.yml`, `scripts/pr-ag
 
 ## Contract
 
-- The durable required-check candidate is the PR-head commit status named `agent-inbox-clean`; the PR-attached workflow also fails while the normalized inbox is not clean.
+- The durable required-check candidate is the PR-head commit status named `agent-inbox-clean`; the PR-attached workflow fails for agent-actionable inbox items or status-publication failures, but waiting-only state such as required human review remains a pending status instead of a red workflow check.
 - The script owns the portable state model: `clean`, `agentAttention`, `statusState`, item list, sticky comment marker, `agent-inbox-clean` status, and `agent-attention` label.
 - The `agent-inbox-clean` status is append-only on GitHub; skip publishing when the latest status for the same head SHA and context already has the same state and description.
 - Review-thread state comes from GraphQL `PullRequest.reviewThreads`; unresolved threads block even when GitHub marks them outdated.
 - Body-only requested changes come from `reviewDecision` and review lists; they block even without inline review threads.
-- When any well-formed sticky inbox report exists, update the newest one regardless of whether it was created locally by a maintainer token or by `github-actions[bot]`; if the token cannot edit that existing report, log the publication failure instead of creating another sticky duplicate.
+- When any well-formed trusted sticky inbox report exists, update the newest one regardless of whether it was created locally by a maintainer token or by `github-actions[bot]`; if the token cannot edit that existing report, log the publication failure instead of creating another sticky duplicate. Ignore marker/title comments from untrusted PR commenters.
 - Native GitHub branch protection remains authoritative for required reviews and required conversation resolution; the inbox reports those gates but does not replace them.
 - Inbox refreshes serialize per PR, and scheduled/manual full-repo sweeps share a stable concurrency group, without cancelling in-progress runs into failed PR checks.
 - Failed required checks block. Pending required checks are allowed in the workflow to avoid self-deadlock and are caught by later PR events, `/agent-inbox refresh`, or the scheduled sweep.
-- Comment, label, and status publication steps are attempted independently after the inbox is classified; token write failures must be logged without hiding the normalized inbox result, then fail the automation.
+- Comment, label, and status publication steps are attempted independently after the inbox is classified; token write failures must be logged without hiding the normalized inbox result. Failing to publish the durable `agent-inbox-clean` status fails the automation; comment and label write failures stay warning-only so a token mismatch does not hide the portable inbox state.
 - `UNSTABLE`, `BLOCKED`, and `HAS_HOOKS` merge states are not blocking by themselves; structured review-thread, review-decision, draft, merge-conflict, branch-behind, and required-check classification decide whether inbox items exist.
 - Same-repo `BEHIND` merge state is agent-actionable merge-readiness work because the branch needs an update before it can merge.
 - Read, paginate, and merge effective branch rules with classic branch protection because this repo may be protected by rulesets. Only branches with no classic protection and no effective rules are explicitly unprotected; failed optional checks do not block there. When protection metadata is unavailable to the workflow token, treat failed non-inbox checks as potentially required instead of reporting clean.
@@ -62,6 +62,7 @@ Validate the target adoption with:
 
 - GitHub has a `pull_request_review_thread` webhook event, but it is not a GitHub Actions workflow trigger in the checked Actions docs. Thread resolution may therefore need `/agent-inbox refresh` or the scheduled sweep to turn the `agent-inbox-clean` status green quickly.
 - The PR that introduces this workflow checks out base-owned code under `pull_request_target`; if the base ref does not yet contain `scripts/pr-agent-inbox.mjs`, the workflow must pass with a bootstrap notice instead of running PR-head code.
+- PR-branch review and comment workflows can run newer workflow YAML against an older checked-out base script. If the base script lacks a required CLI option, the workflow must pass with a bootstrap notice instead of reporting a false compatibility failure.
 - Manual dispatches from a PR branch may be able to read the PR but receive `Resource not accessible by integration` on comment/status writes. Treat that as a publishing warning, then rely on the printed inbox result and the normal post-merge/base workflow permissions.
 - Local maintainer refreshes and GitHub Actions refreshes share the same sticky comment marker. Do not treat author identity as a separate inbox channel; otherwise local refreshes can create multiple `PR Agent Inbox` posts for the same PR.
 - Fork PRs must run repository-owned code only. Keep `pull_request_target` checkouts pinned to the base commit unless a later contract explicitly proves a safe alternative.

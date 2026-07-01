@@ -35,6 +35,7 @@ export function parseArgs(argv = process.argv.slice(2)) {
     json: false,
     format: 'summary',
     assertClean: false,
+    assertNoAgentAttention: false,
     refresh: false,
     updateComment: false,
     syncLabel: false,
@@ -64,6 +65,8 @@ export function parseArgs(argv = process.argv.slice(2)) {
       options.format = argv[index];
     } else if (arg === '--assert-clean') {
       options.assertClean = true;
+    } else if (arg === '--assert-no-agent-attention') {
+      options.assertNoAgentAttention = true;
     } else if (arg === '--refresh') {
       options.refresh = true;
     } else if (arg === '--update-comment') {
@@ -97,6 +100,9 @@ export function parseArgs(argv = process.argv.slice(2)) {
   }
 
   if (!['summary', 'markdown'].includes(options.format)) throw new Error('--format must be summary or markdown');
+  if (options.assertClean && options.assertNoAgentAttention) {
+    throw new Error('--assert-clean and --assert-no-agent-attention are mutually exclusive');
+  }
   if (options.refresh && options.assertClean) throw new Error('--refresh and --assert-clean are mutually exclusive');
   return options;
 }
@@ -109,6 +115,8 @@ export function helpText() {
     '',
     'Common options:',
     '  --assert-clean          Exit nonzero when normalized clean=false.',
+    '  --assert-no-agent-attention',
+    '                          Exit nonzero for agent-actionable inbox items, but not waiting-only state.',
     '  --refresh               Publish state but exit zero for ordinary PR-attention findings.',
     '  --json                  Print the normalized JSON result.',
     '  --format markdown       Print the sticky inbox comment body.',
@@ -582,7 +590,16 @@ export function updateStickyComment(client, result) {
 function isStickyInboxComment(comment) {
   const body = String(comment.body ?? '');
   return body.includes(stickyMarker)
-    && body.includes('# PR Agent Inbox');
+    && body.includes('# PR Agent Inbox')
+    && isTrustedInboxCommentAuthor(comment);
+}
+
+function isTrustedInboxCommentAuthor(comment) {
+  const author = String(comment.user?.login ?? '');
+  const association = String(comment.author_association ?? comment.authorAssociation ?? '').toUpperCase();
+  return author === 'github-actions[bot]'
+    || author === 'github-actions'
+    || ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(association);
 }
 
 export function ensureLabel(client, repo, label = defaultAttentionLabel) {
@@ -659,6 +676,13 @@ export function writeGitHubOutputs(result) {
     `status_state=${result.statusState}`,
     '',
   ].join('\n'));
+}
+
+export function shouldExitNonzero(result, options = {}, publishFailures = []) {
+  if (publishFailures.some((failure) => failure.name === 'publish inbox status')) return true;
+  if (options.assertClean && !result.clean) return true;
+  if (options.assertNoAgentAttention && result.agentAttention) return true;
+  return false;
 }
 
 function item({ kind, severity, agentActionable, id, author = null, url = null, summary }) {
@@ -838,8 +862,7 @@ function main() {
     console.log(renderSummary(result));
   }
 
-  if (publishFailures.length > 0) process.exitCode = 1;
-  if (options.assertClean && !result.clean) process.exitCode = 1;
+  if (shouldExitNonzero(result, options, publishFailures)) process.exitCode = 1;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === currentScript) {
