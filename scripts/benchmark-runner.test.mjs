@@ -322,6 +322,57 @@ test('validate-results rejects hand-authored invalid timestamps counters and com
   }
 });
 
+test('validate-results rejects rows missing source provenance', () => {
+  const root = mkdtempSync(resolve(tmpdir(), 'heb-benchmark-missing-provenance-'));
+  const outPath = resolve(root, 'results.jsonl');
+
+  writeFileSync(outPath, `${JSON.stringify({
+    schema_version: resultSchemaVersion,
+    run_id: 'missing-provenance',
+    task_id: 'docs-only-fixture-001',
+    trial: 1,
+    repo: null,
+    source_revision: '',
+    variant: 'static-minimal-agents',
+    harness_version: '0.1.1',
+    agent_surface: 'manual-adapter',
+    model: null,
+    tool_version: null,
+    run_config: null,
+    started_at: null,
+    finished_at: null,
+    success: true,
+    first_pass_green: true,
+    tests_passed: true,
+    validator_passed: null,
+    route_hits: [],
+    stale_hits: [],
+    unnecessary_reads: [],
+    docs_cited: [],
+    commands_run: [],
+    files_read: [],
+    files_modified: [],
+    human_touches: 0,
+    retry_loops: 0,
+    token_estimate: null,
+    cost_estimate: null,
+    wall_time_seconds: null,
+    artifact_paths: {},
+    notes: null,
+    warnings: [],
+  })}\n`);
+
+  try {
+    assert.throws(() => validateResultsFile({
+      manifestPath,
+      outPath,
+      artifactsDir: root,
+    }), /repo is required|source_revision is required/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('rejects result rows for variants not allowed by the task', () => {
   const { manifest } = readManifest(manifestPath);
 

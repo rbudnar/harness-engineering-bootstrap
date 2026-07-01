@@ -382,9 +382,7 @@ export function validateResultRow(row, manifest, { artifactsDir = null } = {}) {
     if (!row[field] || typeof row[field] !== 'string') errors.push(`${field} is required.`);
   }
   for (const field of ['repo', 'source_revision']) {
-    if (row[field] !== null && row[field] !== undefined && typeof row[field] !== 'string') {
-      errors.push(`${field} must be a string when present.`);
-    }
+    if (!row[field] || typeof row[field] !== 'string') errors.push(`${field} is required.`);
   }
   for (const field of ['model', 'tool_version', 'harness_version', 'notes']) {
     if (row[field] !== null && row[field] !== undefined && typeof row[field] !== 'string') {
