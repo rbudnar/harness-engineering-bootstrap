@@ -6,6 +6,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 
 ### Summary
 
+- Added the first HEB benchmark protocol so empirical validation can measure repeated self-correction against simpler context baselines before a runner exists.
 - Added a PR Agent Inbox check that keeps a sticky PR status comment current and fails while agent-actionable review or merge-readiness work remains.
 
 ### Template Changes
