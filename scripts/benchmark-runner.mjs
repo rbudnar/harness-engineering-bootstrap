@@ -388,19 +388,31 @@ export function validateResultRow(row, manifest, { artifactsDir = null } = {}) {
   if (row.run_config !== null && (typeof row.run_config !== 'object' || Array.isArray(row.run_config))) {
     errors.push('run_config must be an object or null.');
   }
+  try {
+    normalizeRunConfig(row.run_config);
+  } catch (error) {
+    errors.push(error.message);
+  }
+  try {
+    normalizeTokenEstimate(row.token_estimate);
+  } catch (error) {
+    errors.push(error.message);
+  }
+  try {
+    normalizeCostEstimate(row.cost_estimate);
+  } catch (error) {
+    errors.push(error.message);
+  }
   for (const field of ['route_hits', 'stale_hits', 'unnecessary_reads', 'docs_cited', 'files_read', 'files_modified']) {
     if (!Array.isArray(row[field]) || row[field].some((value) => typeof value !== 'string')) {
       errors.push(`${field} must be an array of strings.`);
     }
   }
   if (!Array.isArray(row.commands_run)) errors.push('commands_run must be an array.');
-  if (row.artifact_paths && typeof row.artifact_paths === 'object' && artifactsDir) {
-    const root = resolve(artifactsDir);
-    for (const value of Object.values(row.artifact_paths)) {
-      if (typeof value === 'string' && isAbsolute(value) && !isInside(root, resolve(value))) {
-        errors.push(`artifact path is outside artifacts_dir: ${value}.`);
-      }
-    }
+  try {
+    normalizeArtifactPaths(row.artifact_paths, artifactsDir, new Set());
+  } catch (error) {
+    errors.push(error.message);
   }
   if (errors.length) throw new Error(`Invalid benchmark result row:\n- ${errors.join('\n- ')}`);
   return true;

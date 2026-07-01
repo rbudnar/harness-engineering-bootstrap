@@ -216,6 +216,60 @@ test('rejects invalid telemetry and artifact path traversal', () => {
   }, manifest, { artifactsDir: resolve(tmpdir(), 'heb-benchmark-artifacts') }), /outside artifacts_dir/);
 });
 
+test('validate-results rejects hand-authored invalid telemetry and relative traversal rows', () => {
+  const root = mkdtempSync(resolve(tmpdir(), 'heb-benchmark-invalid-results-'));
+  const outPath = resolve(root, 'results.jsonl');
+
+  writeFileSync(outPath, `${JSON.stringify({
+    schema_version: resultSchemaVersion,
+    run_id: 'invalid-jsonl',
+    task_id: 'docs-only-fixture-001',
+    trial: 1,
+    repo: 'source-repo',
+    source_revision: 'sha256:5a87db4a439d22ccfdd431ffa43417ea438d06a6cc1585e331f4c146aa679968',
+    variant: 'static-minimal-agents',
+    harness_version: '0.1.1',
+    agent_surface: 'manual-adapter',
+    model: null,
+    tool_version: null,
+    run_config: { mcp_servers: ['none'] },
+    success: true,
+    first_pass_green: true,
+    tests_passed: true,
+    validator_passed: null,
+    route_hits: [],
+    stale_hits: [],
+    unnecessary_reads: [],
+    docs_cited: [],
+    commands_run: [],
+    files_read: [],
+    files_modified: [],
+    human_touches: 0,
+    retry_loops: 0,
+    token_estimate: 'lots',
+    cost_estimate: null,
+    wall_time_seconds: null,
+    artifact_paths: { transcript: '../outside.log' },
+    notes: null,
+    warnings: [],
+  })}\n`);
+
+  try {
+    assert.throws(() => execFileSync(process.execPath, [
+      script,
+      'validate-results',
+      '--manifest',
+      manifestPath,
+      '--out',
+      outPath,
+      '--artifacts-dir',
+      root,
+    ], { encoding: 'utf8', stdio: 'pipe' }), /Command failed/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('rejects result rows for variants not allowed by the task', () => {
   const { manifest } = readManifest(manifestPath);
 
