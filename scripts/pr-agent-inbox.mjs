@@ -410,7 +410,8 @@ export function analyzeInbox(data, options = {}) {
 
   const agentAttention = items.some((entry) => entry.agentActionable && entry.severity === 'blocking');
   const clean = items.length === 0;
-  const statusState = clean ? 'success' : (agentAttention ? 'failure' : 'pending');
+  const inboxState = clean ? 'clean' : (agentAttention ? 'agent-attention' : 'waiting');
+  const statusState = agentAttention ? 'failure' : 'success';
 
   return {
     kind: 'pr-agent-inbox',
@@ -423,6 +424,7 @@ export function analyzeInbox(data, options = {}) {
     baseRefName: prView.baseRefName ?? null,
     clean,
     agentAttention,
+    inboxState,
     statusState,
     statusDescription: statusDescription({ clean, agentAttention, items }),
     items,
@@ -508,7 +510,8 @@ export function renderMarkdown(result) {
   ];
 
   if (result.headRefOid) lines.push(`Head: ${result.headRefOid}`);
-  lines.push(`Inbox state: ${result.statusState}`);
+  lines.push(`Inbox state: ${displayInboxState(result)}`);
+  lines.push(`Agent check state: ${result.statusState}`);
   lines.push(`Agent attention: ${result.agentAttention ? 'yes' : 'no'}`);
 
   lines.push('', '## Items', '');
@@ -533,8 +536,8 @@ export function renderMarkdown(result) {
 }
 
 export function renderSummary(result) {
-  const status = result.clean ? 'clean' : (result.agentAttention ? 'agent-attention' : 'waiting');
-  return `PR #${result.pr}: ${status} (${result.statusState})`;
+  const status = displayInboxState(result);
+  return `PR #${result.pr}: ${status} (agent-inbox-clean ${result.statusState})`;
 }
 
 export function publishStatus(client, result, options = {}) {
@@ -673,6 +676,7 @@ export function writeGitHubOutputs(result) {
   appendFileSync(process.env.GITHUB_OUTPUT, [
     `clean=${result.clean ? 'true' : 'false'}`,
     `agent_attention=${result.agentAttention ? 'true' : 'false'}`,
+    `inbox_state=${displayInboxState(result)}`,
     `status_state=${result.statusState}`,
     '',
   ].join('\n'));
@@ -794,9 +798,13 @@ function latestStatusForContext(client, repo, ref, context) {
 }
 
 function statusDescription({ clean, agentAttention, items }) {
-  if (clean) return 'PR agent inbox is clean';
   if (agentAttention) return `${items.filter((entry) => entry.agentActionable).length} agent-actionable item(s)`;
-  return 'PR is waiting on non-agent state';
+  if (clean) return 'PR agent inbox is clean';
+  return 'No agent-actionable inbox items';
+}
+
+function displayInboxState(result) {
+  return result.inboxState ?? (result.clean ? 'clean' : (result.agentAttention ? 'agent-attention' : 'waiting'));
 }
 
 function summarize(text, max = 120) {

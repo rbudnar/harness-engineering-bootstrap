@@ -97,7 +97,7 @@ node scripts/template-fitness.mjs
 ```
 
 CI runs `node scripts/harness-doctor.mjs` as a warning-mode rot audit so humans do not have to remember it. Run it locally for fast feedback when changing durable memory, routes, contracts, or references.
-Weekly reporting runs `.github/workflows/weekly-harness-report.yml`, comments on the standing "Weekly Harness Report" issue for notification, uploads artifacts, and creates or updates "Harness problems detected by weekly report" before failing when checks fail or doctor warnings appear. PR readiness runs `.github/workflows/pr-agent-inbox.yml`, keeps a sticky "PR Agent Inbox" comment current, and publishes `agent-inbox-clean` while the normalized inbox is not clean.
+Weekly reporting runs `.github/workflows/weekly-harness-report.yml`, comments on the standing "Weekly Harness Report" issue for notification, uploads artifacts, and creates or updates "Harness problems detected by weekly report" before failing when checks fail or doctor warnings appear. PR readiness runs `.github/workflows/pr-agent-inbox.yml`, keeps a sticky "PR Agent Inbox" comment current, and publishes `agent-inbox-clean` as the agent-actionability status: green when no agent-actionable work remains, red when agents can act, while human-only waiting stays visible in the sticky comment and GitHub's native review gates.
 To validate a proposal file from automation, run:
 
 ```bash

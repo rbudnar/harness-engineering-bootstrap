@@ -109,7 +109,9 @@ test('review required is waiting, not agent attention, and not clean', () => {
 
   assert.equal(result.clean, false);
   assert.equal(result.agentAttention, false);
-  assert.equal(result.statusState, 'pending');
+  assert.equal(result.inboxState, 'waiting');
+  assert.equal(result.statusState, 'success');
+  assert.equal(result.statusDescription, 'No agent-actionable inbox items');
   assert.equal(result.items[0].kind, 'review_required');
 });
 
@@ -148,7 +150,8 @@ test('unknown merge state is waiting and not clean', () => {
 
   assert.equal(result.clean, false);
   assert.equal(result.agentAttention, false);
-  assert.equal(result.statusState, 'pending');
+  assert.equal(result.inboxState, 'waiting');
+  assert.equal(result.statusState, 'success');
 });
 
 test('unstable merge state does not block when only optional checks are failing', () => {
@@ -469,7 +472,8 @@ test('pending checks block locally unless allow-pending-checks is set', () => {
   }), { allowPendingChecks: true });
 
   assert.equal(blocked.clean, false);
-  assert.equal(blocked.statusState, 'pending');
+  assert.equal(blocked.inboxState, 'waiting');
+  assert.equal(blocked.statusState, 'success');
   assert.equal(allowed.clean, true);
 });
 
@@ -493,6 +497,19 @@ test('markdown includes sticky marker and stable sections', () => {
   assert.match(markdown, /<!-- agent-inbox:v1 -->/);
   assert.match(markdown, /# PR Agent Inbox/);
   assert.match(markdown, /Fix this thing/);
+});
+
+test('waiting markdown distinguishes inbox state from agent check state', () => {
+  const markdown = renderMarkdown(analyzeInbox(data({
+    prView: {
+      reviewDecision: 'REVIEW_REQUIRED',
+    },
+  })));
+
+  assert.match(markdown, /Status: Waiting/);
+  assert.match(markdown, /Inbox state: waiting/);
+  assert.match(markdown, /Agent check state: success/);
+  assert.match(markdown, /Agent attention: no/);
 });
 
 test('assert-clean is parsed as normalized clean assertion', () => {
@@ -732,8 +749,9 @@ test('publishing side effects continue when write permissions are unavailable', 
     headRefOid: 'abc123',
     clean: false,
     agentAttention: false,
-    statusState: 'pending',
-    statusDescription: 'PR is waiting on non-agent state',
+    inboxState: 'waiting',
+    statusState: 'success',
+    statusDescription: 'No agent-actionable inbox items',
     items: [],
     nativeProtection: {},
   }, {
