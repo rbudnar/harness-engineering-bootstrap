@@ -18,7 +18,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - Made PR Agent Inbox sticky comment updates idempotent across local maintainer and GitHub Actions refreshes so one PR keeps one durable inbox post.
 - Hardened PR Agent Inbox workflow input handling by passing the target PR through a quoted environment variable instead of interpolating the Actions expression inside shell.
 - Added a PR Agent Inbox bootstrap guard for review/comment workflows that see newer workflow YAML before the base script supports the matching CLI flags.
-- Granted the PR Agent Inbox workflow pull-request write permission so sticky comment and label publication no longer 403 on PR issue-comment writes.
+- Granted the PR Agent Inbox workflow `pull-requests: write` permission so sticky comment and label publication no longer 403 on PR issue-comment writes.
 
 ### Migration
 
