@@ -153,6 +153,7 @@ Issue #52 should turn this into a machine-readable schema. The runner-facing man
   "category": "domain gotcha",
   "episode": "cache-invalidation-family",
   "episode_stage": "first-encounter",
+  "suite_run_id": "2026-07-01-public-fixture-pilot",
   "variant": "heb-planned-core",
   "attempt_index": 1,
   "run_config": {
@@ -172,7 +173,12 @@ Issue #52 should turn this into a machine-readable schema. The runner-facing man
   "expected_routes": ["docs/testing.md", "docs/adr/cache.md"],
   "seeded_failure_family": "missed decision route",
   "transcript_log": "path to transcript or tool log",
-  "cost_units": "provider tokens, transcript bytes, or runner-normalized estimate",
+  "cost": {
+    "unit": "provider_tokens",
+    "input": 12000,
+    "output": 2000,
+    "total": 14000
+  },
   "excluded_requirements": ["private credentials", "network-only service"],
   "time_budget_minutes": 30
 }
