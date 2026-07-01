@@ -11,6 +11,7 @@ import {
   prepareWorkspace,
   readManifest,
   resultSchemaVersion,
+  validateResultsFile,
 } from './benchmark-runner.mjs';
 
 const testDir = dirname(fileURLToPath(import.meta.url));
@@ -265,6 +266,57 @@ test('validate-results rejects hand-authored invalid telemetry and relative trav
       '--artifacts-dir',
       root,
     ], { encoding: 'utf8', stdio: 'pipe' }), /Command failed/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('validate-results rejects hand-authored invalid timestamps counters and commands', () => {
+  const root = mkdtempSync(resolve(tmpdir(), 'heb-benchmark-invalid-scalars-'));
+  const outPath = resolve(root, 'results.jsonl');
+
+  writeFileSync(outPath, `${JSON.stringify({
+    schema_version: resultSchemaVersion,
+    run_id: 'invalid-scalars',
+    task_id: 'docs-only-fixture-001',
+    trial: 1,
+    repo: 'source-repo',
+    source_revision: 'sha256:5a87db4a439d22ccfdd431ffa43417ea438d06a6cc1585e331f4c146aa679968',
+    variant: 'static-minimal-agents',
+    harness_version: '0.1.1',
+    agent_surface: 'manual-adapter',
+    model: null,
+    tool_version: null,
+    run_config: { timeout_minutes: 30 },
+    started_at: 'not-a-date',
+    finished_at: null,
+    success: true,
+    first_pass_green: true,
+    tests_passed: true,
+    validator_passed: null,
+    route_hits: [],
+    stale_hits: [],
+    unnecessary_reads: [],
+    docs_cited: [],
+    commands_run: [{ exit_code: 0 }],
+    files_read: [],
+    files_modified: [],
+    human_touches: 'zero',
+    retry_loops: -1,
+    token_estimate: { total: 1 },
+    cost_estimate: { amount: 0 },
+    wall_time_seconds: 'fast',
+    artifact_paths: {},
+    notes: null,
+    warnings: [],
+  })}\n`);
+
+  try {
+    assert.throws(() => validateResultsFile({
+      manifestPath,
+      outPath,
+      artifactsDir: root,
+    }), /started_at must be an ISO timestamp|commands_run\\[0\\]\\.command|human_touches must be an integer|wall_time_seconds must be a number/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

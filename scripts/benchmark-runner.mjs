@@ -318,7 +318,7 @@ export function normalizeResultRow(rawResult, manifest, { artifactsDir = null } 
   const artifactPaths = normalizeArtifactPaths(rawResult.artifact_paths, artifactsDir, warnings);
   const startedAt = nullableIso(rawResult.started_at, 'started_at');
   const finishedAt = nullableIso(rawResult.finished_at, 'finished_at');
-  const wallTimeSeconds = nullableNumber(rawResult.wall_time_seconds, 'wall_time_seconds')
+  const wallTimeSeconds = nullableNonNegativeNumber(rawResult.wall_time_seconds, 'wall_time_seconds')
     ?? computeWallTimeSeconds(startedAt, finishedAt);
 
   const runConfig = normalizeRunConfig(rawResult.run_config);
@@ -355,8 +355,8 @@ export function normalizeResultRow(rawResult, manifest, { artifactsDir = null } 
     commands_run: commandArray(rawResult.commands_run),
     files_read: stringArray(rawResult.files_read, 'files_read'),
     files_modified: stringArray(rawResult.files_modified, 'files_modified'),
-    human_touches: nullableInteger(rawResult.human_touches, 'human_touches'),
-    retry_loops: nullableInteger(rawResult.retry_loops, 'retry_loops'),
+    human_touches: nullableNonNegativeInteger(rawResult.human_touches, 'human_touches'),
+    retry_loops: nullableNonNegativeInteger(rawResult.retry_loops, 'retry_loops'),
     token_estimate: tokenEstimate,
     cost_estimate: costEstimate,
     wall_time_seconds: wallTimeSeconds,
@@ -381,7 +381,42 @@ export function validateResultRow(row, manifest, { artifactsDir = null } = {}) {
   for (const field of ['run_id', 'task_id', 'variant', 'agent_surface']) {
     if (!row[field] || typeof row[field] !== 'string') errors.push(`${field} is required.`);
   }
+  for (const field of ['repo', 'source_revision']) {
+    if (row[field] !== null && row[field] !== undefined && typeof row[field] !== 'string') {
+      errors.push(`${field} must be a string when present.`);
+    }
+  }
+  for (const field of ['model', 'tool_version', 'harness_version', 'notes']) {
+    if (row[field] !== null && row[field] !== undefined && typeof row[field] !== 'string') {
+      errors.push(`${field} must be a string or null when present.`);
+    }
+  }
   if (!Number.isInteger(row.trial) || row.trial < 1) errors.push('trial must be a positive integer.');
+  try {
+    nullableIso(row.started_at, 'started_at');
+  } catch (error) {
+    errors.push(error.message);
+  }
+  try {
+    nullableIso(row.finished_at, 'finished_at');
+  } catch (error) {
+    errors.push(error.message);
+  }
+  try {
+    nullableNonNegativeNumber(row.wall_time_seconds, 'wall_time_seconds');
+  } catch (error) {
+    errors.push(error.message);
+  }
+  try {
+    nullableNonNegativeInteger(row.human_touches, 'human_touches');
+  } catch (error) {
+    errors.push(error.message);
+  }
+  try {
+    nullableNonNegativeInteger(row.retry_loops, 'retry_loops');
+  } catch (error) {
+    errors.push(error.message);
+  }
   for (const field of ['success', 'first_pass_green', 'tests_passed', 'validator_passed']) {
     if (row[field] !== null && typeof row[field] !== 'boolean') errors.push(`${field} must be boolean or null.`);
   }
@@ -408,7 +443,14 @@ export function validateResultRow(row, manifest, { artifactsDir = null } = {}) {
       errors.push(`${field} must be an array of strings.`);
     }
   }
-  if (!Array.isArray(row.commands_run)) errors.push('commands_run must be an array.');
+  try {
+    commandArray(row.commands_run);
+  } catch (error) {
+    errors.push(error.message);
+  }
+  if (row.warnings !== undefined && (!Array.isArray(row.warnings) || row.warnings.some((value) => typeof value !== 'string'))) {
+    errors.push('warnings must be an array of strings when present.');
+  }
   try {
     normalizeArtifactPaths(row.artifact_paths, artifactsDir, new Set());
   } catch (error) {
@@ -570,7 +612,7 @@ function commandArray(value) {
     return {
       command: requiredStringValue(entry.command, `commands_run[${index}].command`),
       exit_code: nullableInteger(entry.exit_code, `commands_run[${index}].exit_code`),
-      duration_ms: nullableNumber(entry.duration_ms, `commands_run[${index}].duration_ms`),
+      duration_ms: nullableNonNegativeNumber(entry.duration_ms, `commands_run[${index}].duration_ms`),
     };
   });
 }
@@ -584,6 +626,12 @@ function nullableBoolean(value, field) {
 function nullableInteger(value, field) {
   if (value === undefined || value === null) return null;
   if (!Number.isInteger(value)) throw new Error(`${field} must be an integer or null.`);
+  return value;
+}
+
+function nullableNonNegativeInteger(value, field) {
+  if (value === undefined || value === null) return null;
+  if (!Number.isInteger(value) || value < 0) throw new Error(`${field} must be a non-negative integer or null.`);
   return value;
 }
 
