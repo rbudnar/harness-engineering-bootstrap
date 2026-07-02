@@ -67,4 +67,4 @@ The suite also uses one tiny fixture repository. It exercises runner mechanics, 
 
 ## Decision
 
-This pilot unblocks #54, but it does not justify expanding the template. The next action is a governance rule that prevents benchmark results from being overstated.
+This pilot unblocks #54, but it does not justify expanding the template. The governance rule in `docs/benchmark-governance.md` rejects new always-on guidance from this pilot, requires benchmark summaries to separate evidence from inference and unsupported claims, and closes the #31 benchmark roadmap once #54 lands.
