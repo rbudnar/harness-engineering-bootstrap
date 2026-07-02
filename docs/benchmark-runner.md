@@ -13,6 +13,7 @@ node scripts/benchmark-runner.mjs validate --manifest test/fixtures/benchmark-ru
 node scripts/benchmark-runner.mjs prepare --manifest test/fixtures/benchmark-runner/tasks.valid.json --task docs-only-fixture-001 --variant static-minimal-agents --workspace <temp-workspace>
 node scripts/benchmark-runner.mjs record --manifest test/fixtures/benchmark-runner/tasks.valid.json --result <manual-result.json> --out <results.jsonl> --artifacts-dir <artifact-dir>
 node scripts/benchmark-runner.mjs validate-results --manifest test/fixtures/benchmark-runner/tasks.valid.json --out <results.jsonl> --artifacts-dir <artifact-dir>
+node scripts/benchmark-summary.mjs --results <results.jsonl>
 ```
 
 Use `hash-fixture` when adding or updating a committed fixture:
@@ -71,6 +72,21 @@ Partial telemetry is allowed. If run configuration, token, cost, transcript, or 
 ## Artifact Policy
 
 Raw transcripts, diffs, workspaces, and trace logs should stay outside committed source by default. Store them under a temp or caller-provided artifact directory and record paths in `artifact_paths`. The runner records paths only; it does not inline large logs into JSONL rows.
+
+## Fresh Run Loop
+
+Use this loop for regular benchmark runs until a full agent adapter is implemented:
+
+1. Pick or create a run directory outside committed source, such as `.scratch/benchmark-runs/<date-run-id>`.
+2. Validate the manifest with `benchmark-runner.mjs validate`.
+3. For each task, variant, and trial, call `benchmark-runner.mjs prepare` into a clean workspace under the run directory.
+4. Run the chosen agent surface in that prepared workspace with the task prompt from the manifest.
+5. Run the task's deterministic graders and inspect the final diff.
+6. Write one result JSON object for that task, variant, and trial, then append it with `benchmark-runner.mjs record`.
+7. Validate the complete JSONL with `benchmark-runner.mjs validate-results`.
+8. Summarize the run with `benchmark-summary.mjs --results <results.jsonl>` and include the table in the PR body, issue comment, or report.
+
+Do not commit raw fresh-run workspaces, transcripts, or large logs. Commit a result artifact only when the run is intentionally becoming a stable pilot or release comparison.
 
 ## Pilot Boundary
 
