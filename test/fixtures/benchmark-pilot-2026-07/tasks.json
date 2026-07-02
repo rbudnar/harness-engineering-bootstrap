@@ -1,0 +1,340 @@
+{
+  "schema_version": "heb-benchmark-tasks.v1",
+  "suite_id": "issue-53-first-pilot-2026-07",
+  "harness_version": "0.1.1",
+  "variants": [
+    {
+      "id": "no-added-guidance",
+      "correction_policy": "static",
+      "overlay_paths": []
+    },
+    {
+      "id": "heb-planned-core",
+      "correction_policy": "static",
+      "overlay_paths": [
+        "variants/heb-planned-core"
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "pilot-docs-command-001",
+      "category": "docs-only",
+      "source": {
+        "type": "fixture",
+        "path": "../benchmark-runner/source-repo",
+        "revision": "sha256:5a87db4a439d22ccfdd431ffa43417ea438d06a6cc1585e331f4c146aa679968"
+      },
+      "preexisting_guidance_files": [
+        "AGENTS.md"
+      ],
+      "guidance_normalization": "removed",
+      "variant_ids": [
+        "no-added-guidance",
+        "heb-planned-core"
+      ],
+      "prompt": "Add one README sentence that names the fixture validation command.",
+      "graders": [
+        "npm test",
+        "README.md contains npm test"
+      ],
+      "expected_routes": [
+        "README.md",
+        "AGENTS.md"
+      ],
+      "excluded_requirements": [
+        "private credentials",
+        "network-only service"
+      ]
+    },
+    {
+      "id": "pilot-feature-script-002",
+      "category": "feature-addition",
+      "source": {
+        "type": "fixture",
+        "path": "../benchmark-runner/source-repo",
+        "revision": "sha256:5a87db4a439d22ccfdd431ffa43417ea438d06a6cc1585e331f4c146aa679968"
+      },
+      "preexisting_guidance_files": [
+        "AGENTS.md"
+      ],
+      "guidance_normalization": "removed",
+      "variant_ids": [
+        "no-added-guidance",
+        "heb-planned-core"
+      ],
+      "prompt": "Add a package script named check that runs the existing test command.",
+      "graders": [
+        "node -e \"const pkg=require('./package.json'); if (pkg.scripts.check !== 'npm test') process.exit(1)\"",
+        "npm test"
+      ],
+      "expected_routes": [
+        "package.json",
+        "AGENTS.md"
+      ],
+      "excluded_requirements": [
+        "private credentials",
+        "network-only service"
+      ]
+    },
+    {
+      "id": "pilot-bug-command-003",
+      "category": "bug-fix",
+      "episode": "wrong-command-family",
+      "episode_stage": "first-encounter",
+      "seeded_failure_family": "wrong validation command",
+      "source": {
+        "type": "fixture",
+        "path": "../benchmark-runner/source-repo",
+        "revision": "sha256:5a87db4a439d22ccfdd431ffa43417ea438d06a6cc1585e331f4c146aa679968"
+      },
+      "preexisting_guidance_files": [
+        "AGENTS.md"
+      ],
+      "guidance_normalization": "removed",
+      "variant_ids": [
+        "no-added-guidance",
+        "heb-planned-core"
+      ],
+      "prompt": "Fix the README command reference so it points to the package's real test command.",
+      "graders": [
+        "README.md contains npm test",
+        "npm test"
+      ],
+      "expected_routes": [
+        "README.md",
+        "package.json",
+        "AGENTS.md"
+      ],
+      "excluded_requirements": [
+        "private credentials",
+        "network-only service"
+      ]
+    },
+    {
+      "id": "pilot-refactor-readme-004",
+      "category": "refactor",
+      "source": {
+        "type": "fixture",
+        "path": "../benchmark-runner/source-repo",
+        "revision": "sha256:5a87db4a439d22ccfdd431ffa43417ea438d06a6cc1585e331f4c146aa679968"
+      },
+      "preexisting_guidance_files": [
+        "AGENTS.md"
+      ],
+      "guidance_normalization": "removed",
+      "variant_ids": [
+        "no-added-guidance",
+        "heb-planned-core"
+      ],
+      "prompt": "Tighten the README wording without changing package metadata or tests.",
+      "graders": [
+        "npm test",
+        "package.json unchanged"
+      ],
+      "expected_routes": [
+        "README.md",
+        "AGENTS.md"
+      ],
+      "excluded_requirements": [
+        "private credentials",
+        "network-only service"
+      ]
+    },
+    {
+      "id": "pilot-ci-node-test-005",
+      "category": "ci-or-release",
+      "source": {
+        "type": "fixture",
+        "path": "../benchmark-runner/source-repo",
+        "revision": "sha256:5a87db4a439d22ccfdd431ffa43417ea438d06a6cc1585e331f4c146aa679968"
+      },
+      "preexisting_guidance_files": [
+        "AGENTS.md"
+      ],
+      "guidance_normalization": "removed",
+      "variant_ids": [
+        "no-added-guidance",
+        "heb-planned-core"
+      ],
+      "prompt": "Add a minimal CI note that says the fixture is validated with npm test.",
+      "graders": [
+        "README.md contains CI",
+        "npm test"
+      ],
+      "expected_routes": [
+        "README.md",
+        "AGENTS.md"
+      ],
+      "excluded_requirements": [
+        "private credentials",
+        "network-only service"
+      ]
+    },
+    {
+      "id": "pilot-domain-guidance-006",
+      "category": "domain-gotcha",
+      "episode": "route-vague-family",
+      "episode_stage": "first-encounter",
+      "seeded_failure_family": "vague guidance route",
+      "source": {
+        "type": "fixture",
+        "path": "../benchmark-runner/source-repo",
+        "revision": "sha256:5a87db4a439d22ccfdd431ffa43417ea438d06a6cc1585e331f4c146aa679968"
+      },
+      "preexisting_guidance_files": [
+        "AGENTS.md"
+      ],
+      "guidance_normalization": "removed",
+      "variant_ids": [
+        "no-added-guidance",
+        "heb-planned-core"
+      ],
+      "prompt": "Preserve the fixture's actual validation command while adding a short troubleshooting note.",
+      "graders": [
+        "README.md contains npm test",
+        "README.md does not mention yarn test",
+        "npm test"
+      ],
+      "expected_routes": [
+        "README.md",
+        "package.json",
+        "AGENTS.md"
+      ],
+      "excluded_requirements": [
+        "private credentials",
+        "network-only service"
+      ]
+    },
+    {
+      "id": "pilot-handoff-command-007",
+      "category": "long-running-handoff",
+      "episode": "wrong-command-family",
+      "episode_stage": "near-neighbor",
+      "seeded_failure_family": "wrong validation command",
+      "source": {
+        "type": "fixture",
+        "path": "../benchmark-runner/source-repo",
+        "revision": "sha256:5a87db4a439d22ccfdd431ffa43417ea438d06a6cc1585e331f4c146aa679968"
+      },
+      "preexisting_guidance_files": [
+        "AGENTS.md"
+      ],
+      "guidance_normalization": "removed",
+      "variant_ids": [
+        "no-added-guidance",
+        "heb-planned-core"
+      ],
+      "prompt": "Write a handoff note that names the validation command and the one file changed.",
+      "graders": [
+        "README.md contains npm test",
+        "npm test"
+      ],
+      "expected_routes": [
+        "README.md",
+        "AGENTS.md"
+      ],
+      "excluded_requirements": [
+        "private credentials",
+        "network-only service"
+      ]
+    },
+    {
+      "id": "pilot-review-only-008",
+      "category": "review-only",
+      "source": {
+        "type": "fixture",
+        "path": "../benchmark-runner/source-repo",
+        "revision": "sha256:5a87db4a439d22ccfdd431ffa43417ea438d06a6cc1585e331f4c146aa679968"
+      },
+      "preexisting_guidance_files": [
+        "AGENTS.md"
+      ],
+      "guidance_normalization": "removed",
+      "variant_ids": [
+        "no-added-guidance",
+        "heb-planned-core"
+      ],
+      "prompt": "Review whether the fixture already has a deterministic test and make no edits if it does.",
+      "graders": [
+        "git diff is empty",
+        "npm test"
+      ],
+      "expected_routes": [
+        "package.json",
+        "test/smoke.test.mjs",
+        "AGENTS.md"
+      ],
+      "excluded_requirements": [
+        "private credentials",
+        "network-only service"
+      ]
+    },
+    {
+      "id": "pilot-docs-assertion-009",
+      "category": "docs-only",
+      "source": {
+        "type": "fixture",
+        "path": "../benchmark-runner/source-repo",
+        "revision": "sha256:5a87db4a439d22ccfdd431ffa43417ea438d06a6cc1585e331f4c146aa679968"
+      },
+      "preexisting_guidance_files": [
+        "AGENTS.md"
+      ],
+      "guidance_normalization": "removed",
+      "variant_ids": [
+        "no-added-guidance",
+        "heb-planned-core"
+      ],
+      "prompt": "Add an exact README assertion that the smoke test verifies arithmetic.",
+      "graders": [
+        "README.md contains arithmetic",
+        "npm test"
+      ],
+      "expected_routes": [
+        "README.md",
+        "test/smoke.test.mjs",
+        "AGENTS.md"
+      ],
+      "excluded_requirements": [
+        "private credentials",
+        "network-only service"
+      ]
+    },
+    {
+      "id": "pilot-overrouting-010",
+      "category": "feature-addition",
+      "episode": "control-harm-family",
+      "episode_stage": "first-encounter",
+      "seeded_failure_family": "unnecessary routed context",
+      "source": {
+        "type": "fixture",
+        "path": "../benchmark-runner/source-repo",
+        "revision": "sha256:5a87db4a439d22ccfdd431ffa43417ea438d06a6cc1585e331f4c146aa679968"
+      },
+      "preexisting_guidance_files": [
+        "AGENTS.md"
+      ],
+      "guidance_normalization": "removed",
+      "variant_ids": [
+        "no-added-guidance",
+        "heb-planned-core"
+      ],
+      "prompt": "Add a README sentence only; do not change package metadata or tests.",
+      "graders": [
+        "README.md changed",
+        "package.json unchanged",
+        "test/smoke.test.mjs unchanged",
+        "npm test"
+      ],
+      "expected_routes": [
+        "README.md",
+        "AGENTS.md"
+      ],
+      "excluded_requirements": [
+        "private credentials",
+        "network-only service"
+      ]
+    }
+  ]
+}

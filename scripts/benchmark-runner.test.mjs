@@ -19,6 +19,9 @@ const script = resolve(testDir, 'benchmark-runner.mjs');
 const fixtureRoot = resolve(testDir, '..', 'test', 'fixtures', 'benchmark-runner');
 const manifestPath = resolve(fixtureRoot, 'tasks.valid.json');
 const sourceRepo = resolve(fixtureRoot, 'source-repo');
+const pilotRoot = resolve(testDir, '..', 'test', 'fixtures', 'benchmark-pilot-2026-07');
+const pilotManifestPath = resolve(pilotRoot, 'tasks.json');
+const pilotResultsPath = resolve(pilotRoot, 'results.jsonl');
 
 test('validates the fixture manifest and pins the fixture checksum', () => {
   const output = execFileSync(process.execPath, [script, 'validate', '--manifest', manifestPath], { encoding: 'utf8' });
@@ -36,6 +39,113 @@ test('gitattributes pins benchmark fixture line endings for checksum portability
   const attributes = readFileSync(resolve(testDir, '..', '.gitattributes'), 'utf8');
 
   assert.match(attributes, /test\/fixtures\/benchmark-runner\/\*\* text eol=lf/);
+});
+
+test('validates the first benchmark pilot manifest and raw results', () => {
+  const output = execFileSync(process.execPath, [script, 'validate', '--manifest', pilotManifestPath], { encoding: 'utf8' });
+  const parsed = JSON.parse(output);
+
+  assert.equal(parsed.valid, true);
+  assert.equal(parsed.suite_id, 'issue-53-first-pilot-2026-07');
+  assert.equal(parsed.tasks, 10);
+  assert.deepEqual(validateResultsFile({
+    manifestPath: pilotManifestPath,
+    outPath: pilotResultsPath,
+    artifactsDir: pilotRoot,
+  }), { rows: 24 });
+});
+
+test('summarizes the first benchmark pilot result rows used by the report', () => {
+  const rows = readFileSync(pilotResultsPath, 'utf8')
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line));
+  const firstTrial = rows.filter((row) => row.trial === 1);
+
+  const median = (values) => {
+    const sorted = [...values].sort((a, b) => a - b);
+    const midpoint = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0
+      ? (sorted[midpoint - 1] + sorted[midpoint]) / 2
+      : sorted[midpoint];
+  };
+
+  const summaryFor = (variant) => {
+    const variantRows = firstTrial.filter((row) => row.variant === variant);
+
+    return {
+      tasks: variantRows.length,
+      success: variantRows.filter((row) => row.success).length,
+      firstPassGreen: variantRows.filter((row) => row.first_pass_green).length,
+      routeHits: variantRows.filter((row) => row.route_hits.length > 0).length,
+      staleHits: variantRows.reduce((total, row) => total + row.stale_hits.length, 0),
+      medianTokens: median(variantRows.map((row) => row.token_estimate.total)),
+      medianWallTime: median(variantRows.map((row) => row.wall_time_seconds)),
+    };
+  };
+
+  assert.deepEqual(summaryFor('no-added-guidance'), {
+    tasks: 10,
+    success: 7,
+    firstPassGreen: 6,
+    routeHits: 0,
+    staleHits: 3,
+    medianTokens: 4750,
+    medianWallTime: 340,
+  });
+  assert.deepEqual(summaryFor('heb-planned-core'), {
+    tasks: 10,
+    success: 8,
+    firstPassGreen: 6,
+    routeHits: 10,
+    staleHits: 0,
+    medianTokens: 6250,
+    medianWallTime: 420,
+  });
+});
+
+test('summarizes the repeated benchmark pilot rows used by the report', () => {
+  const rows = readFileSync(pilotResultsPath, 'utf8')
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line));
+  const repeatedRows = rows.filter((row) => row.trial === 2);
+
+  const summaryFor = (variant) => {
+    const variantRows = repeatedRows.filter((row) => row.variant === variant);
+
+    return {
+      repeatedTrials: variantRows.length,
+      success: variantRows.filter((row) => row.success).length,
+      sameFamilyStaleHitRecurrence: variantRows.filter((row) => row.stale_hits.length > 0).length,
+    };
+  };
+
+  assert.deepEqual(summaryFor('no-added-guidance'), {
+    repeatedTrials: 2,
+    success: 1,
+    sameFamilyStaleHitRecurrence: 1,
+  });
+  assert.deepEqual(summaryFor('heb-planned-core'), {
+    repeatedTrials: 2,
+    success: 2,
+    sameFamilyStaleHitRecurrence: 0,
+  });
+});
+
+test('preserves exact grader commands in pilot command telemetry', () => {
+  const { manifest } = readManifest(pilotManifestPath);
+  const task = manifest.tasks.find((entry) => entry.id === 'pilot-feature-script-002');
+  const rows = readFileSync(pilotResultsPath, 'utf8')
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line))
+    .filter((row) => row.task_id === task.id);
+
+  assert.equal(rows.length, 2);
+  for (const row of rows) {
+    assert.deepEqual(row.commands_run.map((command) => command.command), task.graders);
+  }
 });
 
 test('hashDirectory rejects fixture symlinks instead of dereferencing them', (t) => {
