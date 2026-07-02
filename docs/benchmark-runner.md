@@ -77,7 +77,7 @@ Raw transcripts, diffs, workspaces, and trace logs should stay outside committed
 
 Use this loop for regular benchmark runs until a full agent adapter is implemented:
 
-1. Pick or create a run directory outside committed source, such as `.scratch/benchmark-runs/<date-run-id>`.
+1. Pick or create a run directory outside the repository, such as `$env:TEMP/heb-benchmark-runs/<date-run-id>` on Windows or `/tmp/heb-benchmark-runs/<date-run-id>` on Unix-like systems.
 2. Validate the manifest with `benchmark-runner.mjs validate`.
 3. For each task, variant, and trial, call `benchmark-runner.mjs prepare` into a clean workspace under the run directory.
 4. Run the chosen agent surface in that prepared workspace with the task prompt from the manifest.
