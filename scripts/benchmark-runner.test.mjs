@@ -133,6 +133,21 @@ test('summarizes the repeated benchmark pilot rows used by the report', () => {
   });
 });
 
+test('preserves exact grader commands in pilot command telemetry', () => {
+  const { manifest } = readManifest(pilotManifestPath);
+  const task = manifest.tasks.find((entry) => entry.id === 'pilot-feature-script-002');
+  const rows = readFileSync(pilotResultsPath, 'utf8')
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line))
+    .filter((row) => row.task_id === task.id);
+
+  assert.equal(rows.length, 2);
+  for (const row of rows) {
+    assert.deepEqual(row.commands_run.map((command) => command.command), task.graders);
+  }
+});
+
 test('hashDirectory rejects fixture symlinks instead of dereferencing them', (t) => {
   const root = mkdtempSync(resolve(tmpdir(), 'heb-benchmark-symlink-'));
   const fixture = resolve(root, 'fixture');
