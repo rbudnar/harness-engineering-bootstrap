@@ -10,6 +10,12 @@ export const repoRoot = resolve(dirname(currentScript), '..');
 
 export const defaultCheckSpecs = [
   {
+    id: 'benchmark-runner-tests',
+    name: 'Benchmark runner tests',
+    command: [process.execPath, '--test', 'scripts/benchmark-runner.test.mjs'],
+    display: 'node --test scripts/benchmark-runner.test.mjs',
+  },
+  {
     id: 'bootstrap-planner-tests',
     name: 'Bootstrap planner tests',
     command: [process.execPath, '--test', 'scripts/harness-bootstrap-plan.test.mjs'],

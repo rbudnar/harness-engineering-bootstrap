@@ -89,16 +89,17 @@ Update metadata only after the bootstrap or update PR passes validation. A consu
 1. Choose the release label from the pre-1.0 rules: `release:current`, `release:patch`, or `release:minor`.
 2. Update `## Unreleased` in `CHANGELOG.md` with the required release-note headings before using `release:patch` or `release:minor`; keep it empty when using `release:current`.
 3. Keep release docs, README examples, template guidance, and planner output aligned with the chosen tag format.
-4. Run `node --test scripts/harness-bootstrap-plan.test.mjs`.
-5. Run `node --test scripts/harness-doctor.test.mjs`.
-6. Run `node --test scripts/package-entrypoint.test.mjs`.
-7. Run `node --test scripts/prepare-stable-release.test.mjs`.
-8. Run `node --test scripts/weekly-harness-report.test.mjs`.
-9. Run `node scripts/template-fitness.mjs`.
-10. Run `node scripts/harness-doctor.mjs`.
-11. Run `node scripts/harness-bootstrap-plan.mjs --repo . --mode update --target-version v<VERSION>` as the template-repo update-mode smoke test.
-12. For a bootstrapper/manual consumer smoke test, run the planner against a separate target repository before publishing release notes as final.
-13. Merge the PR with exactly one stable release label and let `.github/workflows/stable-release.yml` create the release commit, tag, and GitHub Release.
+4. Run `node --test scripts/benchmark-runner.test.mjs`.
+5. Run `node --test scripts/harness-bootstrap-plan.test.mjs`.
+6. Run `node --test scripts/harness-doctor.test.mjs`.
+7. Run `node --test scripts/package-entrypoint.test.mjs`.
+8. Run `node --test scripts/prepare-stable-release.test.mjs`.
+9. Run `node --test scripts/weekly-harness-report.test.mjs`.
+10. Run `node scripts/template-fitness.mjs`.
+11. Run `node scripts/harness-doctor.mjs`.
+12. Run `node scripts/harness-bootstrap-plan.mjs --repo . --mode update --target-version v<VERSION>` as the template-repo update-mode smoke test.
+13. For a bootstrapper/manual consumer smoke test, run the planner against a separate target repository before publishing release notes as final.
+14. Merge the PR with exactly one stable release label and let `.github/workflows/stable-release.yml` create the release commit, tag, and GitHub Release.
 
 ## Consuming Repository Update Flow
 
