@@ -26,7 +26,8 @@
     "scripts/harness-doctor.mjs",
     "scripts/harness-bootstrap-plan.mjs",
     "scripts/template-fitness.mjs",
-    "templates/"
+    "templates/",
+    "test/fixtures/terminal-bench-comparison/"
   ],
   "engines": {
     "node": ">=20"

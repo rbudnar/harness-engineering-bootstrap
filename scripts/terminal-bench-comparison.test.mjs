@@ -222,6 +222,19 @@ test('summarizes both paired jobs into a comparison object', () => {
     for (const variant of ['no-added-guidance', 'heb-guided']) {
       const job = join(root, `paired-${variant}`);
       mkdirSync(job, { recursive: true });
+      writeFileSync(join(job, 'config.json'), `${JSON.stringify({
+        n_attempts: 2,
+        timeout_multiplier: 0.35,
+        n_concurrent_trials: 3,
+        agents: [{ name: 'oracle', model_name: null }],
+        datasets: [{
+          name: 'terminal-bench/terminal-bench-2',
+          task_names: ['terminal-bench/regex-log'],
+        }],
+        extra_instruction_paths: variant === 'heb-guided'
+          ? ['test/fixtures/terminal-bench-comparison/heb-extra-instructions.md']
+          : [],
+      })}\n`);
       writeFileSync(join(job, 'result.json'), `${JSON.stringify({
         n_total_trials: 0,
         stats: { n_completed_trials: 0, n_errored_trials: 0, evals: {} },
@@ -231,6 +244,9 @@ test('summarizes both paired jobs into a comparison object', () => {
     const summary = summarizeComparison(options, '0.17.0');
     assert.equal(summary.schema_version, 'heb-terminal-bench-comparison.v1');
     assert.equal(summary.harbor_version, '0.17.0');
+    assert.equal(summary.timeout_multiplier, 0.35);
+    assert.equal(summary.n_concurrent, 3);
+    assert.equal(summary.n_attempts, 2);
     assert.deepEqual(Object.keys(summary.comparison), ['no-added-guidance', 'heb-guided']);
 
     const encoded = JSON.stringify(summary);

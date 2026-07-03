@@ -429,19 +429,21 @@ function redactMessage(message) {
 }
 
 export function summarizeComparison(options, harborVersion = null) {
-  const jobs = variants.map((variant) => summarizeJob(resolve(options.jobsDir, jobNameFor(options, variant.id)), variant.id));
+  const jobDirs = variants.map((variant) => resolve(options.jobsDir, jobNameFor(options, variant.id)));
+  const jobs = variants.map((variant, index) => summarizeJob(jobDirs[index], variant.id));
+  const metadata = comparisonMetadataFromJobConfigs(options, jobDirs);
   return {
     schema_version: schemaVersion,
     generated_at: new Date().toISOString(),
-    dataset: options.dataset,
-    tasks: options.tasks,
-    agent: options.agent,
-    model: options.model,
+    dataset: metadata.dataset,
+    tasks: metadata.tasks,
+    agent: metadata.agent,
+    model: metadata.model,
     harbor_version: harborVersion,
-    timeout_multiplier: Number(options.timeoutMultiplier),
-    n_concurrent: Number(options.nConcurrent),
-    n_attempts: Number(options.nAttempts),
-    guidance_file: options.guidanceFile,
+    timeout_multiplier: metadata.timeoutMultiplier,
+    n_concurrent: metadata.nConcurrent,
+    n_attempts: metadata.nAttempts,
+    guidance_file: metadata.guidanceFile,
     variants: jobs,
     comparison: Object.fromEntries(jobs.map((job) => [
       job.variant,
@@ -456,6 +458,34 @@ export function summarizeComparison(options, harborVersion = null) {
       },
     ])),
   };
+}
+
+function comparisonMetadataFromJobConfigs(options, jobDirs) {
+  const configs = jobDirs.map((jobDir) => readJsonIfExists(join(jobDir, 'config.json'))).filter(Boolean);
+  const firstConfig = configs[0] || {};
+  const guidedConfig = configs.find((config) => Array.isArray(config.extra_instruction_paths) && config.extra_instruction_paths.length) || {};
+  const firstDataset = firstConfig.datasets?.[0] || {};
+  const firstAgent = firstConfig.agents?.[0] || {};
+
+  return {
+    dataset: firstDataset.name || options.dataset,
+    tasks: firstDataset.task_names || options.tasks,
+    agent: firstAgent.name || options.agent,
+    model: firstAgent.model_name ?? options.model,
+    timeoutMultiplier: numberOrDefault(firstConfig.timeout_multiplier, Number(options.timeoutMultiplier)),
+    nConcurrent: numberOrDefault(firstConfig.n_concurrent_trials, Number(options.nConcurrent)),
+    nAttempts: numberOrDefault(firstConfig.n_attempts, Number(options.nAttempts)),
+    guidanceFile: guidedConfig.extra_instruction_paths?.[0] || options.guidanceFile,
+  };
+}
+
+function readJsonIfExists(path) {
+  if (!existsSync(path)) return null;
+  return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+function numberOrDefault(value, fallback) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
 export function runComparison(options, {
@@ -522,7 +552,9 @@ async function main() {
   if (options.command === 'summarize') {
     const result = preflight({ ...options, command: 'summarize', allowMissingAuth: true });
     const summary = summarizeComparison(options, result.harbor_version);
-    writeFileSync(resolve(options.out), `${JSON.stringify(summary, null, 2)}\n`);
+    const outPath = resolve(options.out);
+    mkdirSync(resolve(outPath, '..'), { recursive: true });
+    writeFileSync(outPath, `${JSON.stringify(summary, null, 2)}\n`);
     console.log(JSON.stringify(summary, null, 2));
     return;
   }
