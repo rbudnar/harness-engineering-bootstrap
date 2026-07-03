@@ -294,6 +294,13 @@ test('wsl mode normalizes Harbor path arguments', () => {
   assert.doesNotMatch(invocation.args[2], /C:\\Users/);
 });
 
+test('wsl mode rejects WSL-only absolute output paths', () => {
+  assert.throws(
+    () => parseArgs(['run', '--agent', 'oracle', '--wsl', '--jobs-dir', '/tmp/heb-runs']),
+    /--jobs-dir cannot be a WSL-only absolute path/,
+  );
+});
+
 test('wsl preflight reads credential presence from WSL without exposing values', () => {
   const options = parseArgs(['preflight', '--wsl']);
   const calls = [];

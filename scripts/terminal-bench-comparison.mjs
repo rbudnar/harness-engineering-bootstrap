@@ -119,6 +119,7 @@ export function parseArgs(argv = process.argv.slice(2), now = new Date()) {
     throw new Error('--model is required for model-backed agents other than the claude-code default.');
   }
   if (!options.out) options.out = join(options.jobsDir, `${options.runId}-summary.json`);
+  rejectWslOnlyPaths(options);
 
   validatePositiveIntegerString(options.nConcurrent, '--n-concurrent');
   validatePositiveIntegerString(options.nAttempts, '--n-attempts');
@@ -140,6 +141,22 @@ function validatePositiveIntegerString(value, flag) {
 function validatePositiveNumberString(value, flag) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) throw new Error(`${flag} must be a positive number.`);
+}
+
+function rejectWslOnlyPaths(options) {
+  if (!options.wsl) return;
+  const fields = [
+    ['--jobs-dir', options.jobsDir],
+    ['--out', options.out],
+  ];
+  if (options.guidanceFile !== defaultGuidanceFile) fields.push(['--guidance-file', options.guidanceFile]);
+  const rejected = fields.find(([, value]) => isWslOnlyAbsolutePath(value));
+  if (!rejected) return;
+  throw new Error(`${rejected[0]} cannot be a WSL-only absolute path when --wsl is run from Windows; use a relative path or Windows-readable path.`);
+}
+
+function isWslOnlyAbsolutePath(value) {
+  return String(value || '').startsWith('/');
 }
 
 function timestampRunId(now) {
@@ -175,6 +192,7 @@ export function helpText() {
     '  --allow-missing-auth        Let preflight report missing auth without failing',
     '',
     'Codex subscription auth from Windows with --wsl: set CODEX_AUTH_JSON_PATH to a WSL-readable path and WSLENV=CODEX_AUTH_JSON_PATH.',
+    'With --wsl, path options must be relative or Windows-readable because Node summarizes results from Windows.',
   ].join('\n');
 }
 
