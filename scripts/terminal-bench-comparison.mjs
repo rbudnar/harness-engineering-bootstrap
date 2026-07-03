@@ -539,10 +539,14 @@ export function summarizeComparison(options, harborVersion = null) {
 }
 
 function comparisonMetadataFromJobConfigs(options, jobDirs) {
-  const configs = jobDirs.map((jobDir) => readJsonIfExists(join(jobDir, 'config.json'))).filter(Boolean);
+  const configEntries = variants
+    .map((variant, index) => ({ variant: variant.id, config: readJsonIfExists(join(jobDirs[index], 'config.json')) }))
+    .filter((entry) => entry.config);
+  const configs = configEntries.map((entry) => entry.config);
   assertComparableJobConfigs(configs);
+  assertGuidanceTreatment(configEntries);
   const firstConfig = configs[0] || {};
-  const guidedConfig = configs.find((config) => Array.isArray(config.extra_instruction_paths) && config.extra_instruction_paths.length) || {};
+  const guidedConfig = configEntries.find((entry) => entry.variant === 'heb-guided')?.config || {};
   const firstDataset = firstConfig.datasets?.[0] || {};
   const firstAgent = firstConfig.agents?.[0] || {};
 
@@ -556,6 +560,18 @@ function comparisonMetadataFromJobConfigs(options, jobDirs) {
     nAttempts: numberOrDefault(firstConfig.n_attempts, Number(options.nAttempts)),
     guidanceFile: guidedConfig.extra_instruction_paths?.[0] || options.guidanceFile,
   };
+}
+
+function assertGuidanceTreatment(configEntries) {
+  for (const { variant, config } of configEntries) {
+    const extraInstructions = Array.isArray(config.extra_instruction_paths) ? config.extra_instruction_paths : [];
+    if (variant === 'no-added-guidance' && extraInstructions.length) {
+      throw new Error('no-added-guidance Harbor config unexpectedly has extra instructions; refusing to summarize mismatched comparison.');
+    }
+    if (variant === 'heb-guided' && !extraInstructions.length) {
+      throw new Error('heb-guided Harbor config is missing extra instructions; refusing to summarize mismatched comparison.');
+    }
+  }
 }
 
 function assertComparableJobConfigs(configs) {
@@ -615,7 +631,6 @@ export function runComparison(options, {
   mkdir = mkdirSync,
   writeFile = writeFileSync,
 } = {}) {
-  mkdir(resolve(options.jobsDir), { recursive: true });
   const commands = variants.map((variant) => ({
     variant: variant.id,
     args: buildHarborArgs(options, variant),
@@ -631,6 +646,7 @@ export function runComparison(options, {
     };
   }
 
+  mkdir(resolve(options.jobsDir), { recursive: true });
   for (const entry of commands) {
     const invocation = buildHarborInvocation(options, entry.args);
     const result = run(invocation.command, invocation.args, { stdio: 'inherit', env: process.env });
