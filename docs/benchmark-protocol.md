@@ -23,6 +23,20 @@ The first benchmark must measure repeated agent work, not a single task. HEB's s
 - tau-bench-style repeated-trial reliability is relevant because one successful attempt can hide inconsistent agent behavior: https://sierra.ai/blog/tau-bench-shaping-development-evaluation-agents
 - GitHub's Copilot harness evaluation combines public benchmarks, internal benchmarks, real-world metrics, controlled harness comparisons, token efficiency, task resolution, and run-to-run variance: https://github.blog/ai-and-ml/github-copilot/evaluating-performance-and-efficiency-of-the-github-copilot-agentic-harness-across-models-and-tasks/
 
+## Benchmark Source Catalog
+
+The first HEB pilot is local: it uses the committed fixture under `test/fixtures/benchmark-runner/source-repo`, not a public benchmark suite. External benchmarks are design evidence and adapter candidates until the runner can preserve their native evaluation semantics.
+
+Good public candidates:
+
+| Source | Canonical source | What it tests | HEB use |
+| --- | --- | --- | --- |
+| SWE-bench / SWE-bench Lite / Verified | https://github.com/swe-bench/SWE-bench and https://www.swebench.com/SWE-bench/ | Real GitHub issue resolution with patch evaluation. | Best fit for coding-agent outcome comparisons after an adapter can pin dataset split, repo revision, Docker image behavior, and generated patch evaluation. |
+| Terminal-Bench | https://github.com/harbor-framework/terminal-bench and https://www.tbench.ai/ | End-to-end terminal tasks with task instructions, tests, and sandboxed execution. | Best first public external benchmark for CLI-agent harness behavior, because its native shape already matches prepared environments plus programmatic graders. |
+| tau-bench / tau2-bench / tau3-bench | https://github.com/sierra-research/tau2-bench and https://www.taubench.com/ | Tool-using conversational agents across domain policies and APIs. | Useful for runtime/tool-policy and handoff guidance, but not a direct coding-harness baseline. Keep separate from coding-task success claims. |
+
+Do not mix these scores with the local pilot table. Add a public benchmark only through an adapter that records source version, task subset, native command, environment requirements, scoring semantics, and any known divergence from upstream leaderboard rules. If an adapter depends on upstream repository behavior rather than a one-time reference, add a compact repo contract before treating the results as comparable.
+
 ## Variants
 
 Run each task against these variants with the same model, agent surface, time budget, and starting repository state:
