@@ -7,7 +7,7 @@ Feeds: #54 governance feedback
 
 ## Scope
 
-This is the first checked-in HEB benchmark pilot artifact. It uses the #52 runner schema against a small public fixture suite so the project has raw rows to inspect before making governance claims.
+This is the first checked-in HEB benchmark pilot artifact. It uses the #52 runner schema against a committed local public-style fixture, not an imported public benchmark suite, so the project has raw rows to inspect before making governance claims.
 
 The pilot is intentionally modest:
 

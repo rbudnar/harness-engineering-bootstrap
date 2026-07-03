@@ -11,6 +11,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - Added the first directional HEB benchmark pilot report and raw JSONL result artifact, with explicit caveats that the tiny manual-adapter suite does not justify broad performance claims.
 - Added benchmark governance rules so pilot results drive scoped template, planner, dogfooding, or roadmap decisions without promoting unsupported performance claims.
 - Added a benchmark summary helper, fresh-run loop, and public benchmark source catalog so regular HEB eval runs can stay reproducible without confusing local fixture pilots with external leaderboards.
+- Clarified that the first HEB benchmark pilot uses a committed local public-style fixture rather than an imported public benchmark suite.
 - Added a PR Agent Inbox check that keeps a sticky PR status comment current and fails while agent-actionable review or merge-readiness work remains.
 
 ### Template Changes
