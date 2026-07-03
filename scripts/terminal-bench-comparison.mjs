@@ -9,16 +9,18 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const scriptPath = fileURLToPath(import.meta.url);
+const packageRoot = resolve(dirname(scriptPath), '..');
 
 export const schemaVersion = 'heb-terminal-bench-comparison.v1';
 export const defaultDataset = 'terminal-bench/terminal-bench-2';
 export const defaultTasks = ['terminal-bench/regex-log'];
 export const defaultJobsDir = '.heb-benchmark-runs/terminal-bench';
 export const defaultGuidanceFile = 'test/fixtures/terminal-bench-comparison/heb-extra-instructions.md';
+const defaultGuidanceFilePath = resolve(packageRoot, defaultGuidanceFile);
 
 const variants = [
   { id: 'no-added-guidance', extraInstruction: false },
@@ -196,8 +198,9 @@ export function preflight(options, {
   }
 
   if (options.command !== 'preflight' && options.command !== 'summarize') {
-    if (!fileExists(resolve(options.guidanceFile))) {
-      errors.push(`guidance file not found: ${options.guidanceFile}`);
+    const guidancePath = guidanceFilePath(options);
+    if (!fileExists(guidancePath)) {
+      errors.push(`guidance file not found: ${guidancePath}`);
     }
   }
 
@@ -294,8 +297,16 @@ export function buildHarborArgs(options, variant) {
 
   for (const task of options.tasks) args.push('-i', task);
   for (const agentKwarg of options.agentKwargs) args.push('--ak', agentKwarg);
-  if (variant.extraInstruction) args.push('--extra-instruction-path', options.guidanceFile);
+  if (variant.extraInstruction) args.push('--extra-instruction-path', guidanceFileForHarbor(options));
   return args;
+}
+
+function guidanceFileForHarbor(options) {
+  return options.guidanceFile === defaultGuidanceFile ? defaultGuidanceFilePath : options.guidanceFile;
+}
+
+function guidanceFilePath(options) {
+  return resolve(guidanceFileForHarbor(options));
 }
 
 export function buildHarborInvocation(options, harborArgs) {
@@ -603,7 +614,7 @@ async function main() {
     return;
   }
 
-  assertReadablePath(resolve(options.guidanceFile), 'guidance file');
+  assertReadablePath(guidanceFilePath(options), 'guidance file');
   if (!options.skipPreflight && !options.dryRun) {
     const result = preflight(options);
     if (!result.valid) {

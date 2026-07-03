@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { test } from 'node:test';
 import {
   buildHarborArgs,
@@ -45,7 +45,9 @@ test('builds paired Harbor commands with guidance only on the HEB variant', () =
   assert(noGuidance.includes('terminal-bench/regex-log'));
   assert(!noGuidance.includes('--extra-instruction-path'));
   assert(guided.includes('--extra-instruction-path'));
-  assert(guided.includes('test/fixtures/terminal-bench-comparison/heb-extra-instructions.md'));
+  const guidancePath = guided[guided.indexOf('--extra-instruction-path') + 1];
+  assert(isAbsolute(guidancePath));
+  assert(guidancePath.endsWith(join('test', 'fixtures', 'terminal-bench-comparison', 'heb-extra-instructions.md')));
   assert.equal(jobNameFor(options, 'heb-guided'), 'issue-70-live-heb-guided');
 });
 
