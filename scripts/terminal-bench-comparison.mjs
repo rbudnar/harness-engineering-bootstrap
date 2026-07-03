@@ -113,7 +113,7 @@ export function parseArgs(argv = process.argv.slice(2), now = new Date()) {
   if (!options.model && options.agent === 'claude-code') {
     options.model = 'anthropic/claude-haiku-4-5';
   }
-  if (!options.model && !['oracle', 'nop'].includes(options.agent)) {
+  if (!options.model && options.command !== 'summarize' && !['oracle', 'nop'].includes(options.agent)) {
     throw new Error('--model is required for model-backed agents other than the claude-code default.');
   }
   if (!options.out) options.out = join(options.jobsDir, `${options.runId}-summary.json`);
@@ -301,9 +301,10 @@ export function buildHarborArgs(options, variant) {
 export function buildHarborInvocation(options, harborArgs) {
   if (!options.wsl) return { command: 'harbor', args: harborArgs };
   const cwd = windowsPathToWsl(process.cwd());
+  const wslHarborArgs = normalizeHarborPathArgsForWsl(harborArgs);
   return {
     command: 'wsl.exe',
-    args: ['bash', '-lc', `cd ${shellQuote(cwd)} && ${commandLine('harbor', harborArgs)}`],
+    args: ['bash', '-lc', `cd ${shellQuote(cwd)} && ${commandLine('harbor', wslHarborArgs)}`],
   };
 }
 
@@ -311,6 +312,20 @@ function windowsPathToWsl(path) {
   const match = /^([A-Za-z]):[\\/](.*)$/.exec(path);
   if (!match) return path.replaceAll('\\', '/');
   return `/mnt/${match[1].toLowerCase()}/${match[2].replaceAll('\\', '/')}`;
+}
+
+function normalizeHarborPathArgsForWsl(args) {
+  const pathFlags = new Set(['-o', '--extra-instruction-path']);
+  const normalized = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    normalized.push(arg);
+    if (pathFlags.has(arg) && index + 1 < args.length) {
+      normalized.push(windowsPathToWsl(args[index + 1]));
+      index += 1;
+    }
+  }
+  return normalized;
 }
 
 function sanitizeName(value) {
@@ -449,8 +464,10 @@ function secondsBetween(startedAt, finishedAt) {
 function redactMessage(message) {
   const redacted = String(message)
     .replace(/sk-ant-[A-Za-z0-9_-]+/g, '[REDACTED]')
+    .replace(/sk-proj-[A-Za-z0-9_-]+/g, '[REDACTED]')
+    .replace(/sk-[A-Za-z0-9_-]+/g, '[REDACTED]')
     .replace(/Bearer\s+[A-Za-z0-9._-]+/g, 'Bearer [REDACTED]')
-    .replace(/("?(?:accessToken|refreshToken|CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY)"?\s*[:=]\s*)[^,}\s]+/g, '$1[REDACTED]');
+    .replace(/("?(?:accessToken|refreshToken|CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY|OPENAI_API_KEY|api_key)"?\s*[:=]\s*)[^,}\s]+/g, '$1[REDACTED]');
   return redacted.length > 1200 ? `${redacted.slice(0, 1200)} ... [truncated]` : redacted;
 }
 

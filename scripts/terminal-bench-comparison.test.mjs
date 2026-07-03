@@ -271,6 +271,27 @@ test('wsl mode wraps Harbor in a bash command for Windows orchestration', () => 
   assert.match(invocation.args[2], /--extra-instruction-path/);
 });
 
+test('wsl mode normalizes Harbor path arguments', () => {
+  const options = parseArgs([
+    'run',
+    '--run-id',
+    'dry',
+    '--agent',
+    'oracle',
+    '--jobs-dir',
+    'C:\\Users\\Rbudn\\heb-runs',
+    '--guidance-file',
+    '.\\test\\fixtures\\terminal-bench-comparison\\heb-extra-instructions.md',
+    '--wsl',
+  ]);
+
+  const invocation = buildHarborInvocation(options, buildHarborArgs(options, { id: 'heb-guided', extraInstruction: true }));
+
+  assert.match(invocation.args[2], /-o \/mnt\/c\/Users\/Rbudn\/heb-runs/);
+  assert.match(invocation.args[2], /--extra-instruction-path \.\/test\/fixtures\/terminal-bench-comparison\/heb-extra-instructions\.md/);
+  assert.doesNotMatch(invocation.args[2], /C:\\Users/);
+});
+
 test('wsl preflight reads credential presence from WSL without exposing values', () => {
   const options = parseArgs(['preflight', '--wsl']);
   const calls = [];
@@ -292,6 +313,12 @@ test('wsl preflight reads credential presence from WSL without exposing values',
   assert.equal(result.valid, true);
   assert.equal(calls[0][0], 'wsl.exe');
   assert.equal(result.harbor_version, '0.17.0');
+});
+
+test('summarize accepts model-backed agents without restating model flag', () => {
+  const options = parseArgs(['summarize', '--agent', 'codex', '--run-id', 'paired']);
+
+  assert.equal(options.model, null);
 });
 
 test('summarizes both paired jobs into a comparison object', () => {
@@ -339,6 +366,43 @@ test('summarizes both paired jobs into a comparison object', () => {
 
     const encoded = JSON.stringify(summary);
     assert.equal(JSON.parse(encoded).dataset, 'terminal-bench/terminal-bench-2');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('redacts OpenAI credentials from exception summaries', () => {
+  const root = mkdtempSync(resolve(tmpdir(), 'heb-terminal-bench-redaction-'));
+  const job = join(root, 'issue-70-live-no-added-guidance');
+  const trial = join(job, 'regex-log__abc123');
+  mkdirSync(trial, { recursive: true });
+
+  try {
+    writeFileSync(join(job, 'result.json'), `${JSON.stringify({
+      n_total_trials: 1,
+      stats: { n_completed_trials: 0, n_errored_trials: 1, evals: {} },
+    })}\n`);
+    writeFileSync(join(trial, 'result.json'), `${JSON.stringify({
+      task_name: 'terminal-bench/regex-log',
+      trial_name: 'regex-log__abc123',
+      agent_info: {
+        name: 'codex',
+        version: '0.142.5',
+        model_info: { name: 'gpt-5.5' },
+      },
+      verifier_result: { rewards: { reward: 0 } },
+      exception_info: {
+        exception_type: 'RuntimeError',
+        exception_message: 'OPENAI_API_KEY=sk-proj-secretvalue api_key=sk-secretvalue Bearer live-token',
+      },
+    })}\n`);
+
+    const summary = summarizeJob(job, 'no-added-guidance');
+    const message = summary.trials[0].exception_message;
+    assert.match(message, /OPENAI_API_KEY=\[REDACTED\]/);
+    assert.match(message, /api_key=\[REDACTED\]/);
+    assert.match(message, /Bearer \[REDACTED\]/);
+    assert.doesNotMatch(message, /sk-proj-secretvalue|sk-secretvalue|live-token/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
