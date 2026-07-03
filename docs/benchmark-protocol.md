@@ -37,7 +37,7 @@ Good public candidates:
 
 Do not mix these scores with the local pilot table. Add a public benchmark only through an adapter that records source version, task subset, native command, environment requirements, scoring semantics, and any known divergence from upstream leaderboard rules. If an adapter depends on upstream repository behavior rather than a one-time reference, add a compact repo contract before treating the results as comparable.
 
-See `docs/benchmark-comparison-2026-07.md` for the #70 Terminal-Bench spike, and read `docs/repo-contracts/terminal-bench-adapter.md` before changing Terminal-Bench adapter behavior or interpreting Terminal-Bench results.
+See `docs/benchmark-comparison-2026-07.md` for the #70 Terminal-Bench comparison, use `scripts/terminal-bench-comparison.mjs` for paired Harbor smoke or model-agent runs, and read `docs/repo-contracts/terminal-bench-adapter.md` before changing Terminal-Bench adapter behavior or interpreting Terminal-Bench results.
 
 ## Variants
 

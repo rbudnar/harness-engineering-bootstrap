@@ -10,7 +10,9 @@ This report compares the current HEB local benchmark evidence with a tiny Termin
 The comparison has two separate lanes:
 
 - Local HEB lane: validated the existing HEB pilot rows for `no-added-guidance` versus `heb-planned-core`.
-- Terminal-Bench lane: proved a one-task legacy-package Terminal-Bench smoke in WSL, then recorded the Harbor route needed for any future public/reportable Terminal-Bench 2.x comparison.
+- Terminal-Bench lane: added a WSL-aware Harbor comparison runner, proved paired `no-added-guidance` versus `heb-guided` execution with `oracle`, and attempted the same paired run with `claude-code`.
+
+The `claude-code` attempt reached Harbor and Claude Code inside the task container but stopped before model inference because no valid Anthropic credential was available to the sandbox. That is an actual run artifact, not a performance result.
 
 ## Local HEB Lane
 
@@ -55,7 +57,98 @@ Current public-lane shape:
 
 - Terminal-Bench 2.0 docs name Harbor as the official harness and use `harbor run -d terminal-bench/terminal-bench-2 -a oracle -l 5` for a smoke run.
 - Terminal-Bench 2.1 docs run through Harbor with the `terminal-bench/terminal-bench-2-1` dataset.
-- A future reportable Terminal-Bench comparison should use Harbor, pin the dataset, task subset, model, agent surface, attempts, timeouts, run order, and any divergence from leaderboard rules.
+- Reportable Terminal-Bench comparisons should use Harbor, pin the dataset, task subset, model, agent surface, attempts, timeouts, run order, and any divergence from leaderboard rules.
+- Harbor exposes `--extra-instruction-path`, which this PR uses for the `heb-guided` condition while leaving upstream tasks and scoring unchanged.
+
+## Harbor Comparison Runner
+
+This PR adds `scripts/terminal-bench-comparison.mjs` and the reviewed guidance fixture `test/fixtures/terminal-bench-comparison/heb-extra-instructions.md`.
+
+The runner executes two Harbor jobs with the same dataset, task ids, agent, model, attempts, concurrency, and timeout:
+
+- `no-added-guidance`: passes only the Terminal-Bench task instruction.
+- `heb-guided`: appends the committed HEB guidance fixture through Harbor `--extra-instruction-path`.
+
+It writes local artifacts under `.heb-benchmark-runs/terminal-bench/`, which is gitignored. The summary JSON records Harbor version, dataset, task refs, task checksums, agent/model versions, reward, exceptions, token counts, cost, and wall-time fields from Harbor `result.json`.
+
+Windows/WSL command shape used in this PR:
+
+```bash
+node scripts/terminal-bench-comparison.mjs preflight --wsl --agent claude-code
+
+node scripts/terminal-bench-comparison.mjs run \
+  --wsl \
+  --agent claude-code \
+  --model anthropic/claude-haiku-4-5 \
+  --run-id issue-70-claude-auth-blocked \
+  --task terminal-bench/regex-log \
+  --timeout-multiplier 0.35 \
+  --ak max_turns=20 \
+  --ak thinking=disabled \
+  --out .heb-benchmark-runs/terminal-bench/issue-70-claude-auth-blocked-summary.json
+```
+
+For a reportable run, use valid provider credentials in WSL and keep `--timeout-multiplier 1` unless the report explicitly scopes itself as a smoke.
+
+## Harbor Runs From This PR
+
+Environment:
+
+- Date: 2026-07-03.
+- Harbor: `0.17.0`.
+- Dataset: `terminal-bench/terminal-bench-2`.
+- Task: `terminal-bench/regex-log`.
+- Task ref: `sha256:72f5f52d6b523a00380cb088fcf0ba83a2e2f7b478fdad6515598ab43584e337`.
+- Task checksum: `993ccf8945b50b4acc3af94bec7ade72c047aed23374dacabb2010d7816bd992`.
+- Attempts/concurrency: `-k 1`, `-n 1`.
+- Timeout multiplier: `0.35` for smoke timing.
+
+Runner oracle paired smoke:
+
+```bash
+node scripts/terminal-bench-comparison.mjs run \
+  --wsl \
+  --agent oracle \
+  --run-id issue-70-oracle-pair \
+  --task terminal-bench/regex-log \
+  --timeout-multiplier 0.35 \
+  --out .heb-benchmark-runs/terminal-bench/issue-70-oracle-pair-summary.json
+```
+
+| Variant | Agent | Reward | Success | Exceptions | Wall time | Token/cost |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| `no-added-guidance` | `oracle` | 1.0 | 1/1 | 0 | 26s | n/a |
+| `heb-guided` | `oracle` | 1.0 | 1/1 | 0 | 27s | n/a |
+
+Runner Claude-Code paired attempt:
+
+```bash
+node scripts/terminal-bench-comparison.mjs run \
+  --wsl \
+  --agent claude-code \
+  --model anthropic/claude-haiku-4-5 \
+  --run-id issue-70-claude-auth-blocked \
+  --task terminal-bench/regex-log \
+  --timeout-multiplier 0.35 \
+  --ak max_turns=20 \
+  --ak thinking=disabled \
+  --allow-missing-auth \
+  --out .heb-benchmark-runs/terminal-bench/issue-70-claude-auth-blocked-summary.json
+```
+
+| Variant | Agent/model | Reward | Success | Exceptions | Input/output tokens | Cost | Wall time |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `no-added-guidance` | `claude-code` / `claude-haiku-4-5` | 0.0 | 0/1 | 1 | 0 / 0 | $0.00 | 55s |
+| `heb-guided` | `claude-code` / `claude-haiku-4-5` | 0.0 | 0/1 | 1 | 0 / 0 | $0.00 | 51s |
+
+Interpretation: this proves the model-agent lane is wired but not authenticated. Harbor reported `apiKeySource: none` in the Claude Code agent stream, both variants exited as `NonZeroAgentExitCodeError`, and no provider tokens were consumed. It does not compare HEB performance.
+
+Credential checks performed:
+
+- Windows and WSL process environments had no `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, or `OPENAI_API_KEY`.
+- Passing the short local Claude access token as `CLAUDE_CODE_OAUTH_TOKEN` reached Claude Code but failed with `401 Invalid authentication credentials`.
+- The host `claude --print` path also failed with `403` for the current account state.
+- The earlier Codex Harbor attempt with `CODEX_FORCE_AUTH_JSON=true` failed before inference because the local Codex auth refresh token was stale/reused; no `OPENAI_API_KEY` was available.
 
 Observed legacy package shape:
 
@@ -92,9 +185,9 @@ The `nop` run used the same task id and command shape, replacing `--agent oracle
 
 ## Terminal-Bench Adapter Findings
 
-Terminal-Bench is feasible as an external lane from WSL on this machine. It is not yet a committed HEB benchmark adapter.
+Terminal-Bench is feasible as an external lane from WSL on this machine. This PR commits the smallest runner needed to repeat the paired Harbor comparison once model credentials are available.
 
-The #70 smoke used the legacy package lane because that was the locally installable path available during the spike. Public or reportable Terminal-Bench 2.x comparisons should use Harbor instead of `terminal-bench-core==0.1.1`.
+The first #70 smoke used the legacy package lane because that was the locally installable path available during the spike. Public or reportable Terminal-Bench 2.x comparisons should use Harbor instead of `terminal-bench-core==0.1.1`.
 
 Windows-native blockers found during the spike:
 
@@ -108,11 +201,11 @@ WSL avoided those Windows-native blockers and completed the oracle/nop smoke.
 Adapter path:
 
 - The legacy package installed agents use `--agent-kwarg prompt_template=<path>` to render task instructions through a Jinja2 template containing `{{ instruction }}`.
-- Harbor docs expose built-in agents and custom agents through `--agent-import-path`; a future Harbor comparison should verify the current guidance-injection mechanism before running reportable results.
+- Harbor exposes `--extra-instruction-path`; `scripts/terminal-bench-comparison.mjs` uses that flag for the HEB-guided condition.
 - A true HEB/no-HEB comparison should run the same model agent, task ids, attempts, timeouts, dataset version, and harness lane with two guidance surfaces:
   - no added guidance: pass through the task instruction only;
-  - HEB guided: prepend only the smallest HEB task-run guidance needed to preserve deterministic grading, avoid stale context, and report evidence/tradeoffs.
-- `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` were absent in both Windows and WSL shells, so no Codex or Claude Terminal-Bench model-agent comparison was run in this spike.
+  - HEB guided: append only the smallest HEB task-run guidance needed to preserve deterministic grading, avoid stale context, and report evidence/tradeoffs.
+- `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, and `CLAUDE_CODE_OAUTH_TOKEN` were absent in both Windows and WSL shells. The paired Claude-Code jobs ran, but they failed before model inference and therefore are auth-blocked evidence rather than benchmark scores.
 
 ## Evidence, Inference, Unsupported Claims
 
@@ -121,6 +214,9 @@ Evidence:
 - The local HEB pilot manifest and result rows still validate with the current repo state.
 - The local HEB summary remains `no-added-guidance` 7/10 first-trial success versus `heb-planned-core` 8/10, with equal first-pass green and higher HEB cost/time proxies.
 - Terminal-Bench `terminal-bench-core==0.1.1` can run from WSL here on one selected legacy-package task: oracle resolved `swe-bench-langcodes`; nop did not.
+- The committed runner can run paired Harbor jobs from Windows through WSL and successfully used Harbor `--extra-instruction-path`.
+- The Harbor `oracle` paired smoke resolved `terminal-bench/regex-log` in both variants.
+- The Harbor `claude-code` paired attempt ran both variants but failed before inference with no valid provider credential, recording zero tokens and zero cost.
 - Windows-native Terminal-Bench execution has concrete encoding, Unix-tool, Git line-ending, and Docker path blockers.
 
 Inference:
@@ -128,16 +224,17 @@ Inference:
 - Terminal-Bench is a viable external benchmark family for this repo when run from WSL or Linux.
 - HEB/no-HEB Terminal-Bench comparison should wrap agent guidance through the selected harness's native agent mechanism, not by changing Terminal-Bench tasks or scoring.
 - Harbor is the right default lane for future public/reportable Terminal-Bench 2.x comparisons.
+- The current runner is sufficient for a small regular smoke and for a credentialed one-task model A/B; larger or leaderboard-style runs should expand task count and timeouts deliberately.
 
 Unsupported:
 
-- This spike does not show that HEB improves Terminal-Bench model-agent results.
+- This spike does not show that HEB improves Terminal-Bench model-agent results, because the model-agent attempt did not authenticate.
 - This spike does not make the local HEB pilot comparable with Terminal-Bench leaderboard scores.
 - This spike does not prove that the legacy `terminal-bench-core==0.1.1` lane is comparable with current Terminal-Bench 2.x Harbor leaderboard rules.
 - This spike does not justify template, planner, or dogfooding expansion.
 
 ## Decision
 
-Close #70 with this bounded comparison report and repo contract. Do not expand HEB guidance from these results.
+Close #70 with this bounded comparison report, the WSL-aware Harbor runner, the committed HEB guidance fixture, and the repo contract. Do not expand HEB guidance from these results.
 
-If a future decision needs public benchmark evidence, run a separate model-backed Terminal-Bench comparison from WSL/Linux with credentials available, Harbor as the current public-lane harness, fixed task ids, fixed model and agent surface, and two checked guidance surfaces. Keep those results separate from the local HEB pilot table.
+The next time valid provider credentials are present, rerun the exact `claude-code` or `codex` command above without `--allow-missing-auth`, use `--timeout-multiplier 1` for a reportable run, and update this report with the resulting paired model scores before making any HEB performance claim.
