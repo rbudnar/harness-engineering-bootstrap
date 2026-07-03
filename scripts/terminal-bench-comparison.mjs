@@ -535,6 +535,7 @@ export function summarizeComparison(options, harborVersion = null) {
 
 function comparisonMetadataFromJobConfigs(options, jobDirs) {
   const configs = jobDirs.map((jobDir) => readJsonIfExists(join(jobDir, 'config.json'))).filter(Boolean);
+  assertComparableJobConfigs(configs);
   const firstConfig = configs[0] || {};
   const guidedConfig = configs.find((config) => Array.isArray(config.extra_instruction_paths) && config.extra_instruction_paths.length) || {};
   const firstDataset = firstConfig.datasets?.[0] || {};
@@ -550,6 +551,49 @@ function comparisonMetadataFromJobConfigs(options, jobDirs) {
     nAttempts: numberOrDefault(firstConfig.n_attempts, Number(options.nAttempts)),
     guidanceFile: guidedConfig.extra_instruction_paths?.[0] || options.guidanceFile,
   };
+}
+
+function assertComparableJobConfigs(configs) {
+  if (configs.length < 2) return;
+  const baseline = comparableConfigFields(configs[0]);
+  for (const config of configs.slice(1)) {
+    const candidate = comparableConfigFields(config);
+    for (const field of Object.keys(baseline)) {
+      if (stableJson(baseline[field]) !== stableJson(candidate[field])) {
+        throw new Error(`paired Harbor configs differ for ${field}; refusing to summarize mismatched comparison.`);
+      }
+    }
+  }
+}
+
+function comparableConfigFields(config) {
+  const dataset = config.datasets?.[0] || {};
+  const agent = config.agents?.[0] || {};
+  return {
+    dataset: dataset.name ?? null,
+    dataset_version: dataset.version ?? null,
+    dataset_ref: dataset.ref ?? null,
+    task_names: dataset.task_names ?? [],
+    agent: agent.name ?? null,
+    model: agent.model_name ?? null,
+    agent_kwargs: agent.kwargs ?? {},
+    timeout_multiplier: config.timeout_multiplier ?? null,
+    n_concurrent_trials: config.n_concurrent_trials ?? null,
+    n_attempts: config.n_attempts ?? null,
+  };
+}
+
+function stableJson(value) {
+  return JSON.stringify(stableValue(value));
+}
+
+function stableValue(value) {
+  if (value === undefined) return null;
+  if (!value || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map((entry) => stableValue(entry));
+  const sorted = {};
+  for (const key of Object.keys(value).sort()) sorted[key] = stableValue(value[key]);
+  return sorted;
 }
 
 function readJsonIfExists(path) {
