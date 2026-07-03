@@ -406,6 +406,9 @@ export function summarizeJob(jobDir, variantId) {
     n_trials: jobResult.n_total_trials ?? trials.length,
     n_completed_trials: jobResult.stats?.n_completed_trials ?? null,
     n_errored_trials: jobResult.stats?.n_errored_trials ?? exceptionCount,
+    n_running_trials: jobResult.stats?.n_running_trials ?? null,
+    n_pending_trials: jobResult.stats?.n_pending_trials ?? null,
+    n_cancelled_trials: jobResult.stats?.n_cancelled_trials ?? null,
     mean_reward: firstMetricMean(jobResult),
     success_count: successCount,
     exception_count: exceptionCount,
@@ -544,6 +547,19 @@ function assertCompleteJobResults(jobs) {
   if (missing.length) {
     throw new Error(`paired Harbor result missing for variants: ${missing.join(', ')}; refusing to summarize incomplete comparison.`);
   }
+  const incomplete = jobs.filter((job) => !isCompleteJobResult(job)).map((job) => job.variant);
+  if (incomplete.length) {
+    throw new Error(`paired Harbor result incomplete for variants: ${incomplete.join(', ')}; refusing to summarize incomplete comparison.`);
+  }
+}
+
+function isCompleteJobResult(job) {
+  if (!job.finished_at) return false;
+  if (typeof job.n_trials === 'number' && typeof job.n_completed_trials === 'number' && job.n_completed_trials !== job.n_trials) return false;
+  for (const field of ['n_running_trials', 'n_pending_trials', 'n_cancelled_trials']) {
+    if (typeof job[field] === 'number' && job[field] !== 0) return false;
+  }
+  return true;
 }
 
 function comparisonMetadataFromJobConfigs(options, jobDirs) {

@@ -394,8 +394,9 @@ test('summarizes both paired jobs into a comparison object', () => {
           : [],
       })}\n`);
       writeFileSync(join(job, 'result.json'), `${JSON.stringify({
+        finished_at: '2026-07-03T12:01:00.000Z',
         n_total_trials: 0,
-        stats: { n_completed_trials: 0, n_errored_trials: 0, evals: {} },
+        stats: { n_completed_trials: 0, n_errored_trials: 0, n_running_trials: 0, n_pending_trials: 0, n_cancelled_trials: 0, evals: {} },
       })}\n`);
     }
 
@@ -445,8 +446,9 @@ test('summarize rejects mismatched paired Harbor configs', () => {
           : [],
       })}\n`);
       writeFileSync(join(job, 'result.json'), `${JSON.stringify({
+        finished_at: '2026-07-03T12:01:00.000Z',
         n_total_trials: 0,
-        stats: { n_completed_trials: 0, n_errored_trials: 0, evals: {} },
+        stats: { n_completed_trials: 0, n_errored_trials: 0, n_running_trials: 0, n_pending_trials: 0, n_cancelled_trials: 0, evals: {} },
       })}\n`);
     }
 
@@ -487,13 +489,67 @@ test('summarize rejects incomplete paired Harbor jobs', () => {
       extra_instruction_paths: [],
     })}\n`);
     writeFileSync(join(job, 'result.json'), `${JSON.stringify({
+      finished_at: '2026-07-03T12:01:00.000Z',
       n_total_trials: 0,
-      stats: { n_completed_trials: 0, n_errored_trials: 0, evals: {} },
+      stats: { n_completed_trials: 0, n_errored_trials: 0, n_running_trials: 0, n_pending_trials: 0, n_cancelled_trials: 0, evals: {} },
     })}\n`);
 
     assert.throws(
       () => summarizeComparison(options, '0.17.0'),
       /paired Harbor result missing for variants: heb-guided/,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('summarize rejects unfinished Harbor result files', () => {
+  const root = mkdtempSync(resolve(tmpdir(), 'heb-terminal-bench-unfinished-'));
+  const options = parseArgs([
+    'summarize',
+    '--jobs-dir',
+    root,
+    '--run-id',
+    'paired',
+    '--agent',
+    'oracle',
+  ]);
+
+  try {
+    for (const variant of ['no-added-guidance', 'heb-guided']) {
+      const job = join(root, `paired-${variant}`);
+      mkdirSync(job, { recursive: true });
+      writeFileSync(join(job, 'config.json'), `${JSON.stringify({
+        n_attempts: 2,
+        timeout_multiplier: 1,
+        n_concurrent_trials: 1,
+        agents: [{ name: 'oracle', model_name: null, kwargs: {} }],
+        datasets: [{
+          name: 'terminal-bench/terminal-bench-2',
+          ref: 'sha256:dataset',
+          task_names: ['terminal-bench/regex-log'],
+        }],
+        extra_instruction_paths: variant === 'heb-guided'
+          ? ['test/fixtures/terminal-bench-comparison/heb-extra-instructions.md']
+          : [],
+      })}\n`);
+      writeFileSync(join(job, 'result.json'), `${JSON.stringify({
+        finished_at: variant === 'no-added-guidance' ? '2026-07-03T12:01:00.000Z' : null,
+        n_total_trials: 2,
+        stats: {
+          n_completed_trials: variant === 'no-added-guidance' ? 2 : 1,
+          n_errored_trials: 0,
+          n_running_trials: variant === 'no-added-guidance' ? 0 : 1,
+          n_pending_trials: 0,
+          n_cancelled_trials: 0,
+          evals: {},
+        },
+      })}\n`);
+    }
+
+    assert.throws(
+      () => summarizeComparison(options, '0.17.0'),
+      /paired Harbor result incomplete for variants: heb-guided/,
     );
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -532,8 +588,9 @@ test('summarize rejects swapped guidance treatment configs', () => {
         extra_instruction_paths: extraInstructionPaths,
       })}\n`);
       writeFileSync(join(job, 'result.json'), `${JSON.stringify({
+        finished_at: '2026-07-03T12:01:00.000Z',
         n_total_trials: 0,
-        stats: { n_completed_trials: 0, n_errored_trials: 0, evals: {} },
+        stats: { n_completed_trials: 0, n_errored_trials: 0, n_running_trials: 0, n_pending_trials: 0, n_cancelled_trials: 0, evals: {} },
       })}\n`);
     }
 
