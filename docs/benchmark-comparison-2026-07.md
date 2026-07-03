@@ -10,9 +10,9 @@ This report compares the current HEB local benchmark evidence with a tiny Termin
 The comparison has two separate lanes:
 
 - Local HEB lane: validated the existing HEB pilot rows for `no-added-guidance` versus `heb-planned-core`.
-- Terminal-Bench lane: added a WSL-aware Harbor comparison runner, proved paired `no-added-guidance` versus `heb-guided` execution with `oracle`, and attempted the same paired run with `claude-code`.
+- Terminal-Bench lane: added a WSL-aware Harbor comparison runner, proved paired `no-added-guidance` versus `heb-guided` execution with `oracle`, attempted the same paired run with `claude-code`, and completed the paired run with `codex` using subscription-backed ChatGPT auth.
 
-The `claude-code` attempt reached Harbor and Claude Code inside the task container but stopped before model inference because no valid Anthropic credential was available to the sandbox. That is an actual run artifact, not a performance result.
+The `claude-code` attempt reached Harbor and Claude Code inside the task container but stopped before model inference because no valid Anthropic credential was available to the sandbox. The `codex` attempt reached model inference through `CODEX_AUTH_JSON_PATH` and resolved both variants.
 
 ## Local HEB Lane
 
@@ -71,24 +71,28 @@ The runner executes two Harbor jobs with the same dataset, task ids, agent, mode
 
 It writes local artifacts under `.heb-benchmark-runs/terminal-bench/`, which is gitignored. The summary JSON records Harbor version, dataset, task refs, task checksums, agent/model versions, reward, exceptions, token counts, cost, and wall-time fields from Harbor `result.json`.
 
-Windows/WSL command shape used in this PR:
+Windows/WSL command shape used for the Codex subscription-auth run:
 
 ```bash
-node scripts/terminal-bench-comparison.mjs preflight --wsl --agent claude-code
+export CODEX_AUTH_JSON_PATH=/mnt/c/Users/Rbudn/.codex/auth.json
+export WSLENV=CODEX_AUTH_JSON_PATH
+
+node scripts/terminal-bench-comparison.mjs preflight --wsl --agent codex --model gpt-5.5
 
 node scripts/terminal-bench-comparison.mjs run \
   --wsl \
-  --agent claude-code \
-  --model anthropic/claude-haiku-4-5 \
-  --run-id issue-70-claude-auth-blocked \
+  --agent codex \
+  --model gpt-5.5 \
+  --run-id issue-70-codex-chatgpt-auth \
   --task terminal-bench/regex-log \
-  --timeout-multiplier 0.35 \
-  --ak max_turns=20 \
-  --ak thinking=disabled \
-  --out .heb-benchmark-runs/terminal-bench/issue-70-claude-auth-blocked-summary.json
+  --timeout-multiplier 1 \
+  --ak reasoning_effort=medium \
+  --ak reasoning_summary=none \
+  --ak web_search=disabled \
+  --out .heb-benchmark-runs/terminal-bench/issue-70-codex-chatgpt-auth-summary.json
 ```
 
-For a reportable run, use valid provider credentials in WSL and keep `--timeout-multiplier 1` unless the report explicitly scopes itself as a smoke.
+`CODEX_AUTH_JSON_PATH` points Harbor at the refreshed Windows Codex ChatGPT auth file from inside WSL. `WSLENV=CODEX_AUTH_JSON_PATH` is required so WSL receives the variable from Windows PowerShell.
 
 ## Harbor Runs From This PR
 
@@ -101,7 +105,7 @@ Environment:
 - Task ref: `sha256:72f5f52d6b523a00380cb088fcf0ba83a2e2f7b478fdad6515598ab43584e337`.
 - Task checksum: `993ccf8945b50b4acc3af94bec7ade72c047aed23374dacabb2010d7816bd992`.
 - Attempts/concurrency: `-k 1`, `-n 1`.
-- Timeout multiplier: `0.35` for smoke timing.
+- Timeout multiplier: `0.35` for oracle/Claude smoke timing and `1` for the Codex subscription-auth run.
 
 Runner oracle paired smoke:
 
@@ -119,6 +123,31 @@ node scripts/terminal-bench-comparison.mjs run \
 | --- | --- | ---: | ---: | ---: | ---: | --- |
 | `no-added-guidance` | `oracle` | 1.0 | 1/1 | 0 | 26s | n/a |
 | `heb-guided` | `oracle` | 1.0 | 1/1 | 0 | 27s | n/a |
+
+Runner Codex paired model run with ChatGPT subscription auth:
+
+```bash
+node scripts/terminal-bench-comparison.mjs run \
+  --wsl \
+  --agent codex \
+  --model gpt-5.5 \
+  --run-id issue-70-codex-chatgpt-auth \
+  --task terminal-bench/regex-log \
+  --timeout-multiplier 1 \
+  --ak reasoning_effort=medium \
+  --ak reasoning_summary=none \
+  --ak web_search=disabled \
+  --out .heb-benchmark-runs/terminal-bench/issue-70-codex-chatgpt-auth-summary.json
+```
+
+| Variant | Agent/model | Reward | Success | Exceptions | Input/cache/output/reasoning tokens | Cost | Wall time |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `no-added-guidance` | `codex` / `gpt-5.5` | 1.0 | 1/1 | 0 | 41,927 / 18,944 / 2,017 / 1,081 | n/a | 247s |
+| `heb-guided` | `codex` / `gpt-5.5` | 1.0 | 1/1 | 0 | 76,179 / 53,248 / 2,423 / 761 | n/a | 223s |
+
+Interpretation: this is a real model-agent run through Harbor using subscription-backed Codex auth, not an API key. Both variants passed the single task. This one-task, one-attempt result does not show HEB improves Terminal-Bench performance; it only proves the paired runner can execute a credentialed model benchmark and preserve reward plus token telemetry.
+
+Harbor wrote null token fields in `agent_result` because its Codex trajectory conversion hit a post-run LiteLLM/cwd error after the tasks passed. The committed runner now falls back to the raw Codex `turn.completed` usage event in `agent/codex.txt` for input, cached-input, output, and reasoning-token counts. Cost remains `n/a` because subscription-backed ChatGPT auth does not expose API billing cost in this run artifact.
 
 Runner Claude-Code paired attempt:
 
@@ -149,6 +178,7 @@ Credential checks performed:
 - Passing the short local Claude access token as `CLAUDE_CODE_OAUTH_TOKEN` reached Claude Code but failed with `401 Invalid authentication credentials`.
 - The host `claude --print` path also failed with `403` for the current account state.
 - The earlier Codex Harbor attempt with `CODEX_FORCE_AUTH_JSON=true` failed before inference because the local Codex auth refresh token was stale/reused; no `OPENAI_API_KEY` was available.
+- The successful Codex run used `CODEX_AUTH_JSON_PATH=/mnt/c/Users/Rbudn/.codex/auth.json` with `WSLENV=CODEX_AUTH_JSON_PATH`, pointing WSL Harbor at the refreshed Windows Codex ChatGPT auth file.
 
 Observed legacy package shape:
 
@@ -185,7 +215,7 @@ The `nop` run used the same task id and command shape, replacing `--agent oracle
 
 ## Terminal-Bench Adapter Findings
 
-Terminal-Bench is feasible as an external lane from WSL on this machine. This PR commits the smallest runner needed to repeat the paired Harbor comparison once model credentials are available.
+Terminal-Bench is feasible as an external lane from WSL on this machine. This PR commits the smallest runner needed to repeat the paired Harbor comparison and verifies both oracle smoke and subscription-auth Codex model execution.
 
 The first #70 smoke used the legacy package lane because that was the locally installable path available during the spike. Public or reportable Terminal-Bench 2.x comparisons should use Harbor instead of `terminal-bench-core==0.1.1`.
 
@@ -206,6 +236,7 @@ Adapter path:
   - no added guidance: pass through the task instruction only;
   - HEB guided: append only the smallest HEB task-run guidance needed to preserve deterministic grading, avoid stale context, and report evidence/tradeoffs.
 - `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, and `CLAUDE_CODE_OAUTH_TOKEN` were absent in both Windows and WSL shells. The paired Claude-Code jobs ran, but they failed before model inference and therefore are auth-blocked evidence rather than benchmark scores.
+- Codex subscription auth worked through Harbor by forwarding `CODEX_AUTH_JSON_PATH` into WSL via `WSLENV`.
 
 ## Evidence, Inference, Unsupported Claims
 
@@ -217,6 +248,7 @@ Evidence:
 - The committed runner can run paired Harbor jobs from Windows through WSL and successfully used Harbor `--extra-instruction-path`.
 - The Harbor `oracle` paired smoke resolved `terminal-bench/regex-log` in both variants.
 - The Harbor `claude-code` paired attempt ran both variants but failed before inference with no valid provider credential, recording zero tokens and zero cost.
+- The Harbor `codex` paired run used ChatGPT subscription auth and resolved `terminal-bench/regex-log` in both variants with reward 1.0.
 - Windows-native Terminal-Bench execution has concrete encoding, Unix-tool, Git line-ending, and Docker path blockers.
 
 Inference:
@@ -224,11 +256,11 @@ Inference:
 - Terminal-Bench is a viable external benchmark family for this repo when run from WSL or Linux.
 - HEB/no-HEB Terminal-Bench comparison should wrap agent guidance through the selected harness's native agent mechanism, not by changing Terminal-Bench tasks or scoring.
 - Harbor is the right default lane for future public/reportable Terminal-Bench 2.x comparisons.
-- The current runner is sufficient for a small regular smoke and for a credentialed one-task model A/B; larger or leaderboard-style runs should expand task count and timeouts deliberately.
+- The current runner is sufficient for a small regular smoke and for a credentialed one-task model A/B; larger or leaderboard-style runs should expand task count, attempts, and timeouts deliberately.
 
 Unsupported:
 
-- This spike does not show that HEB improves Terminal-Bench model-agent results, because the model-agent attempt did not authenticate.
+- This spike does not show that HEB improves Terminal-Bench model-agent results, because the only authenticated model-agent run is a single one-task, one-attempt comparison where both variants passed.
 - This spike does not make the local HEB pilot comparable with Terminal-Bench leaderboard scores.
 - This spike does not prove that the legacy `terminal-bench-core==0.1.1` lane is comparable with current Terminal-Bench 2.x Harbor leaderboard rules.
 - This spike does not justify template, planner, or dogfooding expansion.
@@ -237,4 +269,4 @@ Unsupported:
 
 Close #70 with this bounded comparison report, the WSL-aware Harbor runner, the committed HEB guidance fixture, and the repo contract. Do not expand HEB guidance from these results.
 
-The next time valid provider credentials are present, rerun the exact `claude-code` or `codex` command above without `--allow-missing-auth`, use `--timeout-multiplier 1` for a reportable run, and update this report with the resulting paired model scores before making any HEB performance claim.
+Before making any HEB performance claim, expand the credentialed Codex lane beyond this one-task smoke: use more Terminal-Bench tasks, repeated attempts, and fixed run order, then compare reward, pass-at-k, token/cost telemetry where available, and wall time.

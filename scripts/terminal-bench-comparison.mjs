@@ -171,6 +171,8 @@ export function helpText() {
     '  --wsl                      Run Harbor through wsl.exe from Windows Node',
     '  --dry-run                  Print commands without running Harbor',
     '  --allow-missing-auth        Let preflight report missing auth without failing',
+    '',
+    'Codex subscription auth from Windows with --wsl: set CODEX_AUTH_JSON_PATH to a WSL-readable path and WSLENV=CODEX_AUTH_JSON_PATH.',
   ].join('\n');
 }
 
@@ -226,9 +228,10 @@ function authPreflightError(agent, env, fileExists) {
   if (agent === 'codex') {
     const codexAuthPath = join(env.CODEX_HOME || join(homedir(), '.codex'), 'auth.json');
     if (env.OPENAI_API_KEY) return null;
+    if (env.CODEX_AUTH_JSON_PATH_PRESENT || (env.CODEX_AUTH_JSON_PATH && fileExists(env.CODEX_AUTH_JSON_PATH))) return null;
     if (truthy(env.CODEX_FORCE_AUTH_JSON) && (env.CODEX_AUTH_JSON_PRESENT || fileExists(codexAuthPath))) return null;
     return [
-      'codex requires OPENAI_API_KEY, or CODEX_FORCE_AUTH_JSON=true with a refreshable Codex auth.json.',
+      'codex requires OPENAI_API_KEY, CODEX_AUTH_JSON_PATH, or CODEX_FORCE_AUTH_JSON=true with a refreshable Codex auth.json.',
       'A stale auth.json can still fail during Harbor execution.',
     ].join(' ');
   }
@@ -242,9 +245,10 @@ function readWslCredentialPresence(run) {
     'python3 - <<\'PY\'',
     'import json, os',
     'from pathlib import Path',
-    'keys = ["OPENAI_API_KEY","ANTHROPIC_API_KEY","ANTHROPIC_AUTH_TOKEN","CLAUDE_CODE_OAUTH_TOKEN","CLAUDE_FORCE_OAUTH","CODEX_FORCE_AUTH_JSON"]',
+    'keys = ["OPENAI_API_KEY","ANTHROPIC_API_KEY","ANTHROPIC_AUTH_TOKEN","CLAUDE_CODE_OAUTH_TOKEN","CLAUDE_FORCE_OAUTH","CODEX_FORCE_AUTH_JSON","CODEX_AUTH_JSON_PATH"]',
     'data = {key: "1" for key in keys if os.environ.get(key)}',
     'data["CODEX_AUTH_JSON_PRESENT"] = "1" if (Path(os.environ.get("CODEX_HOME", str(Path.home()/".codex")))/"auth.json").exists() else ""',
+    'data["CODEX_AUTH_JSON_PATH_PRESENT"] = "1" if os.environ.get("CODEX_AUTH_JSON_PATH") and Path(os.environ["CODEX_AUTH_JSON_PATH"]).is_file() else ""',
     'print(json.dumps(data))',
     'PY',
   ].join('\n');
@@ -359,6 +363,7 @@ export function summarizeJob(jobDir, variantId) {
     input_tokens: jobResult.stats?.n_input_tokens ?? sumNullable(trials, 'input_tokens'),
     cache_tokens: jobResult.stats?.n_cache_tokens ?? sumNullable(trials, 'cache_tokens'),
     output_tokens: jobResult.stats?.n_output_tokens ?? sumNullable(trials, 'output_tokens'),
+    reasoning_tokens: sumNullable(trials, 'reasoning_tokens'),
     cost_usd: jobResult.stats?.cost_usd ?? sumNullable(trials, 'cost_usd'),
     trials,
   };
@@ -369,6 +374,7 @@ function summarizeTrial(trialPath) {
   const reward = result.verifier_result?.rewards?.reward;
   const agent = result.agent_info || {};
   const model = agent.model_info || {};
+  const codexUsage = agent.name === 'codex' ? readCodexUsageFallback(trialPath) : null;
 
   return {
     trial_name: result.trial_name || basename(resolve(trialPath, '..')),
@@ -382,9 +388,10 @@ function summarizeTrial(trialPath) {
     reward: typeof reward === 'number' ? reward : null,
     exception_type: result.exception_info?.exception_type || null,
     exception_message: result.exception_info?.exception_message ? redactMessage(result.exception_info.exception_message) : null,
-    input_tokens: numberOrNull(result.agent_result?.n_input_tokens),
-    cache_tokens: numberOrNull(result.agent_result?.n_cache_tokens),
-    output_tokens: numberOrNull(result.agent_result?.n_output_tokens),
+    input_tokens: numberOrNull(result.agent_result?.n_input_tokens) ?? numberOrNull(codexUsage?.input_tokens),
+    cache_tokens: numberOrNull(result.agent_result?.n_cache_tokens) ?? numberOrNull(codexUsage?.cached_input_tokens),
+    output_tokens: numberOrNull(result.agent_result?.n_output_tokens) ?? numberOrNull(codexUsage?.output_tokens),
+    reasoning_tokens: numberOrNull(codexUsage?.reasoning_output_tokens),
     cost_usd: numberOrNull(result.agent_result?.cost_usd),
     started_at: result.started_at || null,
     finished_at: result.finished_at || null,
@@ -392,6 +399,25 @@ function summarizeTrial(trialPath) {
     agent_execution_seconds: secondsBetween(result.agent_execution?.started_at, result.agent_execution?.finished_at),
     verifier_seconds: secondsBetween(result.verifier?.started_at, result.verifier?.finished_at),
   };
+}
+
+function readCodexUsageFallback(trialPath) {
+  const logPath = join(resolve(trialPath, '..'), 'agent', 'codex.txt');
+  if (!existsSync(logPath)) return null;
+  let lastUsage = null;
+  for (const line of readFileSync(logPath, 'utf8').split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('{')) continue;
+    try {
+      const event = JSON.parse(trimmed);
+      if (event.type === 'turn.completed' && event.usage && typeof event.usage === 'object') {
+        lastUsage = event.usage;
+      }
+    } catch {
+      // Ignore non-JSON diagnostic lines in Codex output.
+    }
+  }
+  return lastUsage;
 }
 
 function firstMetricMean(jobResult) {
@@ -454,6 +480,7 @@ export function summarizeComparison(options, harborVersion = null) {
         mean_reward: job.mean_reward ?? null,
         input_tokens: job.input_tokens ?? null,
         output_tokens: job.output_tokens ?? null,
+        reasoning_tokens: job.reasoning_tokens ?? null,
         cost_usd: job.cost_usd ?? null,
       },
     ])),
