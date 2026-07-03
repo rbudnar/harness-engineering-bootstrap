@@ -508,6 +508,7 @@ function redactMessage(message) {
 export function summarizeComparison(options, harborVersion = null) {
   const jobDirs = variants.map((variant) => resolve(options.jobsDir, jobNameFor(options, variant.id)));
   const jobs = variants.map((variant, index) => summarizeJob(jobDirs[index], variant.id));
+  assertCompleteJobResults(jobs);
   const metadata = comparisonMetadataFromJobConfigs(options, jobDirs);
   return {
     schema_version: schemaVersion,
@@ -538,15 +539,26 @@ export function summarizeComparison(options, harborVersion = null) {
   };
 }
 
+function assertCompleteJobResults(jobs) {
+  const missing = jobs.filter((job) => job.missing_result).map((job) => job.variant);
+  if (missing.length) {
+    throw new Error(`paired Harbor result missing for variants: ${missing.join(', ')}; refusing to summarize incomplete comparison.`);
+  }
+}
+
 function comparisonMetadataFromJobConfigs(options, jobDirs) {
   const configEntries = variants
-    .map((variant, index) => ({ variant: variant.id, config: readJsonIfExists(join(jobDirs[index], 'config.json')) }))
-    .filter((entry) => entry.config);
-  const configs = configEntries.map((entry) => entry.config);
+    .map((variant, index) => ({ variant: variant.id, config: readJsonIfExists(join(jobDirs[index], 'config.json')) }));
+  const missingConfigs = configEntries.filter((entry) => !entry.config).map((entry) => entry.variant);
+  if (missingConfigs.length) {
+    throw new Error(`paired Harbor config missing for variants: ${missingConfigs.join(', ')}; refusing to summarize incomplete comparison.`);
+  }
+  const presentConfigEntries = configEntries.filter((entry) => entry.config);
+  const configs = presentConfigEntries.map((entry) => entry.config);
   assertComparableJobConfigs(configs);
-  assertGuidanceTreatment(configEntries);
+  assertGuidanceTreatment(presentConfigEntries);
   const firstConfig = configs[0] || {};
-  const guidedConfig = configEntries.find((entry) => entry.variant === 'heb-guided')?.config || {};
+  const guidedConfig = presentConfigEntries.find((entry) => entry.variant === 'heb-guided')?.config || {};
   const firstDataset = firstConfig.datasets?.[0] || {};
   const firstAgent = firstConfig.agents?.[0] || {};
 

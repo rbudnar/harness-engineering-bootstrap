@@ -459,6 +459,47 @@ test('summarize rejects mismatched paired Harbor configs', () => {
   }
 });
 
+test('summarize rejects incomplete paired Harbor jobs', () => {
+  const root = mkdtempSync(resolve(tmpdir(), 'heb-terminal-bench-missing-pair-'));
+  const options = parseArgs([
+    'summarize',
+    '--jobs-dir',
+    root,
+    '--run-id',
+    'paired',
+    '--agent',
+    'oracle',
+  ]);
+  const job = join(root, 'paired-no-added-guidance');
+  mkdirSync(job, { recursive: true });
+
+  try {
+    writeFileSync(join(job, 'config.json'), `${JSON.stringify({
+      n_attempts: 1,
+      timeout_multiplier: 1,
+      n_concurrent_trials: 1,
+      agents: [{ name: 'oracle', model_name: null, kwargs: {} }],
+      datasets: [{
+        name: 'terminal-bench/terminal-bench-2',
+        ref: 'sha256:dataset',
+        task_names: ['terminal-bench/regex-log'],
+      }],
+      extra_instruction_paths: [],
+    })}\n`);
+    writeFileSync(join(job, 'result.json'), `${JSON.stringify({
+      n_total_trials: 0,
+      stats: { n_completed_trials: 0, n_errored_trials: 0, evals: {} },
+    })}\n`);
+
+    assert.throws(
+      () => summarizeComparison(options, '0.17.0'),
+      /paired Harbor result missing for variants: heb-guided/,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('summarize rejects swapped guidance treatment configs', () => {
   const root = mkdtempSync(resolve(tmpdir(), 'heb-terminal-bench-guidance-mismatch-'));
   const options = parseArgs([
