@@ -118,6 +118,26 @@ test('wsl preflight accepts forwarded Codex auth json path presence', () => {
   assert.equal(result.valid, true);
 });
 
+test('wsl preflight does not treat false Codex auth-json flag as enabled', () => {
+  const options = parseArgs(['preflight', '--wsl', '--agent', 'codex', '--model', 'gpt-5.5']);
+  const result = preflight(options, {
+    env: {},
+    fileExists: (path) => path.includes('heb-extra-instructions.md'),
+    run: (command, args) => {
+      if (command === 'wsl.exe' && args[2].includes('harbor --version')) {
+        return { status: 0, stdout: '0.17.0\n' };
+      }
+      if (command === 'wsl.exe') {
+        return { status: 0, stdout: JSON.stringify({ CODEX_FORCE_AUTH_JSON: '0', CODEX_AUTH_JSON_PRESENT: '1' }) };
+      }
+      return { status: 1, stdout: '' };
+    },
+  });
+
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join('\n'), /codex requires OPENAI_API_KEY/);
+});
+
 test('summarizes Harbor job reward exception and token telemetry', () => {
   const root = mkdtempSync(resolve(tmpdir(), 'heb-terminal-bench-summary-'));
   const job = join(root, 'issue-70-live-no-added-guidance');
@@ -459,7 +479,7 @@ test('redacts OpenAI credentials from exception summaries', () => {
       verifier_result: { rewards: { reward: 0 } },
       exception_info: {
         exception_type: 'RuntimeError',
-        exception_message: 'OPENAI_API_KEY=sk-proj-secretvalue api_key=sk-secretvalue Bearer live-token',
+        exception_message: 'OPENAI_API_KEY=sk-proj-secretvalue api_key=sk-secretvalue access_token=oauth-access refresh_token=oauth-refresh id_token=oauth-id Bearer live-token',
       },
     })}\n`);
 
@@ -467,8 +487,11 @@ test('redacts OpenAI credentials from exception summaries', () => {
     const message = summary.trials[0].exception_message;
     assert.match(message, /OPENAI_API_KEY=\[REDACTED\]/);
     assert.match(message, /api_key=\[REDACTED\]/);
+    assert.match(message, /access_token=\[REDACTED\]/);
+    assert.match(message, /refresh_token=\[REDACTED\]/);
+    assert.match(message, /id_token=\[REDACTED\]/);
     assert.match(message, /Bearer \[REDACTED\]/);
-    assert.doesNotMatch(message, /sk-proj-secretvalue|sk-secretvalue|live-token/);
+    assert.doesNotMatch(message, /sk-proj-secretvalue|sk-secretvalue|oauth-access|oauth-refresh|oauth-id|live-token/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

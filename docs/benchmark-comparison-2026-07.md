@@ -73,22 +73,22 @@ It writes local artifacts under `.heb-benchmark-runs/terminal-bench/`, which is 
 
 Windows/WSL command shape used for the Codex subscription-auth run:
 
-```bash
-export CODEX_AUTH_JSON_PATH=/mnt/c/Users/Rbudn/.codex/auth.json
-export WSLENV=CODEX_AUTH_JSON_PATH
+```powershell
+$env:CODEX_AUTH_JSON_PATH = '/mnt/c/Users/Rbudn/.codex/auth.json'
+$env:WSLENV = 'CODEX_AUTH_JSON_PATH'
 
 node scripts/terminal-bench-comparison.mjs preflight --wsl --agent codex --model gpt-5.5
 
-node scripts/terminal-bench-comparison.mjs run \
-  --wsl \
-  --agent codex \
-  --model gpt-5.5 \
-  --run-id issue-70-codex-chatgpt-auth \
-  --task terminal-bench/regex-log \
-  --timeout-multiplier 1 \
-  --ak reasoning_effort=medium \
-  --ak reasoning_summary=none \
-  --ak web_search=disabled \
+node scripts/terminal-bench-comparison.mjs run `
+  --wsl `
+  --agent codex `
+  --model gpt-5.5 `
+  --run-id issue-70-codex-chatgpt-auth `
+  --task terminal-bench/regex-log `
+  --timeout-multiplier 1 `
+  --ak reasoning_effort=medium `
+  --ak reasoning_summary=none `
+  --ak web_search=disabled `
   --out .heb-benchmark-runs/terminal-bench/issue-70-codex-chatgpt-auth-summary.json
 ```
 

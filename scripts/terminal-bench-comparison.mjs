@@ -266,8 +266,13 @@ function readWslCredentialPresence(run) {
     'python3 - <<\'PY\'',
     'import json, os',
     'from pathlib import Path',
-    'keys = ["OPENAI_API_KEY","ANTHROPIC_API_KEY","ANTHROPIC_AUTH_TOKEN","CLAUDE_CODE_OAUTH_TOKEN","CLAUDE_FORCE_OAUTH","CODEX_FORCE_AUTH_JSON","CODEX_AUTH_JSON_PATH"]',
-    'data = {key: "1" for key in keys if os.environ.get(key)}',
+    'secret_keys = ["OPENAI_API_KEY","ANTHROPIC_API_KEY","ANTHROPIC_AUTH_TOKEN","CLAUDE_CODE_OAUTH_TOKEN","CODEX_AUTH_JSON_PATH"]',
+    'boolean_keys = ["CLAUDE_FORCE_OAUTH","CODEX_FORCE_AUTH_JSON"]',
+    'data = {key: "1" for key in secret_keys if os.environ.get(key)}',
+    'for key in boolean_keys:',
+    '    value = os.environ.get(key)',
+    '    if value:',
+    '        data[key] = value',
     'data["CODEX_AUTH_JSON_PRESENT"] = "1" if (Path(os.environ.get("CODEX_HOME", str(Path.home()/".codex")))/"auth.json").exists() else ""',
     'data["CODEX_AUTH_JSON_PATH_PRESENT"] = "1" if os.environ.get("CODEX_AUTH_JSON_PATH") and Path(os.environ["CODEX_AUTH_JSON_PATH"]).is_file() else ""',
     'print(json.dumps(data))',
@@ -496,7 +501,7 @@ function redactMessage(message) {
     .replace(/sk-proj-[A-Za-z0-9_-]+/g, '[REDACTED]')
     .replace(/sk-[A-Za-z0-9_-]+/g, '[REDACTED]')
     .replace(/Bearer\s+[A-Za-z0-9._-]+/g, 'Bearer [REDACTED]')
-    .replace(/("?(?:accessToken|refreshToken|CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY|OPENAI_API_KEY|api_key)"?\s*[:=]\s*)[^,}\s]+/g, '$1[REDACTED]');
+    .replace(/("?(?:accessToken|refreshToken|access_token|refresh_token|id_token|CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY|OPENAI_API_KEY|api_key)"?\s*[:=]\s*)[^,}\s]+/g, '$1[REDACTED]');
   return redacted.length > 1200 ? `${redacted.slice(0, 1200)} ... [truncated]` : redacted;
 }
 
