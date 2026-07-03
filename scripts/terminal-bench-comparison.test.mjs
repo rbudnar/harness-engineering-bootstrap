@@ -88,6 +88,18 @@ test('preflight validates the guidance file for run readiness', () => {
   assert.match(result.errors.join('\n'), /guidance file not found:/);
 });
 
+test('preflight honors Claude forced OAuth before API-key fallbacks', () => {
+  const options = parseArgs(['preflight', '--agent', 'claude-code']);
+  const result = preflight(options, {
+    env: { CLAUDE_FORCE_OAUTH: '1', ANTHROPIC_API_KEY: '1' },
+    fileExists: (path) => path.includes('heb-extra-instructions.md'),
+    run: () => ({ status: 0, stdout: '0.17.0\n' }),
+  });
+
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join('\n'), /CLAUDE_FORCE_OAUTH enabled/);
+});
+
 test('preflight accepts Codex subscription auth by explicit auth json path', () => {
   const options = parseArgs(['preflight', '--agent', 'codex', '--model', 'gpt-5.5']);
   const result = preflight(options, {
@@ -97,6 +109,18 @@ test('preflight accepts Codex subscription auth by explicit auth json path', () 
   });
 
   assert.equal(result.valid, true);
+});
+
+test('preflight validates explicit Codex auth-json path before API-key fallback', () => {
+  const options = parseArgs(['preflight', '--agent', 'codex', '--model', 'gpt-5.5']);
+  const result = preflight(options, {
+    env: { OPENAI_API_KEY: '1', CODEX_AUTH_JSON_PATH: '/missing/auth.json' },
+    fileExists: (path) => path.includes('heb-extra-instructions.md'),
+    run: () => ({ status: 0, stdout: '0.17.0\n' }),
+  });
+
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join('\n'), /CODEX_AUTH_JSON_PATH is set/);
 });
 
 test('wsl preflight accepts forwarded Codex auth json path presence', () => {

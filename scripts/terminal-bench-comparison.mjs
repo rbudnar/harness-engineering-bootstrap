@@ -239,6 +239,13 @@ export function preflight(options, {
 
 function authPreflightError(agent, env, fileExists) {
   if (agent === 'claude-code') {
+    if (truthy(env.CLAUDE_FORCE_OAUTH)) {
+      if (env.CLAUDE_CODE_OAUTH_TOKEN) return null;
+      return [
+        'claude-code has CLAUDE_FORCE_OAUTH enabled and requires CLAUDE_CODE_OAUTH_TOKEN.',
+        'Harbor will ignore Anthropic API-key fallbacks in this mode.',
+      ].join(' ');
+    }
     if (env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN || env.CLAUDE_CODE_OAUTH_TOKEN) return null;
     return [
       'claude-code requires ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, or CLAUDE_CODE_OAUTH_TOKEN.',
@@ -248,9 +255,15 @@ function authPreflightError(agent, env, fileExists) {
 
   if (agent === 'codex') {
     const codexAuthPath = join(env.CODEX_HOME || join(homedir(), '.codex'), 'auth.json');
+    if (env.CODEX_AUTH_JSON_PATH || env.CODEX_AUTH_JSON_PATH_PRESENT) {
+      if (env.CODEX_AUTH_JSON_PATH_PRESENT || fileExists(env.CODEX_AUTH_JSON_PATH)) return null;
+      return 'codex CODEX_AUTH_JSON_PATH is set but does not point to a readable auth.json.';
+    }
+    if (truthy(env.CODEX_FORCE_AUTH_JSON)) {
+      if (env.CODEX_AUTH_JSON_PRESENT || fileExists(codexAuthPath)) return null;
+      return 'codex CODEX_FORCE_AUTH_JSON=true is set but no refreshable Codex auth.json was found.';
+    }
     if (env.OPENAI_API_KEY) return null;
-    if (env.CODEX_AUTH_JSON_PATH_PRESENT || (env.CODEX_AUTH_JSON_PATH && fileExists(env.CODEX_AUTH_JSON_PATH))) return null;
-    if (truthy(env.CODEX_FORCE_AUTH_JSON) && (env.CODEX_AUTH_JSON_PRESENT || fileExists(codexAuthPath))) return null;
     return [
       'codex requires OPENAI_API_KEY, CODEX_AUTH_JSON_PATH, or CODEX_FORCE_AUTH_JSON=true with a refreshable Codex auth.json.',
       'A stale auth.json can still fail during Harbor execution.',
