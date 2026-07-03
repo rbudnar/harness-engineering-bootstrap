@@ -500,7 +500,7 @@ function redactMessage(message) {
     .replace(/sk-ant-[A-Za-z0-9_-]+/g, '[REDACTED]')
     .replace(/sk-proj-[A-Za-z0-9_-]+/g, '[REDACTED]')
     .replace(/sk-[A-Za-z0-9_-]+/g, '[REDACTED]')
-    .replace(/Bearer\s+[A-Za-z0-9._-]+/g, 'Bearer [REDACTED]')
+    .replace(/Bearer\s+[A-Za-z0-9._~+\/=-]+/g, 'Bearer [REDACTED]')
     .replace(/("?(?:accessToken|refreshToken|access_token|refresh_token|id_token|CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY|OPENAI_API_KEY|api_key)"?\s*[:=]\s*)[^,}\s]+/g, '$1[REDACTED]');
   return redacted.length > 1200 ? `${redacted.slice(0, 1200)} ... [truncated]` : redacted;
 }

@@ -568,7 +568,7 @@ test('redacts OpenAI credentials from exception summaries', () => {
       verifier_result: { rewards: { reward: 0 } },
       exception_info: {
         exception_type: 'RuntimeError',
-        exception_message: 'OPENAI_API_KEY=sk-proj-secretvalue api_key=sk-secretvalue access_token=oauth-access refresh_token=oauth-refresh id_token=oauth-id Bearer live-token',
+        exception_message: 'OPENAI_API_KEY=sk-proj-secretvalue api_key=sk-secretvalue access_token=oauth-access refresh_token=oauth-refresh id_token=oauth-id Bearer abc/def==',
       },
     })}\n`);
 
@@ -580,7 +580,7 @@ test('redacts OpenAI credentials from exception summaries', () => {
     assert.match(message, /refresh_token=\[REDACTED\]/);
     assert.match(message, /id_token=\[REDACTED\]/);
     assert.match(message, /Bearer \[REDACTED\]/);
-    assert.doesNotMatch(message, /sk-proj-secretvalue|sk-secretvalue|oauth-access|oauth-refresh|oauth-id|live-token/);
+    assert.doesNotMatch(message, /sk-proj-secretvalue|sk-secretvalue|oauth-access|oauth-refresh|oauth-id|abc\/def==/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
