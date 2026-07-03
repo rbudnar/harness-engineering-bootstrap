@@ -401,9 +401,11 @@ export function summarizeJob(jobDir, variantId) {
   }
 
   const jobResult = JSON.parse(readFileSync(jobResultPath, 'utf8'));
-  const trials = readdirSync(jobDir, { withFileTypes: true })
+  const trialResultPaths = readdirSync(jobDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
-    .map((entry) => join(jobDir, entry.name, 'result.json'))
+    .map((entry) => join(jobDir, entry.name, 'result.json'));
+  const missingTrialResultCount = trialResultPaths.filter((trialPath) => !existsSync(trialPath)).length;
+  const trials = trialResultPaths
     .filter((trialPath) => existsSync(trialPath))
     .map((trialPath) => summarizeTrial(trialPath));
 
@@ -422,6 +424,7 @@ export function summarizeJob(jobDir, variantId) {
     n_running_trials: jobResult.stats?.n_running_trials ?? null,
     n_pending_trials: jobResult.stats?.n_pending_trials ?? null,
     n_cancelled_trials: jobResult.stats?.n_cancelled_trials ?? null,
+    missing_trial_result_count: missingTrialResultCount,
     mean_reward: firstMetricMean(jobResult),
     success_count: successCount,
     exception_count: exceptionCount,
@@ -563,6 +566,10 @@ function assertCompleteJobResults(jobs) {
   const incomplete = jobs.filter((job) => !isCompleteJobResult(job)).map((job) => job.variant);
   if (incomplete.length) {
     throw new Error(`paired Harbor result incomplete for variants: ${incomplete.join(', ')}; refusing to summarize incomplete comparison.`);
+  }
+  const missingTrials = jobs.filter((job) => job.missing_trial_result_count || job.trials.length !== job.n_trials).map((job) => job.variant);
+  if (missingTrials.length) {
+    throw new Error(`paired Harbor trial results missing for variants: ${missingTrials.join(', ')}; refusing to summarize incomplete comparison.`);
   }
 }
 

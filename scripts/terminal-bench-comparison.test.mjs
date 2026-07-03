@@ -580,6 +580,69 @@ test('summarize rejects unfinished Harbor result files', () => {
   }
 });
 
+test('summarize rejects missing Harbor trial result files', () => {
+  const root = mkdtempSync(resolve(tmpdir(), 'heb-terminal-bench-missing-trial-'));
+  const options = parseArgs([
+    'summarize',
+    '--jobs-dir',
+    root,
+    '--run-id',
+    'paired',
+    '--agent',
+    'oracle',
+  ]);
+
+  try {
+    for (const variant of ['no-added-guidance', 'heb-guided']) {
+      const job = join(root, `paired-${variant}`);
+      const trial = join(job, 'regex-log__abc123');
+      mkdirSync(trial, { recursive: true });
+      writeFileSync(join(job, 'config.json'), `${JSON.stringify({
+        n_attempts: 1,
+        timeout_multiplier: 1,
+        n_concurrent_trials: 1,
+        agents: [{ name: 'oracle', model_name: null, kwargs: {} }],
+        datasets: [{
+          name: 'terminal-bench/terminal-bench-2',
+          ref: 'sha256:dataset',
+          task_names: ['terminal-bench/regex-log'],
+        }],
+        extra_instruction_paths: variant === 'heb-guided'
+          ? ['test/fixtures/terminal-bench-comparison/heb-extra-instructions.md']
+          : [],
+      })}\n`);
+      writeFileSync(join(job, 'result.json'), `${JSON.stringify({
+        finished_at: '2026-07-03T12:01:00.000Z',
+        n_total_trials: 1,
+        stats: {
+          n_completed_trials: 1,
+          n_errored_trials: 0,
+          n_running_trials: 0,
+          n_pending_trials: 0,
+          n_cancelled_trials: 0,
+          evals: {},
+        },
+      })}\n`);
+      if (variant === 'no-added-guidance') {
+        writeFileSync(join(trial, 'result.json'), `${JSON.stringify({
+          task_name: 'terminal-bench/regex-log',
+          trial_name: 'regex-log__abc123',
+          agent_info: { name: 'oracle', version: '0.17.0', model_info: { name: null } },
+          verifier_result: { rewards: { reward: 1 } },
+          exception_info: null,
+        })}\n`);
+      }
+    }
+
+    assert.throws(
+      () => summarizeComparison(options, '0.17.0'),
+      /paired Harbor trial results missing for variants: heb-guided/,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('summarize rejects swapped guidance treatment configs', () => {
   const root = mkdtempSync(resolve(tmpdir(), 'heb-terminal-bench-guidance-mismatch-'));
   const options = parseArgs([
