@@ -76,11 +76,23 @@ test('preflight allows oracle and nop without provider credentials', () => {
   assert.equal(result.harbor_version, '0.17.0');
 });
 
+test('preflight validates the guidance file for run readiness', () => {
+  const options = parseArgs(['preflight', '--agent', 'oracle', '--guidance-file', 'missing.md']);
+  const result = preflight(options, {
+    env: {},
+    fileExists: () => false,
+    run: () => ({ status: 0, stdout: '0.17.0\n' }),
+  });
+
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join('\n'), /guidance file not found:/);
+});
+
 test('preflight accepts Codex subscription auth by explicit auth json path', () => {
   const options = parseArgs(['preflight', '--agent', 'codex', '--model', 'gpt-5.5']);
   const result = preflight(options, {
     env: { CODEX_AUTH_JSON_PATH: '/tmp/auth.json' },
-    fileExists: (path) => path === '/tmp/auth.json',
+    fileExists: (path) => path === '/tmp/auth.json' || path.includes('heb-extra-instructions.md'),
     run: () => ({ status: 0, stdout: '0.17.0\n' }),
   });
 
@@ -91,7 +103,7 @@ test('wsl preflight accepts forwarded Codex auth json path presence', () => {
   const options = parseArgs(['preflight', '--wsl', '--agent', 'codex', '--model', 'gpt-5.5']);
   const result = preflight(options, {
     env: {},
-    fileExists: () => false,
+    fileExists: (path) => path.includes('heb-extra-instructions.md'),
     run: (command, args) => {
       if (command === 'wsl.exe' && args[2].includes('harbor --version')) {
         return { status: 0, stdout: '0.17.0\n' };

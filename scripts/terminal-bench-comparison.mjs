@@ -215,7 +215,7 @@ export function preflight(options, {
     harborVersion = String(harbor.stdout || harbor.stderr || '').trim() || null;
   }
 
-  if (options.command !== 'preflight' && options.command !== 'summarize') {
+  if (options.command !== 'summarize') {
     const guidancePath = guidanceFilePath(options);
     if (!fileExists(guidancePath)) {
       errors.push(`guidance file not found: ${guidancePath}`);
