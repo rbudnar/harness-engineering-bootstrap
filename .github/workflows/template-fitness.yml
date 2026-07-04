@@ -19,6 +19,7 @@ jobs:
       - run: node --test scripts/pr-agent-inbox.test.mjs
       - run: node --test scripts/prepare-stable-release.test.mjs
       - run: node --test scripts/scout-ledger-index.test.mjs
+      - run: node --test scripts/terminal-bench-comparison.test.mjs
       - run: node --test scripts/weekly-harness-report.test.mjs
       - run: node scripts/template-fitness.mjs
       - run: node scripts/harness-doctor.mjs

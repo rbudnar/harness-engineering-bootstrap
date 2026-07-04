@@ -22,10 +22,12 @@
     "docs/",
     "scripts/benchmark-summary.mjs",
     "scripts/benchmark-runner.mjs",
+    "scripts/terminal-bench-comparison.mjs",
     "scripts/harness-doctor.mjs",
     "scripts/harness-bootstrap-plan.mjs",
     "scripts/template-fitness.mjs",
-    "templates/"
+    "templates/",
+    "test/fixtures/terminal-bench-comparison/"
   ],
   "engines": {
     "node": ">=20"
