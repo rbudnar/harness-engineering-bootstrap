@@ -100,6 +100,25 @@ test('preflight honors Claude forced OAuth before API-key fallbacks', () => {
   assert.match(result.errors.join('\n'), /CLAUDE_FORCE_OAUTH enabled/);
 });
 
+test('wsl preflight accepts forwarded Claude OAuth token presence', () => {
+  const options = parseArgs(['preflight', '--wsl', '--agent', 'claude-code']);
+  const result = preflight(options, {
+    env: {},
+    fileExists: (path) => path.includes('heb-extra-instructions.md'),
+    run: (command, args) => {
+      if (command === 'wsl.exe' && args[2].includes('harbor --version')) {
+        return { status: 0, stdout: '0.17.0\n' };
+      }
+      if (command === 'wsl.exe') {
+        return { status: 0, stdout: JSON.stringify({ CLAUDE_FORCE_OAUTH: '1', CLAUDE_CODE_OAUTH_TOKEN: '1' }) };
+      }
+      return { status: 1, stdout: '' };
+    },
+  });
+
+  assert.equal(result.valid, true);
+});
+
 test('preflight accepts Codex subscription auth by explicit auth json path', () => {
   const options = parseArgs(['preflight', '--agent', 'codex', '--model', 'gpt-5.5']);
   const result = preflight(options, {

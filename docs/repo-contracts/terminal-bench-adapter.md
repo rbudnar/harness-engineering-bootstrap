@@ -32,10 +32,12 @@ Review this contract early if a PR adds a committed Terminal-Bench adapter, chan
 - Current public-lane smoke shape: `harbor run -d terminal-bench/terminal-bench-2 -a oracle -l 5` or `harbor run -d terminal-bench/terminal-bench-2-1 -a oracle -l 5`, depending on the target benchmark version.
 - Repo runner smoke shape from Windows with WSL Harbor: `node scripts/terminal-bench-comparison.mjs run --wsl --agent oracle --run-id <id> --task terminal-bench/regex-log`.
 - Model-agent preflight: `node scripts/terminal-bench-comparison.mjs preflight --wsl --agent claude-code` must pass before treating a `claude-code` run as benchmark evidence.
+- Claude subscription-OAuth preflight from Windows with WSL Harbor: run `claude setup-token` interactively, set `CLAUDE_CODE_OAUTH_TOKEN` to that token, set `CLAUDE_FORCE_OAUTH=1`, set `WSLENV=CLAUDE_CODE_OAUTH_TOKEN/u:CLAUDE_FORCE_OAUTH/u`, then run `node scripts/terminal-bench-comparison.mjs preflight --wsl --agent claude-code --model anthropic/claude-haiku-4-5`.
 - Codex subscription-auth preflight from Windows with WSL Harbor: set `CODEX_AUTH_JSON_PATH` to a WSL-readable auth JSON path such as `/mnt/c/Users/Rbudn/.codex/auth.json`, set `WSLENV=CODEX_AUTH_JSON_PATH`, then run `node scripts/terminal-bench-comparison.mjs preflight --wsl --agent codex --model <model>`.
 - Inspect locally: `uv tool run terminal-bench --help`, `uv tool run terminal-bench run --help`, and `uv tool run terminal-bench datasets list`.
 - Legacy package smoke check: from WSL, `terminal-bench-core==0.1.1` ran one selected task, `swe-bench-langcodes`; `oracle` resolved 1/1 and `nop` resolved 0/1.
 - Harbor runner smoke check: from Windows, `--wsl --agent oracle --task terminal-bench/regex-log` resolved 1/1 in both `no-added-guidance` and `heb-guided`.
+- Harbor Claude subscription-OAuth check: from Windows, `CLAUDE_FORCE_OAUTH=1` plus `CLAUDE_CODE_OAUTH_TOKEN` forwarded through `WSLENV=CLAUDE_CODE_OAUTH_TOKEN/u:CLAUDE_FORCE_OAUTH/u` let WSL Harbor run `claude-code` with `anthropic/claude-haiku-4-5`; `terminal-bench/regex-log` completed with no exceptions in both `no-added-guidance` and `heb-guided`, but both variants received reward 0/1.
 - Harbor Codex subscription-auth check: from Windows, `CODEX_AUTH_JSON_PATH=/mnt/c/Users/Rbudn/.codex/auth.json` plus `WSLENV=CODEX_AUTH_JSON_PATH` let WSL Harbor run `codex` with `gpt-5.5`; `terminal-bench/regex-log` resolved 1/1 in both `no-added-guidance` and `heb-guided`.
 - Windows-native blocker check: the same package exposed code-page, missing Unix `rm`, CRLF shell script, and Docker `\tmp` path failures before WSL succeeded.
 
@@ -45,8 +47,10 @@ Review this contract early if a PR adds a committed Terminal-Bench adapter, chan
 - Do not report `oracle` or `nop` smoke checks as HEB/no-HEB model-agent performance.
 - Do not report auth-blocked model-agent runs as HEB/no-HEB performance. A run with zero provider tokens and an auth exception only proves the adapter path reached the agent.
 - Harbor `claude-code` needs `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, or `CLAUDE_CODE_OAUTH_TOKEN` in the execution environment; the normal `~/.claude` login file is not enough for the default Harbor adapter.
+- When using Claude subscription OAuth, prefer the long-lived token from interactive `claude setup-token`. A current CLI access token can prove the adapter path but is short-lived and should not be the durable run procedure.
+- With `CLAUDE_FORCE_OAUTH=1`, Harbor's `claude-code` adapter ignores API-key fallbacks and requires `CLAUDE_CODE_OAUTH_TOKEN`.
 - Harbor `codex` needs `OPENAI_API_KEY`, `CODEX_AUTH_JSON_PATH`, or `CODEX_FORCE_AUTH_JSON=true` with a refreshable Codex auth JSON path. A stale local auth JSON can fail before inference even when the file exists.
-- When running the Node runner from Windows with `--wsl`, ordinary PowerShell environment variables are not automatically visible inside WSL. Use `WSLENV=CODEX_AUTH_JSON_PATH` when forwarding `CODEX_AUTH_JSON_PATH`.
+- When running the Node runner from Windows with `--wsl`, ordinary PowerShell environment variables are not automatically visible inside WSL. Use `WSLENV=CODEX_AUTH_JSON_PATH` when forwarding `CODEX_AUTH_JSON_PATH`; use `WSLENV=CLAUDE_CODE_OAUTH_TOKEN/u:CLAUDE_FORCE_OAUTH/u` when forwarding Claude OAuth.
 - Harbor can complete a Codex run while leaving `agent_result` token fields null if post-run Codex trajectory conversion fails. In that case, the repo runner falls back to raw Codex `turn.completed` usage lines in `agent/codex.txt`; do not treat missing Harbor cost as missing task reward.
 - Do not route public/reportable Terminal-Bench 2.x comparisons through `terminal-bench-core==0.1.1` or `terminal-bench run`; use Harbor unless the report explicitly scopes itself to the legacy package lane.
 - On Windows, set UTF-8 output before listing datasets or Rich output can fail on checkmark characters.

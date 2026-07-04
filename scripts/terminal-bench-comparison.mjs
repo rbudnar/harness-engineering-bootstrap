@@ -192,6 +192,7 @@ export function helpText() {
     '  --allow-missing-auth        Let preflight report missing auth without failing',
     '',
     'Codex subscription auth from Windows with --wsl: set CODEX_AUTH_JSON_PATH to a WSL-readable path and WSLENV=CODEX_AUTH_JSON_PATH.',
+    'Claude subscription OAuth from Windows with --wsl: set CLAUDE_FORCE_OAUTH=1, CLAUDE_CODE_OAUTH_TOKEN from claude setup-token, and WSLENV=CLAUDE_CODE_OAUTH_TOKEN/u:CLAUDE_FORCE_OAUTH/u.',
     'With --wsl, path options must be relative or Windows-readable because Node summarizes results from Windows.',
   ].join('\n');
 }
