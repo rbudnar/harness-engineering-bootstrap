@@ -96,6 +96,60 @@ test('surfaces model provenance warnings in summaries', () => {
   assert.match(markdown, /\| observed_model unavailable \| 1 \|/);
 });
 
+test('derives model provenance gaps from row fields', () => {
+  const summary = summarizeRows([
+    {
+      trial: 1,
+      variant: 'historical-product-run',
+      success: true,
+      first_pass_green: true,
+      route_hits: [],
+      stale_hits: [],
+      token_estimate: { total: 10 },
+      wall_time_seconds: 5,
+      model: 'gpt-5.5',
+      warnings: [],
+    },
+    {
+      trial: 2,
+      variant: 'historical-product-run',
+      success: true,
+      first_pass_green: true,
+      route_hits: [],
+      stale_hits: [],
+      token_estimate: { total: 12 },
+      wall_time_seconds: 6,
+      model: 'claude-fable-5',
+      observed_model: 'claude-opus-4.8',
+      model_routing_evidence: [],
+      warnings: [],
+    },
+    {
+      trial: 3,
+      variant: 'historical-product-run',
+      success: true,
+      first_pass_green: true,
+      route_hits: [],
+      stale_hits: [],
+      token_estimate: { total: 14 },
+      wall_time_seconds: 7,
+      model: 'codex-product',
+      model_routing_evidence: ['trajectory metadata records routing path'],
+      warnings: [],
+    },
+  ]);
+  const markdown = formatMarkdown(summary);
+
+  assert.deepEqual(summary.model_provenance['historical-product-run'], {
+    rows: 3,
+    declared_models: ['gpt-5.5', 'claude-fable-5', 'codex-product'],
+    observed_models: ['claude-opus-4.8'],
+    routing_evidence_rows: 1,
+    warning_rows: 2,
+  });
+  assert.match(markdown, /\| `historical-product-run` \| `gpt-5\.5`, `claude-fable-5`, `codex-product` \| `claude-opus-4\.8` \| 1\/3 \| 2\/3 \|/);
+});
+
 test('does not render model provenance for unrelated warnings', () => {
   const summary = summarizeRows([
     {
@@ -116,6 +170,66 @@ test('does not render model provenance for unrelated warnings', () => {
   assert.doesNotMatch(markdown, /## Model Provenance/);
   assert.match(markdown, /## Warnings/);
   assert.match(markdown, /\| token_estimate unavailable \| 1 \|/);
+});
+
+test('normalizes warning keys and escapes markdown table cells', () => {
+  const summary = summarizeRows([
+    {
+      trial: 1,
+      variant: 'manual',
+      success: true,
+      first_pass_green: true,
+      route_hits: [],
+      stale_hits: [],
+      token_estimate: null,
+      wall_time_seconds: null,
+      warnings: [' token_estimate unavailable ', 'token_estimate unavailable'],
+    },
+    {
+      trial: 2,
+      variant: 'manual',
+      success: true,
+      first_pass_green: true,
+      route_hits: [],
+      stale_hits: [],
+      token_estimate: null,
+      wall_time_seconds: null,
+      warnings: ['pipe | newline\nwarning'],
+    },
+  ]);
+  const markdown = formatMarkdown(summary);
+
+  assert.equal(summary.warnings['token_estimate unavailable'], 2);
+  assert.match(markdown, /\| token_estimate unavailable \| 2 \|/);
+  assert.match(markdown, /\| pipe \\\| newline warning \| 1 \|/);
+});
+
+test('does not count blank routing evidence as model provenance', () => {
+  const summary = summarizeRows([
+    {
+      trial: 1,
+      variant: 'hand-authored',
+      success: true,
+      first_pass_green: true,
+      route_hits: [],
+      stale_hits: [],
+      token_estimate: null,
+      wall_time_seconds: null,
+      model: 'gpt-5.5',
+      model_routing_evidence: [' '],
+      warnings: [],
+    },
+  ]);
+  const markdown = formatMarkdown(summary);
+
+  assert.deepEqual(summary.model_provenance['hand-authored'], {
+    rows: 1,
+    declared_models: ['gpt-5.5'],
+    observed_models: [],
+    routing_evidence_rows: 0,
+    warning_rows: 1,
+  });
+  assert.match(markdown, /\| `hand-authored` \| `gpt-5\.5` \| n\/a \| 0\/1 \| 1\/1 \|/);
 });
 
 test('CLI emits markdown summaries from JSONL rows', () => {

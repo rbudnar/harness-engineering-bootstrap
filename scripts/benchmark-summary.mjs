@@ -107,8 +107,8 @@ function summarizeModelProvenance(rows) {
     rows: variantRows.length,
     declared_models: unique(variantRows.map((row) => row.model)),
     observed_models: unique(variantRows.map((row) => row.observed_model)),
-    routing_evidence_rows: countWhere(variantRows, (row) => arrayLength(row.model_routing_evidence) > 0),
-    warning_rows: countWhere(variantRows, hasModelProvenanceWarning),
+    routing_evidence_rows: countWhere(variantRows, (row) => nonEmptyStringArrayLength(row.model_routing_evidence) > 0),
+    warning_rows: countWhere(variantRows, hasModelProvenanceGap),
   }));
 }
 
@@ -117,8 +117,10 @@ function summarizeWarnings(rows) {
   for (const row of rows) {
     if (!Array.isArray(row.warnings)) continue;
     for (const warning of row.warnings) {
-      if (typeof warning !== 'string' || !warning.trim()) continue;
-      counts.set(warning, (counts.get(warning) ?? 0) + 1);
+      if (typeof warning !== 'string') continue;
+      const key = warning.trim();
+      if (!key) continue;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
     }
   }
   return Object.fromEntries([...counts.entries()].sort((left, right) => left[0].localeCompare(right[0])));
@@ -133,7 +135,7 @@ function summarizeByVariant(rows, summarize) {
 }
 
 function unique(values) {
-  return [...new Set(values.filter((value) => typeof value === 'string' && value.trim()))];
+  return [...new Set(values.map(normalizedString).filter((value) => value !== null))];
 }
 
 function countWhere(rows, predicate) {
@@ -148,12 +150,32 @@ function arrayLength(value) {
   return Array.isArray(value) ? value.length : 0;
 }
 
+function hasModelProvenanceGap(row) {
+  if (hasModelProvenanceWarning(row)) return true;
+  const declaredModel = normalizedString(row.model);
+  if (declaredModel === null) return false;
+  const observedModel = normalizedString(row.observed_model);
+  if (observedModel === null) return nonEmptyStringArrayLength(row.model_routing_evidence) === 0;
+  return declaredModel !== observedModel && nonEmptyStringArrayLength(row.model_routing_evidence) === 0;
+}
+
 function hasModelProvenanceWarning(row) {
   if (!Array.isArray(row.warnings)) return false;
   return row.warnings.some((warning) => (
     typeof warning === 'string'
-    && MODEL_PROVENANCE_WARNING_PREFIXES.some((prefix) => warning.startsWith(prefix))
+    && MODEL_PROVENANCE_WARNING_PREFIXES.some((prefix) => warning.trim().startsWith(prefix))
   ));
+}
+
+function normalizedString(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function nonEmptyStringArrayLength(value) {
+  if (!Array.isArray(value)) return 0;
+  return value.filter((entry) => typeof entry === 'string' && entry.trim()).length;
 }
 
 function tokenTotal(row) {
@@ -229,12 +251,16 @@ function formatWarnings(summary) {
     '',
     '| Warning | Rows |',
     '| --- | ---: |',
-    ...entries.map(([warning, count]) => `| ${warning} | ${count} |`),
+    ...entries.map(([warning, count]) => `| ${formatTableText(warning)} | ${count} |`),
   ];
 }
 
 function formatList(values) {
-  return values.length ? values.map((value) => `\`${value}\``).join(', ') : 'n/a';
+  return values.length ? values.map((value) => `\`${formatTableText(value)}\``).join(', ') : 'n/a';
+}
+
+function formatTableText(value) {
+  return String(value).replace(/[\r\n]+/g, ' ').replace(/\|/g, '\\|');
 }
 
 function formatNumber(value) {

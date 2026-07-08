@@ -328,12 +328,12 @@ export function normalizeResultRow(rawResult, manifest, { artifactsDir = null } 
   const costEstimate = normalizeCostEstimate(rawResult.cost_estimate);
   const declaredModel = stringOrNull(rawResult.model);
   const observedModel = stringOrNull(rawResult.observed_model);
-  const modelRoutingEvidence = stringArray(rawResult.model_routing_evidence, 'model_routing_evidence');
+  const modelRoutingEvidence = nonEmptyStringArray(rawResult.model_routing_evidence, 'model_routing_evidence');
   if (runConfig === null) warnings.add('run_config unavailable');
   if (tokenEstimate === null) warnings.add('token_estimate unavailable');
   if (costEstimate === null) warnings.add('cost_estimate unavailable');
   if (!artifactPaths.transcript && !artifactPaths.trace) warnings.add('transcript_or_trace artifact unavailable');
-  if (declaredModel !== null && observedModel === null) warnings.add('observed_model unavailable');
+  if (declaredModel !== null && observedModel === null && modelRoutingEvidence.length === 0) warnings.add('observed_model unavailable');
   if (declaredModel !== null && observedModel !== null && declaredModel !== observedModel && modelRoutingEvidence.length === 0) {
     warnings.add('model_routing_evidence unavailable');
   }
@@ -465,8 +465,8 @@ export function validateResultRow(row, manifest, { artifactsDir = null } = {}) {
     }
   }
   const modelRoutingEvidence = row.model_routing_evidence ?? [];
-  if (!Array.isArray(modelRoutingEvidence) || modelRoutingEvidence.some((value) => typeof value !== 'string')) {
-    errors.push('model_routing_evidence must be an array of strings.');
+  if (!Array.isArray(modelRoutingEvidence) || modelRoutingEvidence.some((value) => typeof value !== 'string' || !value.trim())) {
+    errors.push('model_routing_evidence must be an array of non-empty strings.');
   }
   try {
     commandArray(row.commands_run);
@@ -626,6 +626,12 @@ function stringArray(value, field) {
     throw new Error(`${field} must be an array of strings.`);
   }
   return value;
+}
+
+function nonEmptyStringArray(value, field) {
+  return stringArray(value, field)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry);
 }
 
 function commandArray(value) {

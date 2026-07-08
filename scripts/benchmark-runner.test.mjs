@@ -377,6 +377,40 @@ test('warns when declared model lacks observed model provenance', () => {
   assert(row.warnings.includes('observed_model unavailable'));
 });
 
+test('accepts routing evidence when observed model is unavailable', () => {
+  const { manifest } = readManifest(manifestPath);
+  const row = normalizeResultRow({
+    run_id: 'routing-evidence-without-observed-model',
+    task_id: 'docs-only-fixture-001',
+    trial: 1,
+    variant: 'static-minimal-agents',
+    agent_surface: 'manual-adapter',
+    model: 'gpt-5.5',
+    model_routing_evidence: ['provider metadata reports product routing'],
+  }, manifest);
+
+  assert.equal(row.model, 'gpt-5.5');
+  assert.equal(row.observed_model, null);
+  assert.deepEqual(row.model_routing_evidence, ['provider metadata reports product routing']);
+  assert(!row.warnings.includes('observed_model unavailable'));
+});
+
+test('treats blank routing evidence as missing provenance', () => {
+  const { manifest } = readManifest(manifestPath);
+  const row = normalizeResultRow({
+    run_id: 'blank-routing-evidence',
+    task_id: 'docs-only-fixture-001',
+    trial: 1,
+    variant: 'static-minimal-agents',
+    agent_surface: 'manual-adapter',
+    model: 'gpt-5.5',
+    model_routing_evidence: ['  '],
+  }, manifest);
+
+  assert.deepEqual(row.model_routing_evidence, []);
+  assert(row.warnings.includes('observed_model unavailable'));
+});
+
 test('rejects invalid telemetry and artifact path traversal', () => {
   const { manifest } = readManifest(manifestPath);
   const base = {
