@@ -326,10 +326,17 @@ export function normalizeResultRow(rawResult, manifest, { artifactsDir = null } 
   const runConfig = normalizeRunConfig(rawResult.run_config);
   const tokenEstimate = normalizeTokenEstimate(rawResult.token_estimate);
   const costEstimate = normalizeCostEstimate(rawResult.cost_estimate);
+  const declaredModel = stringOrNull(rawResult.model);
+  const observedModel = stringOrNull(rawResult.observed_model);
+  const modelRoutingEvidence = stringArray(rawResult.model_routing_evidence, 'model_routing_evidence');
   if (runConfig === null) warnings.add('run_config unavailable');
   if (tokenEstimate === null) warnings.add('token_estimate unavailable');
   if (costEstimate === null) warnings.add('cost_estimate unavailable');
   if (!artifactPaths.transcript && !artifactPaths.trace) warnings.add('transcript_or_trace artifact unavailable');
+  if (declaredModel !== null && observedModel === null) warnings.add('observed_model unavailable');
+  if (declaredModel !== null && observedModel !== null && declaredModel !== observedModel && modelRoutingEvidence.length === 0) {
+    warnings.add('model_routing_evidence unavailable');
+  }
 
   const row = {
     schema_version: resultSchemaVersion,
@@ -341,7 +348,8 @@ export function normalizeResultRow(rawResult, manifest, { artifactsDir = null } 
     variant: variant.id,
     harness_version: stringOrNull(rawResult.harness_version) ?? manifest.harness_version ?? null,
     agent_surface: requiredStringValue(rawResult.agent_surface, 'agent_surface'),
-    model: stringOrNull(rawResult.model),
+    model: declaredModel,
+    observed_model: observedModel,
     tool_version: stringOrNull(rawResult.tool_version),
     run_config: runConfig,
     started_at: startedAt,
@@ -363,6 +371,7 @@ export function normalizeResultRow(rawResult, manifest, { artifactsDir = null } 
     cost_estimate: costEstimate,
     wall_time_seconds: wallTimeSeconds,
     artifact_paths: artifactPaths,
+    model_routing_evidence: modelRoutingEvidence,
     notes: stringOrNull(rawResult.notes),
     warnings: [...warnings].sort(),
   };
@@ -393,7 +402,7 @@ export function validateResultRow(row, manifest, { artifactsDir = null } = {}) {
       errors.push('source_revision must match task source revision.');
     }
   }
-  for (const field of ['model', 'tool_version', 'harness_version', 'notes']) {
+  for (const field of ['model', 'observed_model', 'tool_version', 'harness_version', 'notes']) {
     if (row[field] !== null && row[field] !== undefined && typeof row[field] !== 'string') {
       errors.push(`${field} must be a string or null when present.`);
     }
@@ -454,6 +463,10 @@ export function validateResultRow(row, manifest, { artifactsDir = null } = {}) {
     if (!Array.isArray(row[field]) || row[field].some((value) => typeof value !== 'string')) {
       errors.push(`${field} must be an array of strings.`);
     }
+  }
+  const modelRoutingEvidence = row.model_routing_evidence ?? [];
+  if (!Array.isArray(modelRoutingEvidence) || modelRoutingEvidence.some((value) => typeof value !== 'string')) {
+    errors.push('model_routing_evidence must be an array of strings.');
   }
   try {
     commandArray(row.commands_run);

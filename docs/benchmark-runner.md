@@ -59,6 +59,7 @@ Outcome and telemetry fields:
 
 - `success`, `first_pass_green`, `tests_passed`, `validator_passed`
 - `run_config` for model/context/tool/sandbox comparison controls
+- `model` for the declared/requested model, `observed_model` when product logs expose the actually routed model, and `model_routing_evidence[]` for transcript or metadata pointers
 - `route_hits`, `stale_hits`, `unnecessary_reads`, `docs_cited`
 - `commands_run`, `files_read`, `files_modified`
 - `human_touches`, `retry_loops`
@@ -67,7 +68,7 @@ Outcome and telemetry fields:
 
 `token_estimate` may be a non-negative number or an object with `unit`, `input`, `output`, and `total`; if `input` and `output` are present, `total` is computed. `cost_estimate` may be a non-negative number or `{ "currency": "USD", "amount": 0.01 }`.
 
-Partial telemetry is allowed. If run configuration, token, cost, transcript, or trace data is unavailable, record `null` or omit the artifact path; the runner adds warnings instead of failing the row.
+Partial telemetry is allowed. If run configuration, token, cost, transcript, or trace data is unavailable, record `null` or omit the artifact path; the runner adds warnings instead of failing the row. When `model` is present but `observed_model` is unavailable, the runner warns so summaries do not accidentally treat a deployed product run as a pure model comparison. `benchmark-summary.mjs` surfaces warning counts and model-provenance rollups so those caveats remain visible in the report path.
 
 ## Artifact Policy
 

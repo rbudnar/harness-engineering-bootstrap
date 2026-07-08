@@ -332,6 +332,9 @@ test('normalizes run configuration and numeric token and cost estimates', () => 
     trial: 1,
     variant: 'static-minimal-agents',
     agent_surface: 'manual-adapter',
+    model: 'claude-fable-5',
+    observed_model: 'claude-opus-4.8',
+    model_routing_evidence: ['trajectory metadata reported safeguard fallback'],
     run_config: {
       context_window: '128k',
       reasoning_effort: 'medium',
@@ -342,6 +345,11 @@ test('normalizes run configuration and numeric token and cost estimates', () => 
     cost_estimate: { currency: 'USD', amount: 0.01 },
   }, manifest);
 
+  assert.equal(row.model, 'claude-fable-5');
+  assert.equal(row.observed_model, 'claude-opus-4.8');
+  assert.deepEqual(row.model_routing_evidence, ['trajectory metadata reported safeguard fallback']);
+  assert(!row.warnings.includes('observed_model unavailable'));
+  assert(!row.warnings.includes('model_routing_evidence unavailable'));
   assert.deepEqual(row.token_estimate, {
     unit: 'provider_tokens',
     input: 10,
@@ -350,6 +358,23 @@ test('normalizes run configuration and numeric token and cost estimates', () => 
   });
   assert.deepEqual(row.cost_estimate, { currency: 'USD', amount: 0.01 });
   assert.equal(row.run_config.timeout_minutes, 30);
+});
+
+test('warns when declared model lacks observed model provenance', () => {
+  const { manifest } = readManifest(manifestPath);
+  const row = normalizeResultRow({
+    run_id: 'missing-observed-model',
+    task_id: 'docs-only-fixture-001',
+    trial: 1,
+    variant: 'static-minimal-agents',
+    agent_surface: 'manual-adapter',
+    model: 'gpt-5.5',
+  }, manifest);
+
+  assert.equal(row.model, 'gpt-5.5');
+  assert.equal(row.observed_model, null);
+  assert.deepEqual(row.model_routing_evidence, []);
+  assert(row.warnings.includes('observed_model unavailable'));
 });
 
 test('rejects invalid telemetry and artifact path traversal', () => {
@@ -454,6 +479,54 @@ test('validate-results rejects hand-authored invalid telemetry and relative trav
       '--artifacts-dir',
       root,
     ], { encoding: 'utf8', stdio: 'pipe' }), /Command failed/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('validate-results keeps existing telemetry arrays required', () => {
+  const root = mkdtempSync(resolve(tmpdir(), 'heb-benchmark-missing-telemetry-array-'));
+  const outPath = resolve(root, 'results.jsonl');
+
+  writeFileSync(outPath, `${JSON.stringify({
+    schema_version: resultSchemaVersion,
+    run_id: 'missing-telemetry-array',
+    task_id: 'docs-only-fixture-001',
+    trial: 1,
+    repo: 'source-repo',
+    source_revision: 'sha256:5a87db4a439d22ccfdd431ffa43417ea438d06a6cc1585e331f4c146aa679968',
+    variant: 'static-minimal-agents',
+    harness_version: '0.1.1',
+    agent_surface: 'manual-adapter',
+    model: null,
+    tool_version: null,
+    run_config: null,
+    success: true,
+    first_pass_green: true,
+    tests_passed: true,
+    validator_passed: null,
+    stale_hits: [],
+    unnecessary_reads: [],
+    docs_cited: [],
+    commands_run: [],
+    files_read: [],
+    files_modified: [],
+    human_touches: 0,
+    retry_loops: 0,
+    token_estimate: null,
+    cost_estimate: null,
+    wall_time_seconds: null,
+    artifact_paths: {},
+    notes: null,
+    warnings: [],
+  })}\n`);
+
+  try {
+    assert.throws(() => validateResultsFile({
+      manifestPath,
+      outPath,
+      artifactsDir: root,
+    }), /route_hits must be an array/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -17,6 +17,8 @@ Benchmark-driven changes must name:
 
 Route hits, docs cited, and files read are diagnostic signals. They do not justify template or planner promotion unless task outcomes, recurrence, or cost-normalized success also improve.
 
+When a run uses a deployed coding-agent product, the result measures that product configuration. Do not promote raw model claims unless the row records observed model identity or model-routing evidence sufficient to rule out fallback or substitution.
+
 ## Evidence Classes
 
 Use these classes in benchmark summaries, release notes, and PR bodies:

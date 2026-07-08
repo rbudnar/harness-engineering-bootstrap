@@ -63,6 +63,61 @@ test('renders the pilot summary table for PR bodies and reports', () => {
   assert.match(markdown, /\| `heb-planned-core` \| 2 \| 2\/2 \| 0\/2 \|/);
 });
 
+test('surfaces model provenance warnings in summaries', () => {
+  const summary = summarizeRows([
+    {
+      trial: 1,
+      variant: 'heb-guided',
+      success: true,
+      first_pass_green: true,
+      route_hits: [],
+      stale_hits: [],
+      token_estimate: { total: 10 },
+      wall_time_seconds: 5,
+      model: 'gpt-5.5',
+      observed_model: null,
+      model_routing_evidence: [],
+      warnings: ['observed_model unavailable'],
+    },
+  ]);
+  const markdown = formatMarkdown(summary);
+
+  assert.deepEqual(summary.warnings, { 'observed_model unavailable': 1 });
+  assert.deepEqual(summary.model_provenance['heb-guided'], {
+    rows: 1,
+    declared_models: ['gpt-5.5'],
+    observed_models: [],
+    routing_evidence_rows: 0,
+    warning_rows: 1,
+  });
+  assert.match(markdown, /## Model Provenance/);
+  assert.match(markdown, /\| `heb-guided` \| `gpt-5\.5` \| n\/a \| 0\/1 \| 1\/1 \|/);
+  assert.match(markdown, /## Warnings/);
+  assert.match(markdown, /\| observed_model unavailable \| 1 \|/);
+});
+
+test('does not render model provenance for unrelated warnings', () => {
+  const summary = summarizeRows([
+    {
+      trial: 1,
+      variant: 'manual',
+      success: true,
+      first_pass_green: true,
+      route_hits: [],
+      stale_hits: [],
+      token_estimate: null,
+      wall_time_seconds: null,
+      warnings: ['token_estimate unavailable'],
+    },
+  ]);
+  const markdown = formatMarkdown(summary);
+
+  assert.equal(summary.model_provenance.manual.warning_rows, 0);
+  assert.doesNotMatch(markdown, /## Model Provenance/);
+  assert.match(markdown, /## Warnings/);
+  assert.match(markdown, /\| token_estimate unavailable \| 1 \|/);
+});
+
 test('CLI emits markdown summaries from JSONL rows', () => {
   const output = execFileSync(process.execPath, [
     script,

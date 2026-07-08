@@ -3,6 +3,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const MODEL_PROVENANCE_WARNING_PREFIXES = [
+  'observed_model ',
+  'model_routing_evidence ',
+];
+
 const scriptPath = fileURLToPath(import.meta.url);
 
 export function parseArgs(argv = process.argv.slice(2)) {
@@ -72,6 +77,8 @@ export function summarizeRows(rows) {
     rows: rows.length,
     first_trial: summarizeFirstTrial(firstTrialRows),
     repeated_subset: summarizeRepeated(repeatedRows),
+    model_provenance: summarizeModelProvenance(rows),
+    warnings: summarizeWarnings(rows),
   };
 }
 
@@ -93,6 +100,28 @@ function summarizeRepeated(rows) {
     success: countWhere(variantRows, (row) => row.success === true),
     same_family_stale_recurrence: countWhere(variantRows, (row) => arrayLength(row.stale_hits) > 0),
   }));
+}
+
+function summarizeModelProvenance(rows) {
+  return summarizeByVariant(rows, (variantRows) => ({
+    rows: variantRows.length,
+    declared_models: unique(variantRows.map((row) => row.model)),
+    observed_models: unique(variantRows.map((row) => row.observed_model)),
+    routing_evidence_rows: countWhere(variantRows, (row) => arrayLength(row.model_routing_evidence) > 0),
+    warning_rows: countWhere(variantRows, hasModelProvenanceWarning),
+  }));
+}
+
+function summarizeWarnings(rows) {
+  const counts = new Map();
+  for (const row of rows) {
+    if (!Array.isArray(row.warnings)) continue;
+    for (const warning of row.warnings) {
+      if (typeof warning !== 'string' || !warning.trim()) continue;
+      counts.set(warning, (counts.get(warning) ?? 0) + 1);
+    }
+  }
+  return Object.fromEntries([...counts.entries()].sort((left, right) => left[0].localeCompare(right[0])));
 }
 
 function summarizeByVariant(rows, summarize) {
@@ -117,6 +146,14 @@ function sum(rows, project) {
 
 function arrayLength(value) {
   return Array.isArray(value) ? value.length : 0;
+}
+
+function hasModelProvenanceWarning(row) {
+  if (!Array.isArray(row.warnings)) return false;
+  return row.warnings.some((warning) => (
+    typeof warning === 'string'
+    && MODEL_PROVENANCE_WARNING_PREFIXES.some((prefix) => warning.startsWith(prefix))
+  ));
 }
 
 function tokenTotal(row) {
@@ -160,7 +197,44 @@ export function formatMarkdown(summary) {
     ...Object.entries(summary.repeated_subset).map(([variant, data]) => (
       `| \`${variant}\` | ${data.repeated_trials} | ${data.success}/${data.repeated_trials} | ${data.same_family_stale_recurrence}/${data.repeated_trials} |`
     )),
+    ...formatModelProvenance(summary),
+    ...formatWarnings(summary),
   ].join('\n');
+}
+
+function formatModelProvenance(summary) {
+  const entries = Object.entries(summary.model_provenance)
+    .filter(([, data]) => data.declared_models.length || data.observed_models.length || data.routing_evidence_rows || data.warning_rows);
+  if (!entries.length) return [];
+
+  return [
+    '',
+    '## Model Provenance',
+    '',
+    '| Variant | Declared models | Observed models | Routing evidence rows | Warning rows |',
+    '| --- | --- | --- | ---: | ---: |',
+    ...entries.map(([variant, data]) => (
+      `| \`${variant}\` | ${formatList(data.declared_models)} | ${formatList(data.observed_models)} | ${data.routing_evidence_rows}/${data.rows} | ${data.warning_rows}/${data.rows} |`
+    )),
+  ];
+}
+
+function formatWarnings(summary) {
+  const entries = Object.entries(summary.warnings);
+  if (!entries.length) return [];
+
+  return [
+    '',
+    '## Warnings',
+    '',
+    '| Warning | Rows |',
+    '| --- | ---: |',
+    ...entries.map(([warning, count]) => `| ${warning} | ${count} |`),
+  ];
+}
+
+function formatList(values) {
+  return values.length ? values.map((value) => `\`${value}\``).join(', ') : 'n/a';
 }
 
 function formatNumber(value) {
