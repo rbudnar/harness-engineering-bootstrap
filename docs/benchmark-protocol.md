@@ -57,10 +57,12 @@ HEB can lose honestly. A result where variant 1 or 2 beats HEB on success, cost,
 
 Hold the run configuration fixed unless the experiment explicitly studies a model or agent-surface difference. Record enough configuration for #52 to reject accidental apples-to-oranges comparisons:
 
-- model, provider, context window, reasoning effort, and model-specific flags
+- declared model, observed model when product logs expose it, provider, context window, reasoning effort, model-routing or fallback evidence, and model-specific flags
 - agent surface, harness version, CLI or extension version, and task prompt
 - tool allowlist, disabled tools, MCP servers, network policy, and sandbox policy
 - prompt/context budget, timeout, cache state, run order, and random seed when available
+
+For deployed coding-agent products, the measured unit is the product configuration, not the raw model string alone. If a product can route, fall back, or silently substitute models, record the declared model separately from any observed model identity and cite the trajectory, metadata, or log evidence. If routing cannot be audited, say so and avoid pure model-comparison claims.
 
 Efficiency should be reported per resolved task, not only as raw token totals. A harness that uses fewer tokens but also solves fewer tasks is not automatically better; compare task resolution, tokens per successful task, cost per successful task, and wall time together.
 

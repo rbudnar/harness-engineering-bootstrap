@@ -10,6 +10,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - Added a minimal HEB benchmark runner and JSONL result schema so the first pilot can prepare pinned fixtures and compare partial-telemetry rows reproducibly.
 - Added the first directional HEB benchmark pilot report and raw JSONL result artifact, with explicit caveats that the tiny manual-adapter suite does not justify broad performance claims.
 - Added benchmark governance rules so pilot results drive scoped template, planner, dogfooding, or roadmap decisions without promoting unsupported performance claims.
+- Added benchmark result provenance for observed model identity and model-routing evidence so product-agent runs do not get overstated as raw model comparisons.
 - Added a benchmark summary helper, fresh-run loop, and public benchmark source catalog so regular HEB eval runs can stay reproducible without confusing local fixture pilots with external leaderboards.
 - Clarified that the first HEB benchmark pilot uses a committed local public-style fixture rather than an imported public benchmark suite.
 - Added a bounded #70 benchmark comparison report, WSL-aware Terminal-Bench Harbor comparison runner, and Terminal-Bench repo contract, keeping local HEB pilot results separate from public external benchmark adapter evidence.
