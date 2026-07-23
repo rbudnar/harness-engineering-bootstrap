@@ -8,8 +8,8 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { homedir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { homedir, tmpdir } from 'node:os';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const scriptPath = fileURLToPath(import.meta.url);
@@ -18,7 +18,7 @@ const packageRoot = resolve(dirname(scriptPath), '..');
 export const schemaVersion = 'heb-terminal-bench-comparison.v1';
 export const defaultDataset = 'terminal-bench/terminal-bench-2';
 export const defaultTasks = ['terminal-bench/regex-log'];
-export const defaultJobsDir = '.heb-benchmark-runs/terminal-bench';
+export const defaultJobsDir = join(tmpdir(), 'heb-benchmark-runs', 'terminal-bench');
 export const defaultGuidanceFile = 'test/fixtures/terminal-bench-comparison/heb-extra-instructions.md';
 const defaultGuidanceFilePath = resolve(packageRoot, defaultGuidanceFile);
 
@@ -46,6 +46,7 @@ export function parseArgs(argv = process.argv.slice(2), now = new Date()) {
     dryRun: false,
     skipPreflight: false,
     allowMissingAuth: false,
+    allowRepoJobsDir: false,
     help: false,
   };
 
@@ -103,6 +104,8 @@ export function parseArgs(argv = process.argv.slice(2), now = new Date()) {
       options.skipPreflight = true;
     } else if (arg === '--allow-missing-auth') {
       options.allowMissingAuth = true;
+    } else if (arg === '--allow-repo-jobs-dir') {
+      options.allowRepoJobsDir = true;
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -120,6 +123,7 @@ export function parseArgs(argv = process.argv.slice(2), now = new Date()) {
   }
   if (!options.out) options.out = join(options.jobsDir, `${options.runId}-summary.json`);
   rejectWslOnlyPaths(options);
+  rejectRepoLocalJobsDir(options);
 
   validatePositiveIntegerString(options.nConcurrent, '--n-concurrent');
   validatePositiveIntegerString(options.nAttempts, '--n-attempts');
@@ -155,6 +159,23 @@ function rejectWslOnlyPaths(options) {
   throw new Error(`${rejected[0]} cannot be a WSL-only absolute path when --wsl is run from Windows; use a relative path or Windows-readable path.`);
 }
 
+function rejectRepoLocalJobsDir(options) {
+  if (options.command === 'summarize') return;
+  if (options.allowRepoJobsDir) return;
+  if (!isModelBackedAgent(options.agent)) return;
+  if (!isPathInside(packageRoot, resolve(options.jobsDir))) return;
+  throw new Error('--jobs-dir is inside the HEB checkout for a model-backed agent; use a temp/out-of-checkout path or pass --allow-repo-jobs-dir to acknowledge benchmark contamination risk.');
+}
+
+function isModelBackedAgent(agent) {
+  return !['oracle', 'nop'].includes(agent);
+}
+
+function isPathInside(parent, child) {
+  const pathFromParent = relative(parent, child);
+  return pathFromParent === '' || (!!pathFromParent && !pathFromParent.startsWith('..') && !isAbsolute(pathFromParent));
+}
+
 function isWslOnlyAbsolutePath(value) {
   return String(value || '').startsWith('/');
 }
@@ -179,7 +200,7 @@ export function helpText() {
     '  --task <task-name>          Repeatable. Default: terminal-bench/regex-log',
     '  --agent <name>              Default: claude-code',
     '  --model <name>              Default for claude-code: anthropic/claude-haiku-4-5',
-    '  --jobs-dir <path>           Default: .heb-benchmark-runs/terminal-bench',
+    `  --jobs-dir <path>           Default: ${defaultJobsDir}`,
     '  --out <path>                Default: <jobs-dir>/<run-id>-summary.json',
     '  --run-id <id>               Stable suffix for paired Harbor job names',
     '  --guidance-file <path>      Default: test/fixtures/terminal-bench-comparison/heb-extra-instructions.md',
@@ -190,6 +211,7 @@ export function helpText() {
     '  --wsl                      Run Harbor through wsl.exe from Windows Node',
     '  --dry-run                  Print commands without running Harbor',
     '  --allow-missing-auth        Let preflight report missing auth without failing',
+    '  --allow-repo-jobs-dir       Permit model-backed jobs under this checkout after acknowledging contamination risk',
     '',
     'Codex subscription auth from Windows with --wsl: set CODEX_AUTH_JSON_PATH to a WSL-readable path and WSLENV=CODEX_AUTH_JSON_PATH.',
     'Claude subscription OAuth from Windows with --wsl: set CLAUDE_FORCE_OAUTH=1, CLAUDE_CODE_OAUTH_TOKEN from claude setup-token, and WSLENV=CLAUDE_CODE_OAUTH_TOKEN/u:CLAUDE_FORCE_OAUTH/u.',
@@ -530,6 +552,8 @@ export function summarizeComparison(options, harborVersion = null) {
   const jobs = variants.map((variant, index) => summarizeJob(jobDirs[index], variant.id));
   assertCompleteJobResults(jobs);
   const metadata = comparisonMetadataFromJobConfigs(options, jobDirs);
+  const jobsDir = resolve(options.jobsDir);
+  const jobsDirInsideCheckout = isPathInside(packageRoot, jobsDir);
   return {
     schema_version: schemaVersion,
     generated_at: new Date().toISOString(),
@@ -542,6 +566,9 @@ export function summarizeComparison(options, harborVersion = null) {
     n_concurrent: metadata.nConcurrent,
     n_attempts: metadata.nAttempts,
     guidance_file: metadata.guidanceFile,
+    jobs_dir: jobsDir,
+    jobs_dir_inside_checkout: jobsDirInsideCheckout,
+    repo_jobs_dir_acknowledged: Boolean(options.allowRepoJobsDir && jobsDirInsideCheckout && isModelBackedAgent(options.agent)),
     variants: jobs,
     comparison: Object.fromEntries(jobs.map((job) => [
       job.variant,

@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import { test } from 'node:test';
 import {
   buildHarborArgs,
   buildHarborInvocation,
   commandLine,
   defaultDataset,
+  defaultJobsDir,
   jobNameFor,
   parseArgs,
   preflight,
@@ -49,6 +50,48 @@ test('builds paired Harbor commands with guidance only on the HEB variant', () =
   assert(isAbsolute(guidancePath));
   assert(guidancePath.endsWith(join('test', 'fixtures', 'terminal-bench-comparison', 'heb-extra-instructions.md')));
   assert.equal(jobNameFor(options, 'heb-guided'), 'issue-70-live-heb-guided');
+});
+
+test('defaults model-backed Terminal-Bench jobs outside this checkout', () => {
+  const options = parseArgs(['run', '--agent', 'codex', '--model', 'gpt-5.5']);
+  const pathFromRepo = relative(resolve('.'), resolve(options.jobsDir));
+
+  assert.equal(options.jobsDir, defaultJobsDir);
+  assert(isAbsolute(options.jobsDir));
+  assert(pathFromRepo.startsWith('..') || isAbsolute(pathFromRepo));
+});
+
+test('rejects repo-local jobs dir for model-backed runs unless acknowledged', () => {
+  assert.throws(
+    () => parseArgs(['run', '--agent', 'codex', '--model', 'gpt-5.5', '--jobs-dir', '.heb-benchmark-runs/terminal-bench']),
+    /--jobs-dir is inside the HEB checkout/,
+  );
+  assert.throws(
+    () => parseArgs(['preflight', '--agent', 'codex', '--model', 'gpt-5.5', '--jobs-dir', '.heb-benchmark-runs/terminal-bench']),
+    /--jobs-dir is inside the HEB checkout/,
+  );
+
+  const options = parseArgs([
+    'run',
+    '--agent',
+    'codex',
+    '--model',
+    'gpt-5.5',
+    '--jobs-dir',
+    '.heb-benchmark-runs/terminal-bench',
+    '--allow-repo-jobs-dir',
+  ]);
+
+  assert.equal(options.allowRepoJobsDir, true);
+  assert.equal(options.jobsDir, '.heb-benchmark-runs/terminal-bench');
+});
+
+test('repo-local jobs dir guard leaves oracle and summarize lanes usable', () => {
+  const oracle = parseArgs(['run', '--agent', 'oracle', '--jobs-dir', '.heb-benchmark-runs/terminal-bench']);
+  const summarize = parseArgs(['summarize', '--agent', 'codex', '--jobs-dir', '.heb-benchmark-runs/terminal-bench', '--run-id', 'paired']);
+
+  assert.equal(oracle.jobsDir, '.heb-benchmark-runs/terminal-bench');
+  assert.equal(summarize.jobsDir, '.heb-benchmark-runs/terminal-bench');
 });
 
 test('preflight names missing model-agent auth without printing secrets', () => {
@@ -449,6 +492,8 @@ test('summarizes both paired jobs into a comparison object', () => {
     assert.equal(summary.timeout_multiplier, 0.35);
     assert.equal(summary.n_concurrent, 3);
     assert.equal(summary.n_attempts, 2);
+    assert.equal(summary.jobs_dir_inside_checkout, false);
+    assert.equal(summary.repo_jobs_dir_acknowledged, false);
     assert.deepEqual(Object.keys(summary.comparison), ['no-added-guidance', 'heb-guided']);
 
     const encoded = JSON.stringify(summary);
