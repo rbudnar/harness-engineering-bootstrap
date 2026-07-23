@@ -35,7 +35,9 @@ export function parseArgs(argv = process.argv.slice(2), now = new Date()) {
     agent: 'claude-code',
     model: null,
     jobsDir: defaultJobsDir,
+    jobsDirProvided: false,
     out: null,
+    outProvided: false,
     runId: timestampRunId(now),
     guidanceFile: defaultGuidanceFile,
     timeoutMultiplier: '1',
@@ -74,9 +76,11 @@ export function parseArgs(argv = process.argv.slice(2), now = new Date()) {
       index += 1;
     } else if (arg === '--jobs-dir') {
       options.jobsDir = requiredValue(argv, index, arg);
+      options.jobsDirProvided = true;
       index += 1;
     } else if (arg === '--out') {
       options.out = requiredValue(argv, index, arg);
+      options.outProvided = true;
       index += 1;
     } else if (arg === '--run-id') {
       options.runId = requiredValue(argv, index, arg);
@@ -149,10 +153,9 @@ function validatePositiveNumberString(value, flag) {
 
 function rejectWslOnlyPaths(options) {
   if (!options.wsl) return;
-  const fields = [
-    ['--jobs-dir', options.jobsDir],
-    ['--out', options.out],
-  ];
+  const fields = [];
+  if (options.jobsDirProvided) fields.push(['--jobs-dir', options.jobsDir]);
+  if (options.outProvided) fields.push(['--out', options.out]);
   if (options.guidanceFile !== defaultGuidanceFile) fields.push(['--guidance-file', options.guidanceFile]);
   const rejected = fields.find(([, value]) => isWslOnlyAbsolutePath(value));
   if (!rejected) return;
