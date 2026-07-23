@@ -69,7 +69,7 @@ The runner executes two Harbor jobs with the same dataset, task ids, agent, mode
 - `no-added-guidance`: passes only the Terminal-Bench task instruction.
 - `heb-guided`: appends the committed HEB guidance fixture through Harbor `--extra-instruction-path`.
 
-It writes local artifacts under `.heb-benchmark-runs/terminal-bench/`, which is gitignored. The summary JSON records Harbor version, dataset, task refs, task checksums, agent/model versions, reward, exceptions, token counts, cost, and wall-time fields from Harbor `result.json`.
+Model-backed runs default raw Harbor job artifacts to the OS temp directory so later agents do not inherit prior benchmark artifacts from this checkout. The helper rejects repo-local model-backed jobs directories unless `--allow-repo-jobs-dir` is passed to acknowledge contamination risk. Compact summary JSON can still be written under the gitignored `.heb-benchmark-runs/terminal-bench/` path for review. The summary JSON records Harbor version, dataset, task refs, task checksums, agent/model versions, reward, exceptions, token counts, cost, wall-time fields from Harbor `result.json`, and whether a repo-local jobs directory was acknowledged.
 
 Windows/WSL command shape used for the Codex subscription-auth run:
 

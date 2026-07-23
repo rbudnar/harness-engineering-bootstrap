@@ -74,6 +74,8 @@ Partial telemetry is allowed. If run configuration, token, cost, transcript, or 
 
 Raw transcripts, diffs, workspaces, and trace logs should stay outside committed source by default. Store them under a temp or caller-provided artifact directory and record paths in `artifact_paths`. The runner records paths only; it does not inline large logs into JSONL rows.
 
+The Terminal-Bench comparison helper follows the same boundary for model-backed runs: job artifacts default to an OS temp directory and `run`/`preflight` reject a jobs directory inside this checkout unless the caller passes `--allow-repo-jobs-dir` to acknowledge benchmark contamination risk. Oracle and nop smoke runs remain allowed in repo-local directories because they do not expose prior artifacts to a model-backed agent.
+
 ## Fresh Run Loop
 
 Use this loop for regular benchmark runs until a full agent adapter is implemented:
