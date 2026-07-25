@@ -15,9 +15,12 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - Clarified that the first HEB benchmark pilot uses a committed local public-style fixture rather than an imported public benchmark suite.
 - Added a bounded #70 benchmark comparison report, WSL-aware Terminal-Bench Harbor comparison runner, and Terminal-Bench repo contract, keeping local HEB pilot results separate from public external benchmark adapter evidence.
 - Guarded model-backed Terminal-Bench comparison jobs against repo-local raw artifact reuse while keeping compact review summaries local.
+- Clarified local coding-agent and agent-runtime sandbox guidance so host-side consumers of agent-written files and privileged local daemons are part of boundary review.
 - Added a PR Agent Inbox check that keeps a sticky PR status comment current and fails while agent-actionable review or merge-readiness work remains.
 
 ### Template Changes
+
+- Tightened the human-guide and agent-runtime sandbox model guidance to include host-trust handoffs from agent-written workspace files and local daemons without adding a new optional module.
 
 ### Planner And Metadata
 

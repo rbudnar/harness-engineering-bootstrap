@@ -384,6 +384,7 @@ Include:
 
 - What the harness handles automatically
 - A compact control inventory: each important guide or sensor, whether it is computational or inferential, when it runs, and what failure mode it prevents
+- Local coding-agent tool assumptions, including generated files, configs, hooks, file watchers, containers, or local daemons that can consume agent-written files when agent-runtime safety docs are not triggered
 - When humans should intervene
 - How to review agent PRs
 - How to add or revise decisions
@@ -598,7 +599,7 @@ Each agent-runtime doc should include:
 - Security baseline: OWASP Agentic Application risks or the repository's internal equivalent, mapped to concrete controls
 - Permission model: deny-by-default stance, allowlist, scoped tokens/RBAC, network egress rules, and approval tiers for writes
 - Pre-action authorization: for high-impact tools such as deploys, deletes, data exports, permission changes, spending actions, and other irreversible writes, evaluate the allow/deny decision through a deterministic policy or explicit confirmation path outside the model's conversational judgment; fail closed when required policy context or approval is missing, and audit allow/deny decisions
-- Sandbox model: workspace boundaries, external read/write restrictions, whether hooks/MCP initialization/plugins are sandboxed, and whether stronger isolation such as managed sandboxes, microVMs, containers, VMs, or remote execution environments is required
+- Sandbox model: workspace boundaries, external read/write restrictions, host-side components or local daemons that can act on agent-written files, whether hooks/MCP initialization/plugins are sandboxed, and whether stronger isolation such as managed sandboxes, microVMs, containers, VMs, or remote execution environments is required
 - Secret model: no ambient host credentials by default; explicit task-scoped secret injection or a credential broker for short-lived credentials where practical
 - Action safety: idempotency expectations, retry policy, rate and cost budgets, maximum runtime, duplicate-write prevention, rollback path, kill switch, and escalation route
 - Input/output safety: handling for untrusted tool output, prompt injection, tool poisoning, memory poisoning, secret redaction, data retention, and user-visible output review
