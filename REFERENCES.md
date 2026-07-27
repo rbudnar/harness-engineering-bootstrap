@@ -33,6 +33,7 @@ Source material and related work used while developing the harness engineering b
 - [Security Risks in Tool-Enabled AI Agents](https://arxiv.org/abs/2605.09721)
 - [Before the Tool Call: Deterministic Pre-Action Authorization for Autonomous AI Agents](https://arxiv.org/abs/2603.20953)
 - [Practical Security Guidance for Sandboxing Agentic Workflows and Managing Execution Risk](https://developer.nvidia.com/blog/practical-security-guidance-for-sandboxing-agentic-workflows-and-managing-execution-risk/)
+- [The Week of Sandbox Escapes (Pillar Security)](https://www.pillar.security/blog/the-week-of-sandbox-escapes) - host-trust handoffs and sandbox-boundary failure modes for coding agents.
 - [OpenTelemetry Traces](https://opentelemetry.io/docs/concepts/signals/traces/)
 - [OpenTelemetry Semantic Conventions for Generative AI Systems](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
 - [Model Context Protocol Specification](https://modelcontextprotocol.io/specification/2025-11-25)
