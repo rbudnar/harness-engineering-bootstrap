@@ -128,22 +128,10 @@ function summarizeReviewConvergence(rows) {
           .map((row) => numberOrNull(row.review_loop.remediation_heads))
           .filter((value) => value !== null),
       ),
-      same_family_recurrences: sum(
-        variantRows,
-        (row) => numberOrNull(row.review_loop.same_family_recurrences) ?? 0,
-      ),
-      rework_lines: sum(
-        variantRows,
-        (row) => numberOrNull(row.review_loop.rework_lines) ?? 0,
-      ),
-      prompt_bytes: sum(
-        variantRows,
-        (row) => numberOrNull(row.review_loop.prompt_bytes) ?? 0,
-      ),
-      escaped_relevant_defects: sum(
-        variantRows,
-        (row) => numberOrNull(row.review_loop.escaped_relevant_defects) ?? 0,
-      ),
+      ...completeReviewSum(variantRows, 'same_family_recurrences'),
+      ...completeReviewSum(variantRows, 'rework_lines'),
+      ...completeReviewSum(variantRows, 'prompt_bytes'),
+      ...completeReviewSum(variantRows, 'escaped_relevant_defects'),
       terminal_full_review_rows: countWhere(
         variantRows,
         (row) => row.review_loop.terminal_full_review === true,
@@ -188,6 +176,18 @@ function countWhere(rows, predicate) {
 
 function sum(rows, project) {
   return rows.reduce((total, row) => total + project(row), 0);
+}
+
+function completeReviewSum(rows, field) {
+  const values = rows
+    .map((row) => numberOrNull(row.review_loop[field]))
+    .filter((value) => value !== null);
+  return {
+    [field]: values.length === rows.length
+      ? values.reduce((total, value) => total + value, 0)
+      : null,
+    [`${field}_measured_rows`]: values.length,
+  };
 }
 
 function arrayLength(value) {
@@ -280,9 +280,15 @@ function formatReviewConvergence(summary) {
     '| Variant | Rows | Median reviewed heads | Median remediation heads | Same-family recurrences | Rework lines | Prompt bytes | Escaped relevant defects | Terminal full review | Triggered action rows |',
     '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
     ...entries.map(([variant, data]) => (
-      `| \`${variant}\` | ${data.rows} | ${formatNumber(data.median_reviewed_heads)} | ${formatNumber(data.median_remediation_heads)} | ${data.same_family_recurrences} | ${data.rework_lines} | ${data.prompt_bytes} | ${data.escaped_relevant_defects} | ${data.terminal_full_review_rows}/${data.rows} | ${data.triggered_action_rows}/${data.rows} |`
+      `| \`${variant}\` | ${data.rows} | ${formatNumber(data.median_reviewed_heads)} | ${formatNumber(data.median_remediation_heads)} | ${formatReviewTotal(data, 'same_family_recurrences')} | ${formatReviewTotal(data, 'rework_lines')} | ${formatReviewTotal(data, 'prompt_bytes')} | ${formatReviewTotal(data, 'escaped_relevant_defects')} | ${data.terminal_full_review_rows}/${data.rows} | ${data.triggered_action_rows}/${data.rows} |`
     )),
   ];
+}
+
+function formatReviewTotal(data, field) {
+  const value = data[field] === null ? 'n/a' : String(data[field]);
+  const measuredRows = data[`${field}_measured_rows`];
+  return measuredRows === data.rows ? value : `${value} (${measuredRows}/${data.rows} measured)`;
 }
 
 function formatModelProvenance(summary) {

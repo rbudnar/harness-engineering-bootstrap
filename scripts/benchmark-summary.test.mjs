@@ -115,9 +115,13 @@ test('surfaces review-loop convergence metrics and correctness coverage', () => 
     median_reviewed_heads: 3,
     median_remediation_heads: 2,
     same_family_recurrences: 1,
+    same_family_recurrences_measured_rows: 1,
     rework_lines: 40,
+    rework_lines_measured_rows: 1,
     prompt_bytes: 42000,
+    prompt_bytes_measured_rows: 1,
     escaped_relevant_defects: 0,
+    escaped_relevant_defects_measured_rows: 1,
     terminal_full_review_rows: 1,
     triggered_action_rows: 1,
   });
@@ -125,6 +129,46 @@ test('surfaces review-loop convergence metrics and correctness coverage', () => 
   assert.match(
     markdown,
     /\| `revised-doctrine` \| 1 \| 3 \| 2 \| 1 \| 40 \| 42000 \| 0 \| 1\/1 \| 1\/1 \|/,
+  );
+});
+
+test('preserves unknown nullable review-loop totals and reports coverage', () => {
+  const summary = summarizeRows([
+    {
+      trial: 1,
+      variant: 'partial-telemetry',
+      review_loop: {
+        same_family_recurrences: 0,
+        rework_lines: 4,
+        prompt_bytes: 100,
+        escaped_relevant_defects: 0,
+        terminal_full_review: true,
+        triggered_actions: [],
+      },
+    },
+    {
+      trial: 2,
+      variant: 'partial-telemetry',
+      review_loop: {
+        same_family_recurrences: null,
+        rework_lines: null,
+        prompt_bytes: null,
+        escaped_relevant_defects: null,
+        terminal_full_review: null,
+        triggered_actions: [],
+      },
+    },
+  ]);
+
+  const data = summary.review_convergence['partial-telemetry'];
+  assert.equal(data.same_family_recurrences, null);
+  assert.equal(data.rework_lines, null);
+  assert.equal(data.prompt_bytes, null);
+  assert.equal(data.escaped_relevant_defects, null);
+  assert.equal(data.escaped_relevant_defects_measured_rows, 1);
+  assert.match(
+    formatMarkdown(summary),
+    /\| `partial-telemetry` \| 2 \| n\/a \| n\/a \| n\/a \(1\/2 measured\) \| n\/a \(1\/2 measured\) \| n\/a \(1\/2 measured\) \| n\/a \(1\/2 measured\) \| 1\/2 \| 0\/2 \|/,
   );
 });
 
