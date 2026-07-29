@@ -113,7 +113,9 @@ test('surfaces review-loop convergence metrics and correctness coverage', () => 
   assert.deepEqual(summary.review_convergence['revised-doctrine'], {
     rows: 1,
     median_reviewed_heads: 3,
+    reviewed_heads_measured_rows: 1,
     median_remediation_heads: 2,
+    remediation_heads_measured_rows: 1,
     same_family_recurrences: 1,
     same_family_recurrences_measured_rows: 1,
     rework_lines: 40,
@@ -123,7 +125,9 @@ test('surfaces review-loop convergence metrics and correctness coverage', () => 
     escaped_relevant_defects: 0,
     escaped_relevant_defects_measured_rows: 1,
     terminal_full_review_rows: 1,
+    terminal_full_review_measured_rows: 1,
     triggered_action_rows: 1,
+    triggered_actions_measured_rows: 1,
   });
   assert.match(markdown, /## Review-Loop Convergence/);
   assert.match(
@@ -143,7 +147,7 @@ test('preserves unknown nullable review-loop totals and reports coverage', () =>
         prompt_bytes: 100,
         escaped_relevant_defects: 0,
         terminal_full_review: true,
-        triggered_actions: [],
+        triggered_actions: null,
       },
     },
     {
@@ -166,9 +170,13 @@ test('preserves unknown nullable review-loop totals and reports coverage', () =>
   assert.equal(data.prompt_bytes, null);
   assert.equal(data.escaped_relevant_defects, null);
   assert.equal(data.escaped_relevant_defects_measured_rows, 1);
+  assert.equal(data.reviewed_heads_measured_rows, 0);
+  assert.equal(data.remediation_heads_measured_rows, 0);
+  assert.equal(data.terminal_full_review_measured_rows, 1);
+  assert.equal(data.triggered_actions_measured_rows, 1);
   assert.match(
     formatMarkdown(summary),
-    /\| `partial-telemetry` \| 2 \| n\/a \| n\/a \| n\/a \(1\/2 measured\) \| n\/a \(1\/2 measured\) \| n\/a \(1\/2 measured\) \| n\/a \(1\/2 measured\) \| 1\/2 \| 0\/2 \|/,
+    /\| `partial-telemetry` \| 2 \| n\/a \(0\/2 measured\) \| n\/a \(0\/2 measured\) \| n\/a \(1\/2 measured\) \| n\/a \(1\/2 measured\) \| n\/a \(1\/2 measured\) \| n\/a \(1\/2 measured\) \| 1\/1 \(1\/2 measured\) \| 0\/1 \(1\/2 measured\) \|/,
   );
 });
 

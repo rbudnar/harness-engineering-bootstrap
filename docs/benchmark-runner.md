@@ -96,8 +96,9 @@ they can during the run. A result cannot set `success: true` when
 Efficiency measurements remain diagnostic; they never override correctness.
 `benchmark-summary.mjs` renders these rows in a dedicated review-loop table so
 feedback is visible at PR closeout instead of waiting for a monthly report.
-Nullable totals remain `n/a` unless every row measured them; partial coverage is
-shown explicitly instead of treating unknown values as zero.
+Nullable review metrics remain distinct from measured zero, false, or empty
+values; medians, totals, booleans, and action arrays show partial coverage
+explicitly.
 
 `token_estimate` may be a non-negative number or an object with `unit`, `input`, `output`, and `total`; if `input` and `output` are present, `total` is computed. `cost_estimate` may be a non-negative number or `{ "currency": "USD", "amount": 0.01 }`.
 

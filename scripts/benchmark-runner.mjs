@@ -825,7 +825,7 @@ function normalizeReviewLoop(value) {
     value.terminal_full_review,
     'review_loop.terminal_full_review',
   );
-  output.triggered_actions = nonEmptyStringArray(
+  output.triggered_actions = nullableNonEmptyStringArray(
     value.triggered_actions,
     'review_loop.triggered_actions',
   );
@@ -835,6 +835,11 @@ function normalizeReviewLoop(value) {
 function nullableNonNegativeNumber(value, field) {
   if (value === undefined || value === null) return null;
   return nonNegativeNumber(value, field);
+}
+
+function nullableNonEmptyStringArray(value, field) {
+  if (value === undefined || value === null) return null;
+  return nonEmptyStringArray(value, field);
 }
 
 function nonNegativeNumber(value, field) {

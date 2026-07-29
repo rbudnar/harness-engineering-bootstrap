@@ -434,6 +434,25 @@ test('rejects successful review-loop rows with an escape or no terminal full rev
   }, manifest), /require terminal_full_review/);
 });
 
+test('preserves unavailable review-loop action telemetry as null', () => {
+  const { manifest } = readManifest(manifestPath);
+  const row = normalizeResultRow({
+    run_id: 'partial-review-actions',
+    task_id: 'docs-only-fixture-001',
+    trial: 1,
+    variant: 'static-minimal-agents',
+    agent_surface: 'manual-adapter',
+    success: false,
+    review_loop: {
+      escaped_relevant_defects: null,
+      terminal_full_review: null,
+      triggered_actions: null,
+    },
+  }, manifest);
+
+  assert.equal(row.review_loop.triggered_actions, null);
+});
+
 test('warns when declared model lacks observed model provenance', () => {
   const { manifest } = readManifest(manifestPath);
   const row = normalizeResultRow({
