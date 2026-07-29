@@ -63,6 +63,71 @@ test('renders the pilot summary table for PR bodies and reports', () => {
   assert.match(markdown, /\| `heb-planned-core` \| 2 \| 2\/2 \| 0\/2 \|/);
 });
 
+test('surfaces review-loop convergence metrics and correctness coverage', () => {
+  const rows = [
+    {
+      trial: 1,
+      variant: 'current-doctrine',
+      success: true,
+      first_pass_green: false,
+      route_hits: [],
+      stale_hits: [],
+      token_estimate: { total: 10 },
+      wall_time_seconds: 5,
+      review_loop: {
+        reviewed_heads: 5,
+        remediation_heads: 4,
+        same_family_recurrences: 3,
+        rework_lines: 210,
+        prompt_bytes: 70000,
+        escaped_relevant_defects: 0,
+        terminal_full_review: true,
+        triggered_actions: [],
+      },
+    },
+    {
+      trial: 1,
+      variant: 'revised-doctrine',
+      success: true,
+      first_pass_green: false,
+      route_hits: [],
+      stale_hits: [],
+      token_estimate: { total: 10 },
+      wall_time_seconds: 5,
+      review_loop: {
+        reviewed_heads: 3,
+        remediation_heads: 2,
+        same_family_recurrences: 1,
+        rework_lines: 40,
+        prompt_bytes: 42000,
+        escaped_relevant_defects: 0,
+        terminal_full_review: true,
+        triggered_actions: ['design-mechanism-checkpoint'],
+      },
+    },
+  ];
+
+  const summary = summarizeRows(rows);
+  const markdown = formatMarkdown(summary);
+
+  assert.deepEqual(summary.review_convergence['revised-doctrine'], {
+    rows: 1,
+    median_reviewed_heads: 3,
+    median_remediation_heads: 2,
+    same_family_recurrences: 1,
+    rework_lines: 40,
+    prompt_bytes: 42000,
+    escaped_relevant_defects: 0,
+    terminal_full_review_rows: 1,
+    triggered_action_rows: 1,
+  });
+  assert.match(markdown, /## Review-Loop Convergence/);
+  assert.match(
+    markdown,
+    /\| `revised-doctrine` \| 1 \| 3 \| 2 \| 1 \| 40 \| 42000 \| 0 \| 1\/1 \| 1\/1 \|/,
+  );
+});
+
 test('surfaces model provenance warnings in summaries', () => {
   const summary = summarizeRows([
     {

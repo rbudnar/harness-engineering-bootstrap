@@ -77,6 +77,7 @@ export function summarizeRows(rows) {
     rows: rows.length,
     first_trial: summarizeFirstTrial(firstTrialRows),
     repeated_subset: summarizeRepeated(repeatedRows),
+    review_convergence: summarizeReviewConvergence(rows),
     model_provenance: summarizeModelProvenance(rows),
     warnings: summarizeWarnings(rows),
   };
@@ -110,6 +111,49 @@ function summarizeModelProvenance(rows) {
     routing_evidence_rows: countWhere(variantRows, (row) => nonEmptyStringArrayLength(row.model_routing_evidence) > 0),
     warning_rows: countWhere(variantRows, hasModelProvenanceGap),
   }));
+}
+
+function summarizeReviewConvergence(rows) {
+  return summarizeByVariant(
+    rows.filter((row) => row.review_loop && typeof row.review_loop === 'object'),
+    (variantRows) => ({
+      rows: variantRows.length,
+      median_reviewed_heads: median(
+        variantRows
+          .map((row) => numberOrNull(row.review_loop.reviewed_heads))
+          .filter((value) => value !== null),
+      ),
+      median_remediation_heads: median(
+        variantRows
+          .map((row) => numberOrNull(row.review_loop.remediation_heads))
+          .filter((value) => value !== null),
+      ),
+      same_family_recurrences: sum(
+        variantRows,
+        (row) => numberOrNull(row.review_loop.same_family_recurrences) ?? 0,
+      ),
+      rework_lines: sum(
+        variantRows,
+        (row) => numberOrNull(row.review_loop.rework_lines) ?? 0,
+      ),
+      prompt_bytes: sum(
+        variantRows,
+        (row) => numberOrNull(row.review_loop.prompt_bytes) ?? 0,
+      ),
+      escaped_relevant_defects: sum(
+        variantRows,
+        (row) => numberOrNull(row.review_loop.escaped_relevant_defects) ?? 0,
+      ),
+      terminal_full_review_rows: countWhere(
+        variantRows,
+        (row) => row.review_loop.terminal_full_review === true,
+      ),
+      triggered_action_rows: countWhere(
+        variantRows,
+        (row) => nonEmptyStringArrayLength(row.review_loop.triggered_actions) > 0,
+      ),
+    }),
+  );
 }
 
 function summarizeWarnings(rows) {
@@ -219,9 +263,26 @@ export function formatMarkdown(summary) {
     ...Object.entries(summary.repeated_subset).map(([variant, data]) => (
       `| \`${variant}\` | ${data.repeated_trials} | ${data.success}/${data.repeated_trials} | ${data.same_family_stale_recurrence}/${data.repeated_trials} |`
     )),
+    ...formatReviewConvergence(summary),
     ...formatModelProvenance(summary),
     ...formatWarnings(summary),
   ].join('\n');
+}
+
+function formatReviewConvergence(summary) {
+  const entries = Object.entries(summary.review_convergence);
+  if (!entries.length) return [];
+
+  return [
+    '',
+    '## Review-Loop Convergence',
+    '',
+    '| Variant | Rows | Median reviewed heads | Median remediation heads | Same-family recurrences | Rework lines | Prompt bytes | Escaped relevant defects | Terminal full review | Triggered action rows |',
+    '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
+    ...entries.map(([variant, data]) => (
+      `| \`${variant}\` | ${data.rows} | ${formatNumber(data.median_reviewed_heads)} | ${formatNumber(data.median_remediation_heads)} | ${data.same_family_recurrences} | ${data.rework_lines} | ${data.prompt_bytes} | ${data.escaped_relevant_defects} | ${data.terminal_full_review_rows}/${data.rows} | ${data.triggered_action_rows}/${data.rows} |`
+    )),
+  ];
 }
 
 function formatModelProvenance(summary) {

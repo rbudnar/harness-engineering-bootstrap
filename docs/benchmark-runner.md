@@ -66,6 +66,37 @@ Outcome and telemetry fields:
 - `token_estimate`, `cost_estimate`
 - `artifact_paths`, `notes`
 
+Review-loop convergence episodes may include:
+
+```json
+{
+  "review_loop": {
+    "reviewed_heads": 3,
+    "review_attempts": 5,
+    "remediation_heads": 2,
+    "same_family_recurrences": 1,
+    "gross_remediation_lines": 120,
+    "rework_lines": 35,
+    "initial_scope_lines": 80,
+    "final_scope_lines": 130,
+    "blocker_count": 2,
+    "residual_count": 1,
+    "noise_count": 1,
+    "prompt_bytes": 45000,
+    "escaped_relevant_defects": 0,
+    "terminal_full_review": true,
+    "triggered_actions": ["design-mechanism-checkpoint"]
+  }
+}
+```
+
+Fields may be `null` when unavailable, but adapters should populate every field
+they can during the run. A result cannot set `success: true` when
+`escaped_relevant_defects` is nonzero or `terminal_full_review` is not true.
+Efficiency measurements remain diagnostic; they never override correctness.
+`benchmark-summary.mjs` renders these rows in a dedicated review-loop table so
+feedback is visible at PR closeout instead of waiting for a monthly report.
+
 `token_estimate` may be a non-negative number or an object with `unit`, `input`, `output`, and `total`; if `input` and `output` are present, `total` is computed. `cost_estimate` may be a non-negative number or `{ "currency": "USD", "amount": 0.01 }`.
 
 Partial telemetry is allowed. If run configuration, token, cost, transcript, or trace data is unavailable, record `null` or omit the artifact path; the runner adds warnings instead of failing the row. When `model` is present but `observed_model` is unavailable, the runner warns so summaries do not accidentally treat a deployed product run as a pure model comparison. `benchmark-summary.mjs` surfaces warning counts and model-provenance rollups so those caveats remain visible in the report path.
