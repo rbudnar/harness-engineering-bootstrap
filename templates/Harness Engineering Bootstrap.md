@@ -944,7 +944,7 @@ Scope drift is not only a handoff-reading failure: current frontier models may a
 
 Before declaring work complete, check whether the task exposed a repeated mistake, durable missed context, missed ADR, stale doc, wrong command, missing sensor, missing guide, or context route gap.
 
-Add explicit verification or recheck steps to harness instructions only when the current model has demonstrated a measured miss on this repo's tasks. Frontier models self-verify natively; blanket "double-check before finishing" scaffolding causes over-verification and wasted tokens without quality gain.
+Add generic self-review or "double-check before finishing" prompting to harness instructions only when the current model has demonstrated a measured miss on this repo's tasks. Frontier models self-verify natively; blanket self-review scaffolding causes over-verification and wasted tokens without quality gain. This does not limit explicit deterministic evidence: running quality gates, migration checks, validators, and safety validations remains required wherever the repository or platform mandates them.
 
 If yes, update the smallest durable harness surface in the same PR: `docs/README.md`, decision memory, a contract, a script, a review rule, a skill, or a focused doc. If the right fix is unclear, record a marker in the PR body, review thread, issue, or configured feedback log, such as `harness:miss-adr`, `harness:missing-guide`, `harness:missing-sensor`, `harness:wrong-command`, or `harness:context-rot`.
 
@@ -1119,7 +1119,7 @@ Use:
 
 Before adding a multi-agent graph, document ownership, I/O contracts, shared state, arbitration when agents disagree, termination criteria, budget, and the verification signal that proves the topology helps. Be especially cautious with distributed deliberation loops: they can multiply cost and uncertainty unless an eval shows they improve outcomes for this repo.
 
-Watch for model-initiated over-delegation as well as human-designed sprawl: current frontier models may spawn subagents for small single-context tasks where one direct pass is cheaper and more reliable. When this appears, add explicit delegation criteria (minimum task size, context-isolation requirement, or parallelism benefit) and, where the runtime allows, deterministic caps on subagent depth and count rather than prose-only reminders.
+Watch for model-initiated over-delegation as well as human-designed sprawl: current frontier models may spawn subagents for small single-context tasks where one direct pass is cheaper and more reliable. When this appears, add explicit delegation criteria (minimum task size, context-isolation requirement, or parallelism benefit) and, where the runtime allows, deterministic caps on subagent depth and count rather than prose-only reminders. Treat any such cap as an ordinary optional control: record a validation signal (for example, subagent count and task cost on comparable tasks before versus after) and a retirement or reassessment trigger tied to model or runtime upgrades, so a cap that no longer reflects current model behavior is removed instead of ossifying.
 
 Adversarial validation should have a narrow brief:
 
