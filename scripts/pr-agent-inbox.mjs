@@ -262,12 +262,18 @@ function resolveWorkflowRunTargets(client, repo, workflowRun = {}) {
     return match ? [Number(match[1])] : [];
   }
 
+  if ((workflowRun.pull_requests ?? []).length > 100) {
+    throw new Error('Refusing to fan out a workflow run to more than 100 pull requests');
+  }
   const targets = (workflowRun.pull_requests ?? []).map((pr) => pr.number).filter(Number.isInteger);
   if (targets.length) return targets;
 
   // commit-to-open-PR fallback: the REST association may recover a producer payload with an empty PR array.
   const associated = client.json(['api', `repos/${repo}/commits/${workflowRun.head_sha}/pulls?per_page=100`]);
-  if ((associated ?? []).length >= 100) throw new Error('Refusing an ambiguous commit association with 100 or more pull requests');
+  if ((associated ?? []).length === 100) {
+    const overflow = client.json(['api', `repos/${repo}/commits/${workflowRun.head_sha}/pulls?per_page=100&page=2`]);
+    if ((overflow ?? []).length) throw new Error('Refusing a commit association with more than 100 pull requests');
+  }
   return (associated ?? []).filter((pr) => pr.state === 'open').map((pr) => pr.number);
 }
 

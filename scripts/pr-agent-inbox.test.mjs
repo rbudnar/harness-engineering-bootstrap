@@ -703,6 +703,76 @@ test('Template Fitness completion wakes the publisher even when the producer fai
   }), [{ pr: 73 }]);
 });
 
+test('workflow_run direct targets fail closed above 100 pull requests', () => {
+  const client = {
+    json(args) {
+      if (args.some((arg) => String(arg).startsWith('repos/owner/repo/actions/workflows/'))) {
+        return { id: 280258753, path: '.github/workflows/template-fitness.yml', state: 'active' };
+      }
+      throw new Error(`unexpected call: ${args.join(' ')}`);
+    },
+  };
+
+  assert.throws(() => resolveInboxTargets(client, {
+    repo: 'owner/repo',
+    eventName: 'workflow_run',
+    eventPath: 'unused-with-eventPayload',
+    eventPayload: {
+      workflow_run: {
+        name: 'Template Fitness',
+        workflow_id: 280258753,
+        path: '.github/workflows/template-fitness.yml',
+        conclusion: 'success',
+        event: 'pull_request',
+        pull_requests: Array.from({ length: 101 }, (_, index) => ({ number: index + 1 })),
+      },
+    },
+  }), /more than 100/);
+});
+
+test('workflow_run fallback admits exactly 100 pull request associations', () => {
+  const associations = Array.from({ length: 100 }, (_, index) => ({
+    number: index + 1,
+    state: 'open',
+  }));
+  const client = {
+    json(args) {
+      const endpoint = args.find((arg) => String(arg).startsWith('repos/owner/repo/'));
+      if (endpoint?.includes('/actions/workflows/')) {
+        return { id: 280258753, path: '.github/workflows/template-fitness.yml', state: 'active' };
+      }
+      if (endpoint?.endsWith('/pulls?per_page=100')) return associations;
+      if (endpoint?.endsWith('/pulls?per_page=100&page=2')) return [];
+      if (args[0] === 'pr' && args[1] === 'view') {
+        const number = Number(args[2]);
+        return { number, state: 'OPEN', isDraft: number === 1 };
+      }
+      throw new Error(`unexpected call: ${args.join(' ')}`);
+    },
+  };
+
+  const targets = resolveInboxTargets(client, {
+    repo: 'owner/repo',
+    eventName: 'workflow_run',
+    eventPath: 'unused-with-eventPayload',
+    eventPayload: {
+      workflow_run: {
+        name: 'Template Fitness',
+        workflow_id: 280258753,
+        path: '.github/workflows/template-fitness.yml',
+        conclusion: 'success',
+        event: 'pull_request',
+        head_sha: 'abc123',
+        pull_requests: [],
+      },
+    },
+  });
+
+  assert.equal(targets.length, 100);
+  assert.deepEqual(targets[0], { pr: 1 });
+  assert.deepEqual(targets[99], { pr: 100 });
+});
+
 test('manual recovery fails closed rather than fan out above 100 open PRs', () => {
   const client = {
     json(args) {
