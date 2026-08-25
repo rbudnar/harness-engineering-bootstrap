@@ -483,7 +483,7 @@ Validation should check that URL maps point to existing files, exclude disallowe
 
 ### `docs/task-contracts/` or `docs/exec-plans/`
 
-Use only for long-running, multi-agent, or handoff-heavy work where a short prompt is not enough to preserve intent. This module does not prescribe provider-native compaction, summarization, or memory behavior; it defines only the repo-visible state needed for safe resume and handoff.
+Use only for long-running, multi-agent, or handoff-heavy work where a short prompt is not enough to preserve intent. This module does not define the behavior of provider-native compaction, summarization, or memory; it defines repository-visible session state and expects runtime-provided continuity to be preferred over hand-rolled persistence where available.
 
 Provider-native context management now exists on major runtimes (for example OpenAI's `/responses/compact` and persisted reasoning, Anthropic's compaction support in long-running harnesses). Prefer it for session-state continuity where available, and keep this module's repo-visible contracts for what provider state cannot carry: durable intent, acceptance criteria, cross-agent handoffs, and audit trail. Do not hand-roll session persistence that the runtime already provides unless the repo needs portability across providers.
 
@@ -1102,7 +1102,7 @@ For bespoke tool wrappers, planner/executor loops, multi-agent graphs, custom me
 
 Prefer plain files, git history, structured task contracts, skills, and small deterministic tools before adding opaque framework layers. When a model or agent tool improves, run a short upgrade review: strip away scaffolding that is no longer load-bearing, then use the regression eval or harness metrics to confirm the removal did not hurt outcomes.
 
-Model-upgrade reviews must also audit prompt-side scaffolding, not only tool wrappers: verification and recheck instructions, forced narration or preflight steps, verbosity directives, and effort/reasoning-level settings. Current frontier models self-verify natively and follow prompt contracts closely; vendor guidance for Claude Opus 5 and the GPT-5.6 series recommends removing explicit double-check scaffolding that causes over-verification, and treating compute-per-task (reasoning effort) as a routing decision alongside context routing. Add a verification instruction only after observing a measured miss on the current model.
+Model-upgrade reviews must also audit prompt-side scaffolding, not only tool wrappers: verification and recheck instructions, forced narration or preflight steps, verbosity directives, and effort/reasoning-level settings. Vendor guidance differs by family: Anthropic's Claude Opus 5 guidance recommends removing explicit double-check scaffolding that causes over-verification; OpenAI's GPT-5.6 guidance recommends keeping a stated validation loop — give the model tools that can validate output and state what validation matters — and treating compute-per-task (reasoning effort) as a routing decision alongside context routing. Match the vendor's actual recommendation for the model being adopted, and remove or tighten generic self-review prompting only where the current model has demonstrated a measured miss. This audit never authorizes removing deterministic evidence: quality gates, migration checks, validators, safety validations, and any repository- or platform-mandated verification remain required across model upgrades.
 
 ### Multi-Agent and Handoff Patterns
 
