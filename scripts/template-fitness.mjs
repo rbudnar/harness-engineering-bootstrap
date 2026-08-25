@@ -860,6 +860,74 @@ function checkWeeklyHarnessReporting() {
   }
 }
 
+function checkPrAgentInboxContract() {
+  metric('\nPR Agent Inbox event contract:');
+  const paths = [
+    '.github/workflows/pr-agent-inbox.yml',
+    '.github/workflows/pr-agent-inbox-signal.yml',
+    'docs/repo-contracts/github-pr-agent-inbox.md',
+  ];
+  for (const path of paths) {
+    if (exists(path)) metric(`- ${path}: present`);
+    else fail(`${path} is required for event-driven PR Agent Inbox publication.`);
+  }
+  if (!paths.every((path) => exists(path))) return;
+
+  const publisher = read('.github/workflows/pr-agent-inbox.yml');
+  const signal = read('.github/workflows/pr-agent-inbox-signal.yml');
+  const docs = read('docs/repo-contracts/github-pr-agent-inbox.md');
+
+  const forbiddenPublisherTriggers = [
+    ['pull_request_review', 'direct pull_request_review publisher trigger'],
+    ['pull_request_review_comment', 'direct pull_request_review_comment publisher trigger'],
+    ['schedule', 'Inbox schedule'],
+    ['status', 'broad Inbox status trigger'],
+    ['check_run', 'broad Inbox check_run trigger'],
+    ['check_suite', 'broad Inbox check_suite trigger'],
+  ];
+  for (const [key, label] of forbiddenPublisherTriggers) {
+    if (new RegExp(`^  ${key}:`, 'm').test(publisher)) fail(`.github/workflows/pr-agent-inbox.yml must not include ${label}.`);
+  }
+
+  for (const text of [
+    'workflow_run:',
+    'workflows: [PR Agent Inbox Signal, Template Fitness]',
+    'types: [completed]',
+    "if: github.event_name != 'issue_comment' || github.event.issue.pull_request",
+    'name: agent-inbox',
+    'persist-credentials: false',
+    'pr-agent-inbox-pr-${{ matrix.target.pr }}',
+    'cancel-in-progress: false',
+    '--validate-target "$TARGET_PR"',
+    '--ignore-check "PR Agent Inbox / resolve-targets"',
+  ]) {
+    if (!publisher.includes(text)) fail(`.github/workflows/pr-agent-inbox.yml must include event contract anchor: ${text}`);
+  }
+
+  for (const text of [
+    'name: PR Agent Inbox Signal',
+    'run-name: "PR Agent Inbox Signal #${{ github.event.pull_request.number }}"',
+    'permissions: {}',
+    'runs-on: ubuntu-latest',
+    'timeout-minutes: 1',
+    'pull_request_review:',
+    'pull_request_review_comment:',
+    'run: true',
+  ]) {
+    if (!signal.includes(text)) fail(`.github/workflows/pr-agent-inbox-signal.yml must include zero-capability anchor: ${text}`);
+  }
+
+  for (const forbidden of ['actions/checkout', 'actions/cache', 'actions/upload-artifact', 'actions/download-artifact']) {
+    if (signal.includes(forbidden)) fail(`.github/workflows/pr-agent-inbox-signal.yml must not include ${forbidden}.`);
+  }
+  if (publisher.includes('self-hosted') || signal.includes('self-hosted')) {
+    fail('PR Agent Inbox workflows must not use a self-hosted runner.');
+  }
+  if (!docs.includes('The Inbox has no polling schedule.')) {
+    fail('docs/repo-contracts/github-pr-agent-inbox.md must reject Inbox polling schedules.');
+  }
+}
+
 function escapeRegExp(text) {
   return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -982,6 +1050,7 @@ function main() {
   checkReleaseMarker();
   checkReleasePolicy();
   checkWeeklyHarnessReporting();
+  checkPrAgentInboxContract();
   checkSkillStandards();
 
   for (const suggestionPath of suggestionPaths) {

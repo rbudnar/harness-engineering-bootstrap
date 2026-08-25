@@ -3,166 +3,140 @@ name: PR Agent Inbox
 on:
   pull_request_target:
     types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, edited]
-  pull_request_review:
-    types: [submitted, edited, dismissed]
-  pull_request_review_comment:
-    types: [created, edited, deleted]
   issue_comment:
     types: [created]
+  workflow_run:
+    workflows: [PR Agent Inbox Signal, Template Fitness]
+    types: [completed]
   workflow_dispatch:
     inputs:
       pr:
-        description: Pull request number to refresh; omit to sweep open PRs.
+        description: Pull request number to refresh; omit for a bounded open-PR recovery.
         required: false
-  schedule:
-    - cron: '*/15 * * * *'
 
-permissions:
-  contents: read
-  issues: write
-  pull-requests: write
-  checks: read
-  statuses: write
-
-concurrency:
-  group: pr-agent-inbox-${{ github.event.pull_request.number || github.event.issue.number || github.event.inputs.pr || 'sweep' }}
-  cancel-in-progress: false
+permissions: {}
 
 jobs:
-  agent-inbox:
+  resolve-targets:
     if: github.event_name != 'issue_comment' || github.event.issue.pull_request
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    outputs:
+      targets: ${{ steps.targets.outputs.targets }}
+      default_branch_name: ${{ steps.base.outputs.name }}
+      default_branch_oid: ${{ steps.base.outputs.oid }}
     steps:
-      - name: Decide inbox refresh scope
-        id: decide
+      - name: Resolve route-time default branch name and OID
+        id: base
         env:
           GH_TOKEN: ${{ github.token }}
-          EVENT_NAME: ${{ github.event_name }}
           REPO: ${{ github.repository }}
-          COMMENT_AUTHOR: ${{ github.event.comment.user.login || '' }}
-          COMMENT_BODY: ${{ github.event.comment.body || '' }}
-          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name || '' }}
-          INPUT_PR: ${{ github.event.inputs.pr || '' }}
-          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number || github.event.inputs.pr || '' }}
-          CHECKOUT_REF: ${{ github.event.pull_request.base.sha || github.sha }}
         run: |
           set -euo pipefail
-
-          mode="skip"
-          pr="${PR_NUMBER}"
-          checkout_ref="${CHECKOUT_REF:-$GITHUB_SHA}"
-
-          case "$EVENT_NAME" in
-            pull_request_target)
-              mode="assert"
-              ;;
-            pull_request_review|pull_request_review_comment)
-              if [[ -n "$HEAD_REPO" && "$HEAD_REPO" != "$REPO" ]]; then
-                echo "::notice::Skipping write-backed review refresh for fork PR ${pr}; scheduled or manual refresh will reconcile the PR-head status."
-              else
-                mode="assert"
-              fi
-              ;;
-            issue_comment)
-              if [[ "$COMMENT_BODY" == "/agent-inbox refresh"* ]]; then
-                permission="$(gh api "repos/${REPO}/collaborators/${COMMENT_AUTHOR}/permission" --jq '.permission' 2>/dev/null || echo none)"
-                case "$permission" in
-                  admin|maintain|write) mode="assert" ;;
-                  *) echo "::notice::Ignoring /agent-inbox refresh from ${COMMENT_AUTHOR}; permission is ${permission}." ;;
-                esac
-              fi
-              ;;
-            workflow_dispatch)
-              if [[ -n "$INPUT_PR" ]]; then
-                mode="assert"
-                pr="$INPUT_PR"
-              else
-                mode="sweep"
-              fi
-              ;;
-            schedule)
-              mode="sweep"
-              ;;
-          esac
-
-          {
-            echo "mode=$mode"
-            echo "pr=$pr"
-            echo "checkout_ref=$checkout_ref"
-          } >> "$GITHUB_OUTPUT"
+          owner="${REPO%%/*}"
+          name="${REPO#*/}"
+          branch="$(gh api graphql -F owner="$owner" -F name="$name" -f query='query($owner:String!,$name:String!){repository(owner:$owner,name:$name){defaultBranchRef{name target{oid}}}}' --jq '.data.repository.defaultBranchRef.name')"
+          oid="$(gh api graphql -F owner="$owner" -F name="$name" -f query='query($owner:String!,$name:String!){repository(owner:$owner,name:$name){defaultBranchRef{name target{oid}}}}' --jq '.data.repository.defaultBranchRef.target.oid')"
+          test -n "$branch"
+          test -n "$oid"
+          echo "name=$branch" >> "$GITHUB_OUTPUT"
+          echo "oid=$oid" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v4
-        if: steps.decide.outputs.mode != 'skip'
         with:
-          ref: ${{ steps.decide.outputs.checkout_ref }}
+          ref: ${{ steps.base.outputs.oid }}
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
-        if: steps.decide.outputs.mode != 'skip'
         with:
           node-version: '20'
 
-      - name: Refresh one PR inbox
-        if: steps.decide.outputs.mode == 'assert'
+      - name: Resolve exact current PR targets
+        id: targets
         env:
           GH_TOKEN: ${{ github.token }}
-          TARGET_PR: ${{ steps.decide.outputs.pr }}
         run: |
           set -euo pipefail
-          if [[ ! -f scripts/pr-agent-inbox.mjs ]]; then
-            echo "::notice::PR Agent Inbox script is not installed on the checked-out base ref yet; skipping bootstrap refresh."
-            exit 0
-          fi
-          if ! node scripts/pr-agent-inbox.mjs --help 2>&1 | grep -q -- '--assert-no-agent-attention'; then
-            echo "::notice::PR Agent Inbox script on the checked-out ref does not support actionable-only assertion yet; skipping bootstrap refresh."
-            exit 0
-          fi
+          targets="$(node scripts/pr-agent-inbox.mjs --repo "$GITHUB_REPOSITORY" --resolve-targets)"
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
+
+  agent-inbox:
+    name: agent-inbox
+    needs: resolve-targets
+    if: needs.resolve-targets.outputs.targets != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.resolve-targets.outputs.targets) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      checks: read
+      issues: write
+      pull-requests: write
+      statuses: write
+    concurrency:
+      group: pr-agent-inbox-pr-${{ matrix.target.pr }}
+      cancel-in-progress: false
+    steps:
+      - name: Revalidate post-queue base authority
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH_NAME: ${{ needs.resolve-targets.outputs.default_branch_name }}
+          DEFAULT_BRANCH_OID: ${{ needs.resolve-targets.outputs.default_branch_oid }}
+        run: |
+          set -euo pipefail
+          owner="${REPO%%/*}"
+          name="${REPO#*/}"
+          current_name="$(gh api graphql -F owner="$owner" -F name="$name" -f query='query($owner:String!,$name:String!){repository(owner:$owner,name:$name){defaultBranchRef{name target{oid}}}}' --jq '.data.repository.defaultBranchRef.name')"
+          current_oid="$(gh api graphql -F owner="$owner" -F name="$name" -f query='query($owner:String!,$name:String!){repository(owner:$owner,name:$name){defaultBranchRef{name target{oid}}}}' --jq '.data.repository.defaultBranchRef.target.oid')"
+          test "$current_name" = "$DEFAULT_BRANCH_NAME"
+          test "$current_oid" = "$DEFAULT_BRANCH_OID"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-targets.outputs.default_branch_oid }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Revalidate event admission after queueing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_PR: ${{ matrix.target.pr }}
+        run: |
+          set -euo pipefail
+          node scripts/pr-agent-inbox.mjs \
+            --repo "$GITHUB_REPOSITORY" \
+            --validate-target "$TARGET_PR"
+
+      - name: Publish stable current inbox state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_PR: ${{ matrix.target.pr }}
+        run: |
+          set -euo pipefail
           node scripts/pr-agent-inbox.mjs \
             --repo "$GITHUB_REPOSITORY" \
             --pr "$TARGET_PR" \
+            --refresh \
+            --reconcile \
             --assert-no-agent-attention \
             --update-comment \
             --ensure-label \
             --sync-label \
             --publish-status \
             --allow-pending-checks \
-            --ignore-check "PR Agent Inbox" \
-            --ignore-check "PR Agent Inbox / agent-inbox"
-
-      - name: Refresh open PR inboxes
-        if: steps.decide.outputs.mode == 'sweep'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [[ ! -f scripts/pr-agent-inbox.mjs ]]; then
-            echo "::notice::PR Agent Inbox script is not installed on the checked-out base ref yet; skipping bootstrap sweep."
-            exit 0
-          fi
-          if ! node scripts/pr-agent-inbox.mjs --help 2>&1 | grep -q -- '--assert-no-agent-attention'; then
-            echo "::notice::PR Agent Inbox script on the checked-out ref does not support actionable-only assertion yet; skipping bootstrap sweep."
-            exit 0
-          fi
-          pr_list="$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 100 --json number --jq '.[].number')"
-          if [[ -z "$pr_list" ]]; then
-            echo "No open pull requests to refresh."
-            exit 0
-          fi
-          mapfile -t prs <<< "$pr_list"
-
-          status=0
-          for pr in "${prs[@]}"; do
-            node scripts/pr-agent-inbox.mjs \
-              --repo "$GITHUB_REPOSITORY" \
-              --pr "$pr" \
-              --refresh \
-              --assert-no-agent-attention \
-              --update-comment \
-              --ensure-label \
-              --sync-label \
-              --publish-status \
-              --allow-pending-checks \
-              --ignore-check "PR Agent Inbox" \
-              --ignore-check "PR Agent Inbox / agent-inbox" || status=1
-          done
-
-          exit "$status"
+            --required-check "Template Fitness" \
+            --ignore-check "PR Agent Inbox / resolve-targets" \
+            --ignore-check "PR Agent Inbox / agent-inbox" \
+            --ignore-check "PR Agent Inbox Signal / signal"
