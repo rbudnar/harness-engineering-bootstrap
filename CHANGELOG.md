@@ -23,7 +23,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 ### Template Changes
 
 - Added prompt-side scaffolding (verification/recheck steps, narration rules, effort settings) to the Harness Replaceability model-upgrade review scope.
-- Qualified Harness Self-Correction so explicit verification steps are added only after a measured miss on the current model.
+- Qualified Harness Self-Correction so generic self-review prompting is added only after a measured miss on the current model, while repository- or platform-mandated verification remains required.
 - Named model-initiated over-delegation as a multi-agent failure mode with delegation-criteria and deterministic-cap remedies.
 - Added invented-scope drift to handoff/migration scope guidance and provider-native compaction preference to the task-contracts module.
 - Tightened the human-guide and agent-runtime sandbox model guidance to include host-trust handoffs from agent-written workspace files and local daemons without adding a new optional module.
