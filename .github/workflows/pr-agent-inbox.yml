@@ -18,6 +18,7 @@ permissions: {}
 
 jobs:
   resolve-targets:
+    if: github.event_name != 'issue_comment' || github.event.issue.pull_request
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -64,6 +65,7 @@ jobs:
           echo "targets=$targets" >> "$GITHUB_OUTPUT"
 
   agent-inbox:
+    name: agent-inbox
     needs: resolve-targets
     if: needs.resolve-targets.outputs.targets != '[]'
     strategy:
@@ -113,8 +115,9 @@ jobs:
           TARGET_PR: ${{ matrix.target.pr }}
         run: |
           set -euo pipefail
-          targets="$(node scripts/pr-agent-inbox.mjs --repo "$GITHUB_REPOSITORY" --resolve-targets)"
-          node -e 'const targets=JSON.parse(process.argv[1]); const pr=Number(process.argv[2]); if (!targets.some((target) => target.pr === pr)) process.exit(1)' "$targets" "$TARGET_PR"
+          node scripts/pr-agent-inbox.mjs \
+            --repo "$GITHUB_REPOSITORY" \
+            --validate-target "$TARGET_PR"
 
       - name: Publish stable current inbox state
         env:
@@ -134,5 +137,6 @@ jobs:
             --publish-status \
             --allow-pending-checks \
             --required-check "Template Fitness" \
+            --ignore-check "PR Agent Inbox / resolve-targets" \
             --ignore-check "PR Agent Inbox / agent-inbox" \
             --ignore-check "PR Agent Inbox Signal / signal"

@@ -893,15 +893,20 @@ function checkPrAgentInboxContract() {
     'workflow_run:',
     'workflows: [PR Agent Inbox Signal, Template Fitness]',
     'types: [completed]',
+    "if: github.event_name != 'issue_comment' || github.event.issue.pull_request",
+    'name: agent-inbox',
     'persist-credentials: false',
     'pr-agent-inbox-pr-${{ matrix.target.pr }}',
     'cancel-in-progress: false',
+    '--validate-target "$TARGET_PR"',
+    '--ignore-check "PR Agent Inbox / resolve-targets"',
   ]) {
     if (!publisher.includes(text)) fail(`.github/workflows/pr-agent-inbox.yml must include event contract anchor: ${text}`);
   }
 
   for (const text of [
     'name: PR Agent Inbox Signal',
+    'run-name: "PR Agent Inbox Signal #${{ github.event.pull_request.number }}"',
     'permissions: {}',
     'runs-on: ubuntu-latest',
     'timeout-minutes: 1',

@@ -57,6 +57,7 @@ export function parseArgs(argv = process.argv.slice(2)) {
     publishStatus: false,
     reconcile: false,
     resolveTargets: false,
+    validateTarget: null,
     eventName: process.env.GITHUB_EVENT_NAME ?? null,
     eventPath: process.env.GITHUB_EVENT_PATH ?? null,
     ignoreChecks: [defaultStatusContext],
@@ -100,6 +101,10 @@ export function parseArgs(argv = process.argv.slice(2)) {
       options.reconcile = true;
     } else if (arg === '--resolve-targets') {
       options.resolveTargets = true;
+    } else if (arg === '--validate-target') {
+      index += 1;
+      if (!/^\d+$/.test(argv[index] ?? '')) throw new Error('--validate-target requires a pull request number');
+      options.validateTarget = Number(argv[index]);
     } else if (arg === '--event-name') {
       index += 1;
       if (!argv[index]) throw new Error('--event-name requires a value');
@@ -140,6 +145,8 @@ export function parseArgs(argv = process.argv.slice(2)) {
   }
   if (options.refresh && options.assertClean) throw new Error('--refresh and --assert-clean are mutually exclusive');
   if (options.resolveTargets && options.pr) throw new Error('--resolve-targets does not accept --pr');
+  if (options.resolveTargets && options.validateTarget) throw new Error('--resolve-targets and --validate-target are mutually exclusive');
+  if (options.validateTarget && options.pr) throw new Error('--validate-target does not accept --pr');
   return options;
 }
 
@@ -161,6 +168,7 @@ export function helpText() {
     '  --ensure-label          Create agent-attention if missing before syncing.',
     '  --publish-status        Publish agent-inbox-clean on the PR head SHA.',
     '  --reconcile             Publish pending, reread to a stable snapshot, then publish mutable outputs.',
+    '  --validate-target <pr>  Revalidate one queued event target against current API state.',
     '  --ignore-check <name>   Ignore an exact status context or workflow/job tuple.',
     '  --required-check <name> Treat a check or workflow/job tuple as required.',
     '  --allow-pending-checks  Let pending required checks stay non-blocking for this run.',
@@ -212,9 +220,7 @@ export function resolveInboxTargets(client, options, env = process.env) {
     targets.push(event.pull_request?.number);
   } else if (eventName === 'issue_comment') {
     if (!event.issue?.pull_request || String(event.comment?.body ?? '').trim() !== '/agent-inbox refresh') return [];
-    const permission = client.text([
-      'api', `repos/${repo}/collaborators/${event.comment?.user?.login}/permission`, '--jq', '.permission',
-    ]).trim();
+    const permission = collaboratorPermission(client, repo, event.comment?.user?.login);
     if (!['admin', 'maintain', 'write'].includes(permission)) return [];
     targets.push(event.issue?.number);
   } else if (eventName === 'workflow_dispatch') {
@@ -243,6 +249,42 @@ export function resolveInboxTargets(client, options, env = process.env) {
     if (current?.state === 'OPEN') admitted.push({ pr: current.number });
   }
   return admitted;
+}
+
+function collaboratorPermission(client, repo, login) {
+  if (!login) return 'none';
+  return client.text([
+    'api', `repos/${repo}/collaborators/${login}/permission`, '--jq', '.permission',
+  ], { allowError: true, defaultValue: 'none' }).trim() || 'none';
+}
+
+export function validateInboxTarget(client, options, targetPr, env = process.env) {
+  const repo = options.repo ?? defaultRepo(client);
+  const eventName = options.eventName ?? env.GITHUB_EVENT_NAME;
+  const eventPath = options.eventPath ?? env.GITHUB_EVENT_PATH;
+  if (!eventName || !eventPath) throw new Error('--validate-target requires an event name and event payload path');
+  const event = options.eventPayload ?? JSON.parse(readFileSync(eventPath, 'utf8'));
+  let admitted = false;
+
+  if (eventName === 'pull_request_target') {
+    const allowed = new Set(['opened', 'reopened', 'synchronize', 'ready_for_review', 'converted_to_draft', 'edited']);
+    admitted = allowed.has(event.action) && event.pull_request?.number === targetPr;
+  } else if (eventName === 'issue_comment') {
+    admitted = Boolean(event.issue?.pull_request)
+      && event.issue?.number === targetPr
+      && String(event.comment?.body ?? '').trim() === '/agent-inbox refresh'
+      && ['admin', 'maintain', 'write'].includes(collaboratorPermission(client, repo, event.comment?.user?.login));
+  } else if (eventName === 'workflow_dispatch') {
+    const requested = String(event.inputs?.pr ?? '').trim();
+    if (requested && !/^\d+$/.test(requested)) throw new Error('workflow_dispatch pr must be a pull request number');
+    admitted = requested ? Number(requested) === targetPr : true;
+  } else if (eventName === 'workflow_run') {
+    admitted = resolveWorkflowRunTargets(client, repo, event.workflow_run).includes(targetPr);
+  }
+
+  if (!admitted) return false;
+  const current = client.json(['pr', 'view', String(targetPr), '--repo', repo, '--json', 'number,state,isDraft']);
+  return current?.state === 'OPEN' && current.number === targetPr;
 }
 
 function resolveWorkflowRunTargets(client, repo, workflowRun = {}) {
@@ -1043,6 +1085,19 @@ function main() {
   if (options.resolveTargets) {
     try {
       console.log(JSON.stringify(resolveInboxTargets(client, options)));
+    } catch (error) {
+      console.error(error.message);
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  if (options.validateTarget) {
+    try {
+      if (!validateInboxTarget(client, options, options.validateTarget)) {
+        throw new Error(`Pull request #${options.validateTarget} is no longer admitted by the queued event`);
+      }
+      console.log(JSON.stringify({ pr: options.validateTarget }));
     } catch (error) {
       console.error(error.message);
       process.exitCode = 1;

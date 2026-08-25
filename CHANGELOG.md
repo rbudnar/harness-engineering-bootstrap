@@ -17,6 +17,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 - Guarded model-backed Terminal-Bench comparison jobs against repo-local raw artifact reuse while keeping compact review summaries local.
 - Clarified local coding-agent and agent-runtime sandbox guidance so host-side consumers of agent-written files and privileged local daemons are part of boundary review.
 - Added a PR Agent Inbox check that keeps a sticky PR status comment current and fails while agent-actionable review or merge-readiness work remains.
+- Replaced scheduled PR Agent Inbox sweeps with GitHub-hosted event-driven review signals, exact producer wakeups, and bounded explicit recovery.
 
 ### Template Changes
 

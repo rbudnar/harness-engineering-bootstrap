@@ -15,6 +15,7 @@ import {
   shouldExitNonzero,
   syncAttentionLabel,
   updateStickyComment,
+  validateInboxTarget,
 } from './pr-agent-inbox.mjs';
 
 test('resolved review thread is clean', () => {
@@ -266,6 +267,7 @@ test('fallback check scan ignores only exact inbox workflow/job tuples', () => {
   const result = analyzeInbox(data({
     prView: {
       statusCheckRollup: [
+        { workflowName: 'PR Agent Inbox', name: 'resolve-targets', conclusion: 'ACTION_REQUIRED' },
         { workflowName: 'PR Agent Inbox', name: 'agent-inbox', conclusion: 'FAILURE' },
         { workflowName: 'PR Agent Inbox Signal', name: 'signal', conclusion: 'CANCELLED' },
         { workflowName: 'Different Workflow', name: 'agent-inbox', conclusion: 'FAILURE' },
@@ -276,6 +278,7 @@ test('fallback check scan ignores only exact inbox workflow/job tuples', () => {
   }), {
     ignoreChecks: [
       'agent-inbox-clean',
+      'PR Agent Inbox / resolve-targets',
       'PR Agent Inbox / agent-inbox',
       'PR Agent Inbox Signal / signal',
     ],
@@ -582,6 +585,16 @@ test('assert-clean and assert-no-agent-attention cannot be combined', () => {
   });
 });
 
+test('validate-target is parsed as a distinct single-target mode', () => {
+  const options = parseArgs(['--repo', 'owner/repo', '--validate-target', '60']);
+  assert.equal(options.validateTarget, 60);
+  assert.equal(options.pr, null);
+  assert.equal(options.resolveTargets, false);
+  assert.throws(() => parseArgs(['--resolve-targets', '--validate-target', '60']), {
+    message: '--resolve-targets and --validate-target are mutually exclusive',
+  });
+});
+
 test('reconciliation publishes pending before mutable outputs and converges on the newest state', () => {
   const events = [];
   const snapshots = [
@@ -646,6 +659,51 @@ test('workflow_run signal admission binds live workflow ID path state and retain
   };
 
   assert.deepEqual(resolveInboxTargets(client, options), [{ pr: 72 }]);
+});
+
+test('queued manual sweep validates only its current draft target without relisting open PRs', () => {
+  const calls = [];
+  const client = {
+    json(args) {
+      calls.push(args);
+      if (args[0] === 'pr' && args[1] === 'view') return { number: 72, state: 'OPEN', isDraft: true };
+      throw new Error(`unexpected call: ${args.join(' ')}`);
+    },
+  };
+
+  assert.equal(validateInboxTarget(client, {
+    repo: 'owner/repo',
+    eventName: 'workflow_dispatch',
+    eventPath: 'unused-with-eventPayload',
+    eventPayload: { inputs: {} },
+  }, 72), true);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].slice(0, 3), ['pr', 'view', '72']);
+  assert.equal(calls.some((args) => args[0] === 'pr' && args[1] === 'list'), false);
+});
+
+test('issue comment admission defaults to no permission when collaborator lookup fails', () => {
+  const client = {
+    json(args) {
+      throw new Error(`unexpected JSON call: ${args.join(' ')}`);
+    },
+    text(args, options) {
+      assert.match(args.join(' '), /collaborators\/outside-user\/permission/);
+      assert.equal(options.allowError, true);
+      assert.equal(options.defaultValue, 'none');
+      return options.defaultValue;
+    },
+  };
+
+  assert.deepEqual(resolveInboxTargets(client, {
+    repo: 'owner/repo',
+    eventName: 'issue_comment',
+    eventPath: 'unused-with-eventPayload',
+    eventPayload: {
+      issue: { number: 72, pull_request: {} },
+      comment: { body: '/agent-inbox refresh', user: { login: 'outside-user' } },
+    },
+  }), []);
 });
 
 test('workflow_run admission rejects a signal whose payload workflow ID is not canonical', () => {
