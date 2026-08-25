@@ -9,6 +9,8 @@ import {
   parseArgs,
   publishInboxSideEffects,
   publishStatus,
+  reconcileInbox,
+  resolveInboxTargets,
   renderMarkdown,
   shouldExitNonzero,
   syncAttentionLabel,
@@ -209,7 +211,7 @@ test('failed required check blocks and inbox check is ignored', () => {
     prView: {
       statusCheckRollup: [
         { name: 'Template Fitness', conclusion: 'FAILURE', detailsUrl: 'https://example/check' },
-        { name: 'agent-inbox-clean', conclusion: 'FAILURE' },
+        { context: 'agent-inbox-clean', state: 'FAILURE' },
       ],
     },
     branchProtection: {
@@ -253,11 +255,59 @@ test('fallback required-check scan treats non-inbox failures as required', () =>
     },
     branchProtection: null,
   }), {
-    ignoreChecks: ['agent-inbox-clean', 'PR Agent Inbox', 'Agent inbox'],
+    ignoreChecks: ['agent-inbox-clean', 'PR Agent Inbox / Agent inbox'],
   });
 
   assert.equal(result.clean, false);
   assert.deepEqual(result.checks.failed, ['Template Fitness']);
+});
+
+test('fallback check scan ignores only exact inbox workflow/job tuples', () => {
+  const result = analyzeInbox(data({
+    prView: {
+      statusCheckRollup: [
+        { workflowName: 'PR Agent Inbox', name: 'agent-inbox', conclusion: 'FAILURE' },
+        { workflowName: 'PR Agent Inbox Signal', name: 'signal', conclusion: 'CANCELLED' },
+        { workflowName: 'Different Workflow', name: 'agent-inbox', conclusion: 'FAILURE' },
+        { workflowName: 'PR Agent Inbox', name: 'different-job', conclusion: 'TIMED_OUT' },
+      ],
+    },
+    branchProtection: null,
+  }), {
+    ignoreChecks: [
+      'agent-inbox-clean',
+      'PR Agent Inbox / agent-inbox',
+      'PR Agent Inbox Signal / signal',
+    ],
+  });
+
+  assert.equal(result.clean, false);
+  assert.equal(result.agentAttention, true);
+  assert.deepEqual(result.checks.failed, ['agent-inbox', 'different-job']);
+});
+
+test('ignored inbox check identity requires both workflow and job names', () => {
+  const result = analyzeInbox(data({
+    prView: {
+      statusCheckRollup: [
+        { workflowName: 'PR Agent Inbox', conclusion: 'FAILURE' },
+        { name: 'agent-inbox', conclusion: 'FAILURE' },
+        { workflowName: 'PR Agent Inbox Signal', conclusion: 'FAILURE' },
+        { name: 'signal', conclusion: 'FAILURE' },
+      ],
+    },
+    branchProtection: null,
+  }), {
+    ignoreChecks: [
+      'agent-inbox-clean',
+      'PR Agent Inbox / agent-inbox',
+      'PR Agent Inbox Signal / signal',
+    ],
+  });
+
+  assert.equal(result.clean, false);
+  assert.equal(result.agentAttention, true);
+  assert.deepEqual(result.checks.failed, ['PR Agent Inbox', 'agent-inbox', 'PR Agent Inbox Signal', 'signal']);
 });
 
 test('unprotected branch metadata treats optional failed checks as optional', () => {
@@ -530,6 +580,145 @@ test('assert-clean and assert-no-agent-attention cannot be combined', () => {
   assert.throws(() => parseArgs(['--pr', '60', '--assert-clean', '--assert-no-agent-attention']), {
     message: '--assert-clean and --assert-no-agent-attention are mutually exclusive',
   });
+});
+
+test('reconciliation publishes pending before mutable outputs and converges on the newest state', () => {
+  const events = [];
+  const snapshots = [
+    snapshot('old', 'clean'),
+    snapshot('new', 'agent-attention'),
+    snapshot('new', 'agent-attention'),
+  ];
+
+  const outcome = reconcileInbox({}, { maxStableReads: 3 }, {
+    readSnapshot: () => snapshots.shift(),
+    publishPending: (result) => events.push(`pending:${result.inboxState}`),
+    publishSideEffects: (result) => {
+      events.push(`final:${result.inboxState}`);
+      return [];
+    },
+  });
+
+  assert.equal(outcome.result.inboxState, 'agent-attention');
+  assert.deepEqual(events, ['pending:clean', 'pending:agent-attention', 'final:agent-attention']);
+});
+
+test('reconciliation fails closed without final publication when state does not stabilize', () => {
+  const events = [];
+  let revision = 0;
+
+  assert.throws(() => reconcileInbox({}, { maxStableReads: 3 }, {
+    readSnapshot: () => snapshot(`revision-${revision++}`, 'waiting'),
+    publishPending: () => events.push('pending'),
+    publishSideEffects: () => {
+      events.push('final');
+      return [];
+    },
+  }), /did not stabilize/);
+
+  assert.deepEqual(events, ['pending', 'pending', 'pending', 'pending']);
+});
+
+test('workflow_run signal admission binds live workflow ID path state and retains a draft PR', () => {
+  const client = {
+    json(args) {
+      const endpoint = args.find((arg) => String(arg).startsWith('repos/owner/repo/actions/workflows/'));
+      if (endpoint) return { id: 41, path: '.github/workflows/pr-agent-inbox-signal.yml', state: 'active' };
+      if (args[0] === 'pr' && args[1] === 'view') return { number: 72, state: 'OPEN', isDraft: true };
+      throw new Error(`unexpected call: ${args.join(' ')}`);
+    },
+  };
+  const options = {
+    repo: 'owner/repo',
+    eventName: 'workflow_run',
+    eventPath: 'unused-with-eventPayload',
+    eventPayload: {
+      workflow_run: {
+        name: 'PR Agent Inbox Signal',
+        workflow_id: 41,
+        path: '.github/workflows/pr-agent-inbox-signal.yml',
+        state: 'completed',
+        conclusion: 'success',
+        event: 'pull_request_review',
+        display_title: 'PR Agent Inbox Signal #72',
+      },
+    },
+  };
+
+  assert.deepEqual(resolveInboxTargets(client, options), [{ pr: 72 }]);
+});
+
+test('workflow_run admission rejects a signal whose payload workflow ID is not canonical', () => {
+  const client = {
+    json(args) {
+      if (args.some((arg) => String(arg).startsWith('repos/owner/repo/actions/workflows/'))) {
+        return { id: 41, path: '.github/workflows/pr-agent-inbox-signal.yml', state: 'active' };
+      }
+      throw new Error(`unexpected call: ${args.join(' ')}`);
+    },
+  };
+
+  assert.deepEqual(resolveInboxTargets(client, {
+    repo: 'owner/repo',
+    eventName: 'workflow_run',
+    eventPath: 'unused-with-eventPayload',
+    eventPayload: {
+      workflow_run: {
+        name: 'PR Agent Inbox Signal',
+        workflow_id: 99,
+        path: '.github/workflows/pr-agent-inbox-signal.yml',
+        conclusion: 'success',
+        event: 'pull_request_review_comment',
+        display_title: 'PR Agent Inbox Signal #72',
+      },
+    },
+  }), []);
+});
+
+test('Template Fitness completion wakes the publisher even when the producer failed', () => {
+  const client = {
+    json(args) {
+      if (args.some((arg) => String(arg).startsWith('repos/owner/repo/actions/workflows/'))) {
+        return { id: 280258753, path: '.github/workflows/template-fitness.yml', state: 'active' };
+      }
+      if (args[0] === 'pr' && args[1] === 'view') return { number: 73, state: 'OPEN', isDraft: false };
+      throw new Error(`unexpected call: ${args.join(' ')}`);
+    },
+  };
+
+  assert.deepEqual(resolveInboxTargets(client, {
+    repo: 'owner/repo',
+    eventName: 'workflow_run',
+    eventPath: 'unused-with-eventPayload',
+    eventPayload: {
+      workflow_run: {
+        name: 'Template Fitness',
+        workflow_id: 280258753,
+        path: '.github/workflows/template-fitness.yml',
+        conclusion: 'failure',
+        event: 'pull_request',
+        pull_requests: [{ number: 73 }],
+      },
+    },
+  }), [{ pr: 73 }]);
+});
+
+test('manual recovery fails closed rather than fan out above 100 open PRs', () => {
+  const client = {
+    json(args) {
+      if (args[0] === 'pr' && args[1] === 'list') {
+        return Array.from({ length: 101 }, (_, index) => ({ number: index + 1 }));
+      }
+      throw new Error(`unexpected call: ${args.join(' ')}`);
+    },
+  };
+
+  assert.throws(() => resolveInboxTargets(client, {
+    repo: 'owner/repo',
+    eventName: 'workflow_dispatch',
+    eventPath: 'unused-with-eventPayload',
+    eventPayload: { inputs: {} },
+  }), /more than 100/);
 });
 
 test('exit policy distinguishes waiting state from agent attention', () => {
@@ -811,6 +1000,16 @@ function thread(overrides = {}) {
           author: { login: 'reviewer' },
         },
       ],
+    },
+  };
+}
+
+function snapshot(fingerprint, inboxState) {
+  return {
+    fingerprint,
+    result: {
+      headRefOid: 'abc123',
+      inboxState,
     },
   };
 }

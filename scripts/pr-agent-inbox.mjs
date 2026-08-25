@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -9,6 +9,20 @@ export const repoRoot = resolve(dirname(currentScript), '..');
 export const stickyMarker = '<!-- agent-inbox:v1 -->';
 export const defaultStatusContext = 'agent-inbox-clean';
 export const defaultAttentionLabel = 'agent-attention';
+export const canonicalWorkflowRunProducers = Object.freeze({
+  signal: Object.freeze({
+    name: 'PR Agent Inbox Signal',
+    path: '.github/workflows/pr-agent-inbox-signal.yml',
+    events: Object.freeze(['pull_request_review', 'pull_request_review_comment']),
+    titlePrefix: 'PR Agent Inbox Signal #',
+  }),
+  templateFitness: Object.freeze({
+    name: 'Template Fitness',
+    path: '.github/workflows/template-fitness.yml',
+    workflowId: 280258753,
+    events: Object.freeze(['pull_request', 'push']),
+  }),
+});
 
 const prViewFields = [
   'number',
@@ -41,7 +55,12 @@ export function parseArgs(argv = process.argv.slice(2)) {
     syncLabel: false,
     ensureLabel: false,
     publishStatus: false,
+    reconcile: false,
+    resolveTargets: false,
+    eventName: process.env.GITHUB_EVENT_NAME ?? null,
+    eventPath: process.env.GITHUB_EVENT_PATH ?? null,
     ignoreChecks: [defaultStatusContext],
+    requiredChecks: [],
     allowPendingChecks: false,
     statusContext: defaultStatusContext,
     attentionLabel: defaultAttentionLabel,
@@ -77,10 +96,26 @@ export function parseArgs(argv = process.argv.slice(2)) {
       options.ensureLabel = true;
     } else if (arg === '--publish-status') {
       options.publishStatus = true;
+    } else if (arg === '--reconcile') {
+      options.reconcile = true;
+    } else if (arg === '--resolve-targets') {
+      options.resolveTargets = true;
+    } else if (arg === '--event-name') {
+      index += 1;
+      if (!argv[index]) throw new Error('--event-name requires a value');
+      options.eventName = argv[index];
+    } else if (arg === '--event-path') {
+      index += 1;
+      if (!argv[index]) throw new Error('--event-path requires a file');
+      options.eventPath = argv[index];
     } else if (arg === '--ignore-check') {
       index += 1;
       if (!argv[index]) throw new Error('--ignore-check requires a check name');
       options.ignoreChecks.push(argv[index]);
+    } else if (arg === '--required-check') {
+      index += 1;
+      if (!argv[index]) throw new Error('--required-check requires a check name');
+      options.requiredChecks.push(argv[index]);
     } else if (arg === '--allow-pending-checks') {
       options.allowPendingChecks = true;
     } else if (arg === '--status-context') {
@@ -104,6 +139,7 @@ export function parseArgs(argv = process.argv.slice(2)) {
     throw new Error('--assert-clean and --assert-no-agent-attention are mutually exclusive');
   }
   if (options.refresh && options.assertClean) throw new Error('--refresh and --assert-clean are mutually exclusive');
+  if (options.resolveTargets && options.pr) throw new Error('--resolve-targets does not accept --pr');
   return options;
 }
 
@@ -124,7 +160,9 @@ export function helpText() {
     '  --sync-label            Add/remove agent-attention from agent-actionable state.',
     '  --ensure-label          Create agent-attention if missing before syncing.',
     '  --publish-status        Publish agent-inbox-clean on the PR head SHA.',
-    '  --ignore-check <name>   Ignore a check/status context during required-check classification.',
+    '  --reconcile             Publish pending, reread to a stable snapshot, then publish mutable outputs.',
+    '  --ignore-check <name>   Ignore an exact status context or workflow/job tuple.',
+    '  --required-check <name> Treat a check or workflow/job tuple as required.',
     '  --allow-pending-checks  Let pending required checks stay non-blocking for this run.',
   ].join('\n');
 }
@@ -147,6 +185,7 @@ export class GhClient {
       encoding: 'utf8',
       env: this.env,
       shell: false,
+      timeout: options.timeout ?? 60_000,
     });
 
     if (result.status !== 0) {
@@ -157,6 +196,79 @@ export class GhClient {
 
     return result.stdout ?? '';
   }
+}
+
+export function resolveInboxTargets(client, options, env = process.env) {
+  const repo = options.repo ?? defaultRepo(client);
+  const eventName = options.eventName ?? env.GITHUB_EVENT_NAME;
+  const eventPath = options.eventPath ?? env.GITHUB_EVENT_PATH;
+  if (!eventName || !eventPath) throw new Error('--resolve-targets requires an event name and event payload path');
+  const event = options.eventPayload ?? JSON.parse(readFileSync(eventPath, 'utf8'));
+  const targets = [];
+
+  if (eventName === 'pull_request_target') {
+    const allowed = new Set(['opened', 'reopened', 'synchronize', 'ready_for_review', 'converted_to_draft', 'edited']);
+    if (!allowed.has(event.action)) return [];
+    targets.push(event.pull_request?.number);
+  } else if (eventName === 'issue_comment') {
+    if (!event.issue?.pull_request || String(event.comment?.body ?? '').trim() !== '/agent-inbox refresh') return [];
+    const permission = client.text([
+      'api', `repos/${repo}/collaborators/${event.comment?.user?.login}/permission`, '--jq', '.permission',
+    ]).trim();
+    if (!['admin', 'maintain', 'write'].includes(permission)) return [];
+    targets.push(event.issue?.number);
+  } else if (eventName === 'workflow_dispatch') {
+    const requested = String(event.inputs?.pr ?? '').trim();
+    if (requested) {
+      if (!/^\d+$/.test(requested)) throw new Error('workflow_dispatch pr must be a pull request number');
+      targets.push(Number(requested));
+    } else {
+      // Manual recovery must include drafts. gh pr list --state open does so unless --draft is supplied.
+      // This is the exact bounded recovery equivalent of `gh pr list --limit 101`.
+      const open = client.json(['pr', 'list', '--repo', repo, '--state', 'open', '--limit', '101', '--json', 'number']);
+      if (!Array.isArray(open)) throw new Error('Could not enumerate open pull requests');
+      if (open.length > 100) throw new Error('Refusing to fan out to more than 100 open pull requests');
+      targets.push(...open.map((pr) => pr.number));
+    }
+  } else if (eventName === 'workflow_run') {
+    targets.push(...resolveWorkflowRunTargets(client, repo, event.workflow_run));
+  } else {
+    return [];
+  }
+
+  // Re-read current PR API state, retain drafts, and deduplicate before admitting any write job.
+  const admitted = [];
+  for (const pr of [...new Set(targets.filter(Number.isInteger))]) {
+    const current = client.json(['pr', 'view', String(pr), '--repo', repo, '--json', 'number,state,isDraft']);
+    if (current?.state === 'OPEN') admitted.push({ pr: current.number });
+  }
+  return admitted;
+}
+
+function resolveWorkflowRunTargets(client, repo, workflowRun = {}) {
+  const producer = Object.values(canonicalWorkflowRunProducers).find((candidate) => candidate.name === workflowRun.name);
+  if (!producer || !producer.events.includes(workflowRun.event)) return [];
+  if (producer === canonicalWorkflowRunProducers.signal && workflowRun.conclusion !== 'success') return [];
+  if (workflowRun.path !== producer.path) return [];
+
+  const live = client.json(['api', `repos/${repo}/actions/workflows/${encodeURIComponent(producer.path)}`]);
+  // workflow_id and workflow_run.path must both match the current canonical live object; name alone is not trust.
+  if (live?.state !== 'active' || live?.path !== producer.path || Number(live?.id) !== Number(workflowRun.workflow_id)) return [];
+  if (producer.workflowId && Number(live.id) !== producer.workflowId) return [];
+
+  if (producer === canonicalWorkflowRunProducers.signal) {
+    const match = new RegExp(`^${producer.titlePrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\d+)$`)
+      .exec(String(workflowRun.display_title ?? ''));
+    return match ? [Number(match[1])] : [];
+  }
+
+  const targets = (workflowRun.pull_requests ?? []).map((pr) => pr.number).filter(Number.isInteger);
+  if (targets.length) return targets;
+
+  // commit-to-open-PR fallback: the REST association may recover a producer payload with an empty PR array.
+  const associated = client.json(['api', `repos/${repo}/commits/${workflowRun.head_sha}/pulls?per_page=100`]);
+  if ((associated ?? []).length >= 100) throw new Error('Refusing an ambiguous commit association with 100 or more pull requests');
+  return (associated ?? []).filter((pr) => pr.state === 'open').map((pr) => pr.number);
 }
 
 export function splitRepo(repo) {
@@ -406,7 +518,11 @@ export function analyzeInbox(data, options = {}) {
   }
 
   addMergeStateItem(items, prView);
-  addCheckItems(items, prView, data.branchProtection, { ignoreChecks, allowPendingChecks: options.allowPendingChecks });
+  addCheckItems(items, prView, data.branchProtection, {
+    ignoreChecks,
+    requiredChecks: options.requiredChecks,
+    allowPendingChecks: options.allowPendingChecks,
+  });
 
   const agentAttention = items.some((entry) => entry.agentActionable && entry.severity === 'blocking');
   const clean = items.length === 0;
@@ -475,8 +591,10 @@ function addMergeStateItem(items, prView) {
 
 function addCheckItems(items, prView, branchProtection, options) {
   const checks = Array.isArray(prView.statusCheckRollup) ? prView.statusCheckRollup : [];
-  const requiredNames = requiredCheckNames(branchProtection);
-  const requiredKnown = requiredNames !== null;
+  const protectedNames = requiredCheckNames(branchProtection);
+  const configuredNames = new Set((options.requiredChecks ?? []).map(normalizeCheckName));
+  const requiredNames = new Set([...(protectedNames ?? []), ...configuredNames]);
+  const requiredKnown = protectedNames !== null;
 
   for (const check of checks) {
     const name = checkName(check);
@@ -563,6 +681,77 @@ export function publishStatus(client, result, options = {}) {
   if (targetUrl) args.push('-f', `target_url=${targetUrl}`);
   client.json(args);
   return { skipped: false };
+}
+
+export function publishPendingStatus(client, result, options = {}) {
+  if (!result.headRefOid) throw new Error('Cannot publish pending status without headRefOid');
+  const context = options.statusContext ?? defaultStatusContext;
+  const targetUrl = options.targetUrl ?? githubRunUrl() ?? result.url ?? undefined;
+  const args = [
+    'api',
+    '-X',
+    'POST',
+    `repos/${result.repo}/statuses/${result.headRefOid}`,
+    '-f',
+    'state=pending',
+    '-f',
+    `context=${context}`,
+    '-f',
+    'description=Refreshing current PR agent inbox state',
+  ];
+  if (targetUrl) args.push('-f', `target_url=${targetUrl}`);
+  client.json(args);
+}
+
+export function reconcileInbox(client, options, hooks = {}) {
+  const maxStableReads = options.maxStableReads ?? 3;
+  const readSnapshot = hooks.readSnapshot ?? (() => currentInboxSnapshot(client, options));
+  const publishPending = hooks.publishPending ?? ((result) => publishPendingStatus(client, result, options));
+  const publishFinal = hooks.publishSideEffects
+    ?? ((result) => publishInboxSideEffects(client, result, options, hooks));
+  let snapshot = readSnapshot();
+
+  // The workflow has already proved route-time default branch name/OID equality after queue admission.
+  // Publication is deliberately split into read and write phases: pending before comment label final status.
+  // Every admitted route uses a bounded stable reread after per-PR queue admission.
+  publishPending(snapshot.result);
+
+  for (let attempt = 0; attempt < maxStableReads; attempt += 1) {
+    const next = readSnapshot();
+    if (sameInboxSnapshot(snapshot, next)) {
+      const failures = publishFinal(next.result);
+      return { result: next.result, publishFailures: failures };
+    }
+
+    snapshot = next;
+    publishPending(snapshot.result);
+  }
+
+  throw new Error(`Inbox state did not stabilize after ${maxStableReads} rereads; durable status remains pending`);
+}
+
+function currentInboxSnapshot(client, options) {
+  const data = fetchInboxData(client, options);
+  if (data.prView?.state !== 'OPEN') throw new Error(`Pull request #${data.pr} is no longer open`);
+  const result = analyzeInbox(data, options);
+  return { result, fingerprint: inboxFingerprint(result) };
+}
+
+function sameInboxSnapshot(left, right) {
+  return left.result.headRefOid === right.result.headRefOid && left.fingerprint === right.fingerprint;
+}
+
+function inboxFingerprint(result) {
+  return JSON.stringify({
+    headRefOid: result.headRefOid,
+    baseRefName: result.baseRefName,
+    clean: result.clean,
+    agentAttention: result.agentAttention,
+    inboxState: result.inboxState,
+    statusState: result.statusState,
+    items: result.items,
+    nativeProtection: result.nativeProtection,
+  });
 }
 
 export function updateStickyComment(client, result) {
@@ -713,15 +902,14 @@ function checkName(check) {
 }
 
 function shouldIgnoreCheck(check, ignoreChecks) {
-  const names = [
-    checkName(check),
-    check.workflowName,
-    check.context,
-    check.name,
-    check.checkSuite?.workflowRun?.workflow?.name,
-  ].filter(Boolean).map(normalizeCheckName);
+  const workflowName = check.workflowName ?? check.checkSuite?.workflowRun?.workflow?.name ?? null;
+  const jobName = check.name ?? null;
+  if (workflowName && jobName) {
+    return ignoreChecks.has(normalizeCheckName(`${workflowName} / ${jobName}`));
+  }
 
-  return names.some((name) => ignoreChecks.has(name));
+  // A commit status is intentionally scalar; a check run must supply both members of an exact workflow/job tuple.
+  return Boolean(check.context && !workflowName && !jobName && ignoreChecks.has(normalizeCheckName(check.context)));
 }
 
 function checkMatchesRequired(check, requiredNames) {
@@ -741,10 +929,7 @@ function checkNameCandidates(check) {
 }
 
 function normalizeIgnoreChecks(values) {
-  return new Set((values ?? []).flatMap((value) => [
-    normalizeCheckName(value),
-    normalizeCheckName(`${value} / Agent inbox`),
-  ]));
+  return new Set((values ?? []).map(normalizeCheckName));
 }
 
 function normalizeCheckName(value) {
@@ -849,17 +1034,32 @@ function main() {
   }
 
   const client = new GhClient();
+  if (options.resolveTargets) {
+    try {
+      console.log(JSON.stringify(resolveInboxTargets(client, options)));
+    } catch (error) {
+      console.error(error.message);
+      process.exitCode = 1;
+    }
+    return;
+  }
+
   let result;
+  let publishFailures = [];
   try {
-    const data = fetchInboxData(client, options);
-    result = analyzeInbox(data, options);
+    if (options.reconcile) {
+      ({ result, publishFailures } = reconcileInbox(client, options));
+    } else {
+      const data = fetchInboxData(client, options);
+      result = analyzeInbox(data, options);
+      publishFailures = publishInboxSideEffects(client, result, options);
+    }
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;
     return;
   }
 
-  const publishFailures = publishInboxSideEffects(client, result, options);
   writeGitHubOutputs(result);
 
   if (options.json) {
