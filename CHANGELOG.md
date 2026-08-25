@@ -6,6 +6,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 
 ### Summary
 
+- Aligned template doctrine with current Anthropic (Claude Opus 5) and OpenAI (GPT-5.6 series) model guidance: audit prompt-side verification scaffolding at model upgrades, treat reasoning effort as a control knob, guard against model-initiated subagent sprawl and invented scope, and prefer provider-native context management over hand-rolled session persistence.
 - Added the first HEB benchmark protocol so empirical validation can measure repeated self-correction against simpler context baselines before a runner exists.
 - Added a minimal HEB benchmark runner and JSONL result schema so the first pilot can prepare pinned fixtures and compare partial-telemetry rows reproducibly.
 - Added the first directional HEB benchmark pilot report and raw JSONL result artifact, with explicit caveats that the tiny manual-adapter suite does not justify broad performance claims.
@@ -21,6 +22,10 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 
 ### Template Changes
 
+- Added prompt-side scaffolding (verification/recheck steps, narration rules, effort settings) to the Harness Replaceability model-upgrade review scope.
+- Qualified Harness Self-Correction so generic self-review prompting is added only after a measured miss on the current model, while repository- or platform-mandated verification remains required.
+- Named model-initiated over-delegation as a multi-agent failure mode with delegation-criteria and deterministic-cap remedies.
+- Added invented-scope drift to handoff/migration scope guidance and provider-native compaction preference to the task-contracts module.
 - Tightened the human-guide and agent-runtime sandbox model guidance to include host-trust handoffs from agent-written workspace files and local daemons without adding a new optional module.
 
 ### Planner And Metadata

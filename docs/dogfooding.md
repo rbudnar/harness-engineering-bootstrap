@@ -117,4 +117,4 @@ Output must keep required core, triggered modules, rejected modules, activation 
 
 ## Review Posture
 
-Treat every template addition as guilty until it proves it improves right-context-at-right-time behavior. Prefer deleting, tightening, or routing existing guidance before adding a new section. If review finds repeated issues in one defect family, the next change must name the missing model and add or update a regression matrix instead of point-fixing examples.
+Treat every template addition as guilty until it proves it improves right-context-at-right-time behavior. Prefer deleting, tightening, or routing existing guidance before adding a new section. If review finds repeated issues in one defect family, the next change must name the missing model and add or update a regression matrix instead of point-fixing examples. Model-upgrade reviews here also cover prompt-side scaffolding: when the models driving this repo's automation change, audit verification/recheck instructions, narration rules, and effort settings against current vendor guidance and strip what is no longer load-bearing, per the template's Harness Replaceability rule.

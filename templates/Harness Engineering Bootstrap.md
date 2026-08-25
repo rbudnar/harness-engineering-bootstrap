@@ -483,7 +483,9 @@ Validation should check that URL maps point to existing files, exclude disallowe
 
 ### `docs/task-contracts/` or `docs/exec-plans/`
 
-Use only for long-running, multi-agent, or handoff-heavy work where a short prompt is not enough to preserve intent. This module does not prescribe provider-native compaction, summarization, or memory behavior; it defines only the repo-visible state needed for safe resume and handoff.
+Use only for long-running, multi-agent, or handoff-heavy work where a short prompt is not enough to preserve intent. This module does not define the behavior of provider-native compaction, summarization, or memory; it defines repository-visible session state and expects runtime-provided continuity to be preferred over hand-rolled persistence where available.
+
+Provider-native context management now exists on major runtimes (for example OpenAI's `/responses/compact` and persisted reasoning, Anthropic's compaction support in long-running harnesses). Prefer it for session-state continuity where available, and keep this module's repo-visible contracts for what provider state cannot carry: durable intent, acceptance criteria, cross-agent handoffs, and audit trail. Do not hand-roll session persistence that the runtime already provides unless the repo needs portability across providers.
 
 Purpose:
 
@@ -936,9 +938,13 @@ Before adding, removing, or moving user-visible controls across multiple pages o
 
 Do not infer page semantics from table names, file names, route names, or shared infrastructure. If two or more consecutive commits are fixing regressions introduced by the migration itself, pause and revalidate that the scope solves a real user-visible problem.
 
+Scope drift is not only a handoff-reading failure: current frontier models may also invent unrequested work — extra features, extra hardening, styling or refactors outside the stated task — without any ambiguous input to misread. Treat unrequested additions the same as missed requirements: cut them from the change and note them as candidates rather than shipping them silently.
+
 ## Harness Self-Correction
 
 Before declaring work complete, check whether the task exposed a repeated mistake, durable missed context, missed ADR, stale doc, wrong command, missing sensor, missing guide, or context route gap.
+
+Add generic self-review or "double-check before finishing" prompting to harness instructions only when the current model has demonstrated a measured miss on this repo's tasks. Frontier models self-verify natively; blanket self-review scaffolding causes over-verification and wasted tokens without quality gain. This does not limit explicit deterministic evidence: running quality gates, migration checks, validators, and safety validations remains required wherever the repository or platform mandates them.
 
 If yes, update the smallest durable harness surface in the same PR: `docs/README.md`, decision memory, a contract, a script, a review rule, a skill, or a focused doc. If the right fix is unclear, record a marker in the PR body, review thread, issue, or configured feedback log, such as `harness:miss-adr`, `harness:missing-guide`, `harness:missing-sensor`, `harness:wrong-command`, or `harness:context-rot`.
 
@@ -1096,6 +1102,8 @@ For bespoke tool wrappers, planner/executor loops, multi-agent graphs, custom me
 
 Prefer plain files, git history, structured task contracts, skills, and small deterministic tools before adding opaque framework layers. When a model or agent tool improves, run a short upgrade review: strip away scaffolding that is no longer load-bearing, then use the regression eval or harness metrics to confirm the removal did not hurt outcomes.
 
+Model-upgrade reviews must also audit prompt-side scaffolding, not only tool wrappers: verification and recheck instructions, forced narration or preflight steps, verbosity directives, and effort/reasoning-level settings. Vendor guidance differs by family: Anthropic's Claude Opus 5 guidance recommends removing explicit double-check scaffolding that causes over-verification; OpenAI's GPT-5.6 guidance recommends keeping a stated validation loop — give the model tools that can validate output and state what validation matters — and treating compute-per-task (reasoning effort) as a routing decision alongside context routing. Match the vendor's actual recommendation for the model being adopted. Remove or tighten generic self-review prompting that the current model executes without a demonstrated miss; add such prompting back only after the current model demonstrates a measured miss on this repo's tasks. This audit never authorizes removing deterministic evidence: quality gates, migration checks, validators, safety validations, and any repository- or platform-mandated verification remain required across model upgrades.
+
 ### Multi-Agent and Handoff Patterns
 
 Keep multi-agent structure explicit and small.
@@ -1110,6 +1118,8 @@ Use:
 - Adversarial validators when high-impact findings, security claims, architecture decisions, or evidence syntheses need an independent attempt at disproof before acceptance.
 
 Before adding a multi-agent graph, document ownership, I/O contracts, shared state, arbitration when agents disagree, termination criteria, budget, and the verification signal that proves the topology helps. Be especially cautious with distributed deliberation loops: they can multiply cost and uncertainty unless an eval shows they improve outcomes for this repo.
+
+Watch for model-initiated over-delegation as well as human-designed sprawl: current frontier models may spawn subagents for small single-context tasks where one direct pass is cheaper and more reliable. When this appears, add explicit delegation criteria (minimum task size, context-isolation requirement, or parallelism benefit) and, where the runtime allows, deterministic caps on subagent depth and count rather than prose-only reminders. Treat any such cap as an ordinary optional control: record a validation signal (for example, subagent count and task cost on comparable tasks before versus after) and a retirement or reassessment trigger tied to model or runtime upgrades, so a cap that no longer reflects current model behavior is removed instead of ossifying.
 
 Adversarial validation should have a narrow brief:
 
