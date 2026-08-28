@@ -5069,7 +5069,7 @@ test('detects VERSION in separate template checkouts', () => {
     copyFileSync(resolve(repoRoot, 'scripts', 'template-fitness.mjs'), resolve(tempRoot, 'scripts', 'template-fitness.mjs'));
 
     const survey = surveyRepository(tempRoot);
-    const plan = buildBootstrapPlan(survey, { date: '2026-05-28', targetVersion: '0.2.0' });
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28', targetVersion: '0.1.0' });
     const currentVersion = readFileSync(resolve(repoRoot, 'VERSION'), 'utf8').trim();
 
     assert.equal(survey.versionState.installedVersion, currentVersion);
