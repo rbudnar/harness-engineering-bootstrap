@@ -6,6 +6,20 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 
 ### Summary
 
+### Template Changes
+
+### Planner And Metadata
+
+### Migration
+
+### Validation
+
+### Rollback
+
+## v0.2.0 - 2026-08-26
+
+### Summary
+
 - Aligned template doctrine with current Anthropic (Claude Opus 5) and OpenAI (GPT-5.6 series) model guidance: audit prompt-side verification scaffolding at model upgrades, treat reasoning effort as a control knob, guard against model-initiated subagent sprawl and invented scope, and prefer provider-native context management over hand-rolled session persistence.
 - Added the first HEB benchmark protocol so empirical validation can measure repeated self-correction against simpler context baselines before a runner exists.
 - Added a minimal HEB benchmark runner and JSONL result schema so the first pilot can prepare pinned fixtures and compare partial-telemetry rows reproducibly.
