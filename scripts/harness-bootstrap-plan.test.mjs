@@ -5074,8 +5074,8 @@ test('detects VERSION in separate template checkouts', () => {
     // upgrade-detection path (installed != target) is exercised. This keeps
     // the test green across future releases instead of hardcoding a pin that
     // collides with the live VERSION once a release ships.
-    const [_, min] = currentVersion.split('.');
-    const targetVersion = `0.${parseInt(min, 10) + 1}.0`;
+    const [major, minor] = currentVersion.split('.');
+    const targetVersion = `${major}.${parseInt(minor, 10) + 1}.0`;
     const plan = buildBootstrapPlan(survey, { date: '2026-05-28', targetVersion });
 
     assert.equal(survey.versionState.installedVersion, currentVersion);
