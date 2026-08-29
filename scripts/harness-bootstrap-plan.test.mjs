@@ -5069,8 +5069,14 @@ test('detects VERSION in separate template checkouts', () => {
     copyFileSync(resolve(repoRoot, 'scripts', 'template-fitness.mjs'), resolve(tempRoot, 'scripts', 'template-fitness.mjs'));
 
     const survey = surveyRepository(tempRoot);
-    const plan = buildBootstrapPlan(survey, { date: '2026-05-28', targetVersion: '0.2.0' });
     const currentVersion = readFileSync(resolve(repoRoot, 'VERSION'), 'utf8').trim();
+    // Target a version strictly above the repo's current VERSION so the
+    // upgrade-detection path (installed != target) is exercised. This keeps
+    // the test green across future releases instead of hardcoding a pin that
+    // collides with the live VERSION once a release ships.
+    const [major, minor] = currentVersion.split('.');
+    const targetVersion = `${major}.${parseInt(minor, 10) + 1}.0`;
+    const plan = buildBootstrapPlan(survey, { date: '2026-05-28', targetVersion });
 
     assert.equal(survey.versionState.installedVersion, currentVersion);
     assert.equal(survey.versionState.source, 'VERSION');
