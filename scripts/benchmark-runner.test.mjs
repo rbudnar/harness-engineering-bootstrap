@@ -360,6 +360,99 @@ test('normalizes run configuration and numeric token and cost estimates', () => 
   assert.equal(row.run_config.timeout_minutes, 30);
 });
 
+test('normalizes review-loop convergence metrics without making efficiency thresholds gates', () => {
+  const { manifest } = readManifest(manifestPath);
+  const row = normalizeResultRow({
+    run_id: 'review-convergence',
+    task_id: 'docs-only-fixture-001',
+    trial: 1,
+    variant: 'static-minimal-agents',
+    agent_surface: 'manual-adapter',
+    success: true,
+    review_loop: {
+      reviewed_heads: 3,
+      review_attempts: 5,
+      remediation_heads: 2,
+      same_family_recurrences: 1,
+      gross_remediation_lines: 120,
+      rework_lines: 35,
+      initial_scope_lines: 80,
+      final_scope_lines: 130,
+      blocker_count: 2,
+      residual_count: 1,
+      noise_count: 1,
+      prompt_bytes: 45000,
+      escaped_relevant_defects: 0,
+      terminal_full_review: true,
+      triggered_actions: ['design-mechanism-checkpoint'],
+    },
+  }, manifest);
+
+  assert.deepEqual(row.review_loop, {
+    reviewed_heads: 3,
+    review_attempts: 5,
+    remediation_heads: 2,
+    same_family_recurrences: 1,
+    gross_remediation_lines: 120,
+    rework_lines: 35,
+    initial_scope_lines: 80,
+    final_scope_lines: 130,
+    blocker_count: 2,
+    residual_count: 1,
+    noise_count: 1,
+    prompt_bytes: 45000,
+    escaped_relevant_defects: 0,
+    terminal_full_review: true,
+    triggered_actions: ['design-mechanism-checkpoint'],
+  });
+});
+
+test('rejects successful review-loop rows with an escape or no terminal full review', () => {
+  const { manifest } = readManifest(manifestPath);
+  const base = {
+    run_id: 'unsafe-review-success',
+    task_id: 'docs-only-fixture-001',
+    trial: 1,
+    variant: 'static-minimal-agents',
+    agent_surface: 'manual-adapter',
+    success: true,
+  };
+  const metrics = {
+    escaped_relevant_defects: 0,
+    terminal_full_review: true,
+    triggered_actions: [],
+  };
+
+  assert.throws(() => normalizeResultRow({
+    ...base,
+    review_loop: { ...metrics, escaped_relevant_defects: 1 },
+  }, manifest), /zero escaped_relevant_defects/);
+
+  assert.throws(() => normalizeResultRow({
+    ...base,
+    review_loop: { ...metrics, terminal_full_review: false },
+  }, manifest), /require terminal_full_review/);
+});
+
+test('preserves unavailable review-loop action telemetry as null', () => {
+  const { manifest } = readManifest(manifestPath);
+  const row = normalizeResultRow({
+    run_id: 'partial-review-actions',
+    task_id: 'docs-only-fixture-001',
+    trial: 1,
+    variant: 'static-minimal-agents',
+    agent_surface: 'manual-adapter',
+    success: false,
+    review_loop: {
+      escaped_relevant_defects: null,
+      terminal_full_review: null,
+      triggered_actions: null,
+    },
+  }, manifest);
+
+  assert.equal(row.review_loop.triggered_actions, null);
+});
+
 test('warns when declared model lacks observed model provenance', () => {
   const { manifest } = readManifest(manifestPath);
   const row = normalizeResultRow({

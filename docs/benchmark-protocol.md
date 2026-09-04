@@ -134,6 +134,23 @@ Record these per task attempt:
 - Correction lag: number of attempts between first observed miss and first successful near-neighbor run.
 - Control harm: added guidance increased reads, stale hits, or cost without improving success or recurrence.
 
+For review-loop convergence episodes, also record the structured
+`review_loop` block defined by the runner:
+
+- reviewed and remediation heads, review attempts, and same-family recurrences;
+- gross remediation lines, rework lines, initial/final scope lines, and prompt
+  bytes;
+- blocker, residual, and rejected-noise counts; and
+- escaped relevant defects, terminal full-review coverage, and triggered
+  actions.
+
+Use these metrics during the run, not only in a later report. An open blocker
+or relevant escape prevents success. A same-family recurrence triggers a
+design/mechanism checkpoint. High rework, scope growth, or prompt pressure
+triggers a documented design, scope, or compaction decision but does not
+demote a defect. Start numeric efficiency thresholds as advisory and calibrate
+them from repeated runs.
+
 ## Trial Policy
 
 The full protocol should use enough repeated attempts to expose reliability noise. Start with:
@@ -143,6 +160,10 @@ The full protocol should use enough repeated attempts to expose reliability nois
 - Longitudinal episodes: at least 4 episodes in the first benchmark, with near-neighbor and delayed-regression stages.
 
 Report pass-at-1, pass-at-k, all-trials-pass consistency, recurrence rate, correction lag, median cost/time, and run-to-run variance. Do not let pass-at-k hide instability: a variant that succeeds once but fails repeated attempts is less reliable than one that passes consistently. If results are close, variance is high, or cost-per-success moves in the opposite direction from raw success, treat results as directional evidence and expand the suite before changing template policy.
+
+For a review-convergence comparison, any relevant escape in any single trial
+fails that trial. Aggregate head-count, rework, or token improvements cannot
+mask an intermittent correctness failure.
 
 ## Failure Modes That Tighten Or Remove HEB
 
