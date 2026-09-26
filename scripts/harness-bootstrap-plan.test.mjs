@@ -1825,8 +1825,26 @@ test('json CLI output is reusable by the future scaffolder surface', () => {
   );
   const plan = JSON.parse(output);
 
+  assert.equal(plan.schemaVersion, 2);
   assert.equal(plan.kind, 'harness-bootstrap-plan');
   assert.equal(plan.planArtifact.created, '2026-05-28');
+  assert.equal(
+    plan.planArtifact.candidatePath,
+    '.harness/task-state/2026-05-28-basic-js-harness-bootstrap.md',
+  );
+  assert.equal(
+    plan.planArtifact.durableCoordinationPath,
+    'docs/plans/active/2026-05-28-basic-js-harness-bootstrap.md',
+  );
+  assert.equal(plan.planArtifact.localPathCheck.path, plan.planArtifact.candidatePath);
+  assert.equal(
+    plan.planArtifact.recommendedPath,
+    plan.planArtifact.localPathCheck.status === 'ignored' ? plan.planArtifact.candidatePath : null,
+  );
+  assert.equal(plan.planArtifact.localPathCheck.checkedRepo, fixture);
+  assert(['ignored', 'not-ignored', 'unknown'].includes(plan.planArtifact.localPathCheck.status));
+  assert.match(plan.planArtifact.localPathPrecondition, /already-ignored or out-of-repository path/);
+  assert.equal(plan.planArtifact.localOnlyAlternative, undefined);
   assert.equal(plan.survey.repoName, 'basic-js');
   assert(plan.requiredCore.some((item) => item.id === 'quality-gate'));
   assert(plan.validationSteps.some((step) => (
@@ -1838,6 +1856,16 @@ test('json CLI output is reusable by the future scaffolder surface', () => {
     && item.assumption.includes('provider adapters')
   )));
   assert(plan.reviewContract.some((item) => item.role === 'Reviewer'));
+
+  const markdown = execFileSync(
+    process.execPath,
+    ['scripts/harness-bootstrap-plan.mjs', '--repo', fixture, '--date', '2026-05-28'],
+    { cwd: repoRoot, encoding: 'utf8' },
+  );
+  assert.match(markdown, /(Recommended|Candidate) local task-state path/);
+  assert.match(markdown, /Local-path check: (ignored|not-ignored|unknown)/);
+  assert.match(markdown, /Checked-in exception for durable coordination/);
+  assert.match(markdown, /multi-session, multi-agent, cross-PR, or handoff continuity/);
 });
 
 test('renders reusable commands for Windows paths and quoted CI arguments', () => {
@@ -1856,6 +1884,55 @@ test('renders reusable commands for Windows paths and quoted CI arguments', () =
   assert.match(plan.planArtifact.validationCommand, /node /);
   assert.match(plan.planArtifact.validationCommand, /scripts[\\/]harness-bootstrap-plan\.mjs/);
   assert.match(plan.planArtifact.validationCommand, /--date 2026-05-28/);
+  assert.equal(plan.planArtifact.localPathCheck.checkedRepo, 'C:\\Users\\Example Repo\\project');
+  assert.equal(plan.planArtifact.localPathCheck.status, 'unknown');
+  assert.equal(plan.planArtifact.localPathCheck.command, undefined);
+});
+
+test('checks the exact local task-state target without shell interpolation', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-ignore-$`-'));
+  try {
+    execFileSync('git', ['init', '--quiet', tempRoot]);
+    writeFileSync(resolve(tempRoot, '.gitignore'), '.harness/task-state/\n');
+
+    const ignoredPlan = buildBootstrapPlan(
+      { ...surveyRepository(resolve(fixturesRoot, 'basic-js')), repoPath: tempRoot, repoName: 'quoted-path' },
+      { date: '2026-05-28' },
+    );
+    assert.equal(ignoredPlan.planArtifact.localPathCheck.status, 'ignored');
+    assert.equal(ignoredPlan.planArtifact.localPathCheck.path, ignoredPlan.planArtifact.candidatePath);
+    assert.equal(ignoredPlan.planArtifact.recommendedPath, ignoredPlan.planArtifact.candidatePath);
+    assert.equal(ignoredPlan.planArtifact.localPathCheck.command, undefined);
+
+    writeFileSync(resolve(tempRoot, '.gitignore'), 'node_modules/\n');
+    const notIgnoredPlan = buildBootstrapPlan(
+      { ...surveyRepository(resolve(fixturesRoot, 'basic-js')), repoPath: tempRoot, repoName: 'quoted-path' },
+      { date: '2026-05-28' },
+    );
+    assert.equal(notIgnoredPlan.planArtifact.localPathCheck.status, 'not-ignored');
+    assert.equal(notIgnoredPlan.planArtifact.recommendedPath, null);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('saving the recommended local plan does not self-trigger handoff guidance', () => {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'heb-local-plan-idempotence-'));
+  try {
+    cpSync(resolve(fixturesRoot, 'basic-js'), tempRoot, { recursive: true });
+    const before = buildBootstrapPlan(surveyRepository(tempRoot), { date: '2026-05-28' });
+    assert(!before.triggeredModules.some((module) => module.id === 'long-running-handoff'));
+
+    const planPath = resolve(tempRoot, before.planArtifact.candidatePath);
+    mkdirSync(dirname(planPath), { recursive: true });
+    writeFileSync(planPath, renderMarkdownPlan(before));
+
+    const after = buildBootstrapPlan(surveyRepository(tempRoot), { date: '2026-05-28' });
+    assert(!after.triggeredModules.some((module) => module.id === 'long-running-handoff'));
+    assert.equal(after.survey.files.count, before.survey.files.count);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test('recognizes Gradle and Maven wrapper validation commands', () => {

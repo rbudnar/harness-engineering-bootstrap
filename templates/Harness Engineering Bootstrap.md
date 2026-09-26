@@ -78,16 +78,17 @@ Triggered modules:
 2. **Context is pulled, not pushed.** Agents should load the smallest relevant context at the time they need it. Classify routable surfaces by activation mode so repo owners know whether context is always-on, path/glob-scoped, description-triggered, or manual.
 3. **Facts have owners and lifecycle.** Decisions, contracts, and references can be active, draft, deprecated, or superseded. Stale instructions are bugs.
 4. **Memory is typed.** Keep instructions, decisions, semantic facts, data contracts, repo contracts, and episode history separate so agents do not confuse old events with current truth.
-5. **Missing context is a harness signal.** If an agent must guess, repeatedly ask, or rediscover the same fact, the harness is missing a durable context route.
-6. **Procedures belong in executable tools where possible.** If a rule can be checked by a script, encode it in a script and CI, not only in prose.
-7. **Self-growth must be evidence-driven.** Add harness surface only when a trigger appears: repeated confusion, external dependency, domain invariant, review miss, or measurable rot.
-8. **Classify controls.** Treat every important harness artifact as a guide or sensor, and as computational or inferential. Guides steer before the agent acts; sensors observe after it acts and help it self-correct.
-9. **Left-shift cheap feedback.** Run fast deterministic sensors as early as possible: local hooks, agent self-checks, CI, and scheduled audits. Reserve expensive inferential review for changes where semantic judgment is worth the cost.
-10. **Every control encodes an assumption.** Record what failure mode a nontrivial control prevents, what signal proves it is useful, and when to retire or weaken it.
-11. **Prefer programmatic state surfaces.** Put large, changing, or inspectable state in deterministic artifacts that agents can query, such as files, generated schemas, logs, structured traces, snapshots, or CLI outputs. Feed the model pointers and summaries before dumping raw state into context.
-12. **Keep scaffolding replaceable.** Treat bespoke orchestration, tool wrappers, memory layers, and multi-agent topologies as capability-era controls. Keep the harness thin, push domain process into routable skills/docs, push repeatable execution into deterministic tools, and make every nontrivial scaffold easy to reassess when models or first-party harnesses improve.
-13. **Verify semantic payoff before scaling work.** Treat issue bodies, handoff docs, and PRD prose as hypotheses. Before broad migrations or user-visible control changes, verify the central claim against running behavior, rendered output, or source that owns the display.
-14. **Measure the harness.** Track token pressure, drift, CI quality, PR velocity, repeated corrections, control coverage, contract coverage, and runtime safety over time.
+5. **Repository docs are durable authority.** Treat repository documentation as durable authority, not a task diary. Commit enduring architecture, contracts, decisions, operations, and reusable guidance; keep temporary status and task sequencing with the task.
+6. **Missing context is a harness signal.** If an agent must guess, repeatedly ask, or rediscover the same fact, the harness is missing a durable context route.
+7. **Procedures belong in executable tools where possible.** If a rule can be checked by a script, encode it in a script and CI, not only in prose.
+8. **Self-growth must be evidence-driven.** Add harness surface only when a trigger appears: repeated confusion, external dependency, domain invariant, review miss, or measurable rot.
+9. **Classify controls.** Treat every important harness artifact as a guide or sensor, and as computational or inferential. Guides steer before the agent acts; sensors observe after it acts and help it self-correct.
+10. **Left-shift cheap feedback.** Run fast deterministic sensors as early as possible: local hooks, agent self-checks, CI, and scheduled audits. Reserve expensive inferential review for changes where semantic judgment is worth the cost.
+11. **Every control encodes an assumption.** Record what failure mode a nontrivial control prevents, what signal proves it is useful, and when to retire or weaken it.
+12. **Prefer programmatic state surfaces.** Put large, changing, or inspectable state in deterministic artifacts that agents can query, such as files, generated schemas, logs, structured traces, snapshots, or CLI outputs. Feed the model pointers and summaries before dumping raw state into context.
+13. **Keep scaffolding replaceable.** Treat bespoke orchestration, tool wrappers, memory layers, and multi-agent topologies as capability-era controls. Keep the harness thin, push domain process into routable skills/docs, push repeatable execution into deterministic tools, and make every nontrivial scaffold easy to reassess when models or first-party harnesses improve.
+14. **Verify semantic payoff before scaling work.** Treat issue bodies, handoff docs, and PRD prose as hypotheses. Before broad migrations or user-visible control changes, verify the central claim against running behavior, rendered output, or source that owns the display.
+15. **Measure the harness.** Track token pressure, drift, CI quality, PR velocity, repeated corrections, control coverage, contract coverage, and runtime safety over time.
 
 ## Harness Layer Map
 
@@ -168,7 +169,7 @@ Then produce a short setup plan:
 - Measurement script scope
 - Any questions for the human where the code cannot answer safely
 
-For durable bootstrap work, save the accepted plan as a first-class artifact. Use `docs/plans/active/<yyyy-mm-dd>-<slug>.md` when the plan belongs to the repository, or a local-only path such as `.harness/plans/<yyyy-mm-dd>-<slug>.md` for exploratory work that should not be committed.
+Default execution plans to an ignored local task-state path such as `.harness/task-state/<yyyy-mm-dd>-<slug>.md`. The planner must check the exact recommended path against the target repository by invoking Git with a structured argument array, not a shell-interpolated command. Write there only when the result is `ignored`; otherwise use an already-ignored or out-of-repository path, or deliberately add the narrow `.harness/task-state/` ignore rule. Use `docs/plans/active/<yyyy-mm-dd>-<slug>.md` only when multi-session, multi-agent, cross-PR, or handoff continuity makes repository-owned coordination durably useful; apply the retirement rule in Phase 1.
 
 The plan header should include:
 
@@ -193,6 +194,8 @@ Proceed after the plan is accepted, unless the human explicitly asked you to imp
 ## Phase 1: Required Knowledge Base
 
 Create or update `docs/` as the version-controlled, agent-agnostic knowledge base.
+
+Commit material that should remain correct and useful after the current issue or rollout closes: current architecture, contracts, decisions and rationale, operational and recovery procedures, and reusable guidance. Keep implementation sequencing, migration status, temporary inventories, discovery notes, and one-time checklists in the issue or PR, or in ignored task state. If a document mixes durable truth with episode history, split it. A checked-in execution plan is the bounded exception described below and must have an explicit retirement rule.
 
 ### `docs/README.md` - Start Here and Task Router
 
@@ -964,7 +967,7 @@ Do not store durable project facts only in provider memory. Promote durable fact
 
 - Search decision memory before changing an established pattern.
 - Active decisions are current truth; deprecated/superseded decisions are history only.
-- For large or handoff-heavy work, use a checked-in execution plan; use scratchpads only for temporary local reasoning.
+- For large or handoff-heavy work, use a checked-in execution plan only when durable coordination justifies it; give it an explicit retirement rule and retain it after closeout only for lasting value. Use scratchpads for temporary local reasoning.
 - If code changes user-visible behavior, commands, architecture, external semantics, review expectations, or reusable non-obvious patterns, update the relevant docs in the same PR.
 - If a decision changes review behavior, update the ADR and the canonical review harness in the same PR; update tool-specific adapters if they exist.
 - Apply the Harness Self-Correction rule above before calling the task done.
@@ -1166,8 +1169,8 @@ Promote MECE warnings to failures only after at least one audit cycle, roughly 3
 
    Use two planning tiers:
 
-   - **Checked-in execution plans** for multi-hour, multi-agent, cross-PR, or handoff-heavy work. Store under `docs/plans/active/` while active, then move to `docs/plans/completed/` only when the plan has lasting value.
-   - **Gitignored scratchpads** for local exploration, failed avenues, temporary notes, and session-only reasoning. Store under a clearly ignored path such as `.scratch/` or the repo's established local-notes directory.
+   - **Checked-in execution plans for durable coordination** needs such as multi-agent, cross-PR, or handoff-heavy work. Store under `docs/plans/active/` while active, then move to `docs/plans/completed/` only when the plan has lasting value.
+   - **Gitignored scratchpads** for single-agent execution state, including multi-hour work, local exploration, failed avenues, temporary notes, and session-only reasoning. Store under a verified-ignored path such as `.scratch/` or the repo's established local-notes directory.
 
    Before closing a task, promote any durable lesson from scratchpads or execution plans into semantic docs, decision memory, data contracts, repo contracts, scripts, or review rules. Then delete or archive the temporary material according to its lifecycle rule.
 
