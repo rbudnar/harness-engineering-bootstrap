@@ -7,7 +7,7 @@ This repository dogfoods the Harness Engineering Bootstrap template as an anti-b
 - `AGENTS.md` is the only required always-on agent file.
 - Provider-specific always-on or path/glob adapters, if added, must be short redirects back to `AGENTS.md` and should exist only when native `AGENTS.md` loading is insufficient for that provider surface.
 - Current provider adapters are `CLAUDE.md`, `GEMINI.md`, and `.github/copilot-instructions.md`; no Cursor/Windsurf path adapters are present.
-- Do not put template phases, bootstrap checklists, reference lists, or optional-module details in always-on files.
+- Do not put template phases, bootstrap checklists, reference lists, or optional-module details in always-on files. Repository documentation is durable authority, not a task diary: keep transient status, sequencing, inventories, and one-time checklists with the issue, PR, or ignored task state unless a bounded checked-in plan has an explicit retirement rule.
 - Repo-local skills are pulled context under the [Agent Skills specification](https://agentskills.io/specification), not always-on guidance; current skill: `.agents/skills/contract-memory/SKILL.md` for contract-memory work.
 - Default budget: `AGENTS.md` up to 80 lines, each provider adapter up to 40 lines, total always-on guidance up to 160 lines.
 

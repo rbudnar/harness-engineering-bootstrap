@@ -6,15 +6,26 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 
 ### Summary
 
+- Made the durable-documentation boundary explicit so repository docs retain enduring authority instead of accumulating task history.
+
 ### Template Changes
 
+- Routed rollout status, temporary inventories, implementation sequencing, and one-time checklists to issues, PRs, or ignored task state; checked-in execution plans remain a bounded exception with an explicit retirement rule.
+
 ### Planner And Metadata
+
+- Changed the bootstrap planner to check the exact task-state candidate through a shell-independent Git invocation, recommend it only when verified ignored, keep that subtree out of later surveys, and present checked-in active plans only as a durable-coordination exception.
+- Bumped bootstrap-plan JSON to schema version 2 for the changed plan-path contract.
 
 ### Migration
 
 ### Validation
 
+- `node scripts/template-fitness.mjs`
+
 ### Rollback
+
+- Revert the durable-documentation rule and its two anti-bloat anchors together.
 
 ## v0.2.0 - 2026-08-26
 

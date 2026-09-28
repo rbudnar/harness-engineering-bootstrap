@@ -55,6 +55,21 @@ const anchors = [
     text: 'one defect family',
     reason: 'this repo must dogfood same-family review churn escalation',
   },
+  {
+    path: 'templates/Harness Engineering Bootstrap.md',
+    text: 'Treat repository documentation as durable authority, not a task diary',
+    reason: 'repository docs must separate enduring guidance from task state',
+  },
+  {
+    path: 'templates/Harness Engineering Bootstrap.md',
+    text: 'Checked-in execution plans for durable coordination',
+    reason: 'plan-tier guidance must not make task duration alone justify committed state',
+  },
+  {
+    path: 'docs/dogfooding.md',
+    text: 'Repository documentation is durable authority, not a task diary',
+    reason: 'this repo must dogfood the durable-documentation boundary',
+  },
 ];
 
 const suggestionClassifications = [

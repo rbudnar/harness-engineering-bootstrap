@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -40,6 +41,10 @@ const ignoredDirectories = new Set([
   'vendor',
   'fixtures',
   '__fixtures__',
+]);
+
+const ignoredDirectoryPaths = new Set([
+  '.harness/task-state',
 ]);
 
 const packageFiles = [
@@ -451,9 +456,11 @@ export function buildBootstrapPlan(survey, options = {}) {
     planSlug,
   });
   const planKindSlug = operation === 'update' ? 'harness-update' : 'harness-bootstrap';
+  const candidatePath = `.harness/task-state/${date}-${planSlug}-${planKindSlug}.md`;
+  const localPathCheck = inspectLocalTaskStateIgnore(survey.repoPath, candidatePath);
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: 'harness-bootstrap-plan',
     operation,
     plannerVersion: templateVersion,
@@ -463,8 +470,11 @@ export function buildBootstrapPlan(survey, options = {}) {
       owner: 'human',
       created: date,
       updated: date,
-      recommendedPath: `docs/plans/active/${date}-${planSlug}-${planKindSlug}.md`,
-      localOnlyAlternative: `.harness/plans/${date}-${planSlug}-${planKindSlug}.md`,
+      candidatePath,
+      recommendedPath: localPathCheck.status === 'ignored' ? candidatePath : null,
+      durableCoordinationPath: `docs/plans/active/${date}-${planSlug}-${planKindSlug}.md`,
+      localPathCheck,
+      localPathPrecondition: buildLocalPathPrecondition(localPathCheck),
       nextAction: operation === 'update'
         ? 'Review the update plan, confirm release notes and rollback path, then approve or reject template-update writes.'
         : 'Review this plan, resolve open questions, then approve or reject writes before implementation.',
@@ -512,8 +522,14 @@ export function renderMarkdownPlan(plan) {
   lines.push('');
   lines.push('## Plan Artifact');
   lines.push('');
-  lines.push(`- Recommended repo-owned path: \`${plan.planArtifact.recommendedPath}\``);
-  lines.push(`- Local-only alternative: \`${plan.planArtifact.localOnlyAlternative}\``);
+  if (plan.planArtifact.recommendedPath) {
+    lines.push(`- Recommended local task-state path (verified ignored): \`${plan.planArtifact.recommendedPath}\``);
+  } else {
+    lines.push(`- Candidate local task-state path (not recommended until verified ignored): \`${plan.planArtifact.candidatePath}\``);
+  }
+  lines.push(`- Local-path check: ${plan.planArtifact.localPathCheck.status}. ${plan.planArtifact.localPathPrecondition}`);
+  lines.push(`- Checked-in exception for durable coordination: \`${plan.planArtifact.durableCoordinationPath}\``);
+  lines.push('- Commit the checked-in path only when multi-session, multi-agent, cross-PR, or handoff continuity justifies repository-owned coordination; apply the retirement rule above.');
   lines.push('- Write policy: this planner is read-only; do not write target-repo files until the plan is reviewed and accepted.');
   lines.push('- Resume rule: each execution turn reloads this plan, verifies repo drift, checks the next action, and records progress before handoff.');
   lines.push('');
@@ -2705,7 +2721,9 @@ function walkFiles(root, options) {
         return;
       }
 
-      if (!ignoredDirectories.has(entry.name)) walk(join(dir, entry.name));
+      const fullPath = join(dir, entry.name);
+      const relativePath = normalizePath(relative(root, fullPath));
+      if (!ignoredDirectories.has(entry.name) && !ignoredDirectoryPaths.has(relativePath)) walk(fullPath);
     }
   }
 
@@ -3483,6 +3501,42 @@ function quotePath(path) {
   const value = String(path);
   if (!/[\s\\'"$&|;<>(){}\[\]*?!#~`]/.test(value)) return value;
   return `"${value.replace(/(["$`])/g, '\\$1')}"`;
+}
+
+function inspectLocalTaskStateIgnore(repoPath, recommendedPath) {
+  const result = spawnSync(
+    'git',
+    ['-C', repoPath, 'check-ignore', '--quiet', '--', recommendedPath],
+    { encoding: 'utf8', windowsHide: true },
+  );
+
+  let status = 'unknown';
+  let detail;
+  if (result.error) {
+    detail = `Git could not check the target path: ${result.error.message}`;
+  } else if (result.status === 0) {
+    status = 'ignored';
+    detail = 'Git reports that the exact recommended path is ignored.';
+  } else if (result.status === 1) {
+    status = 'not-ignored';
+    detail = 'Git reports that the exact recommended path is not ignored.';
+  } else {
+    detail = `Git could not establish ignore status (exit ${result.status ?? 'unknown'}).`;
+  }
+
+  return {
+    path: recommendedPath,
+    checkedRepo: repoPath,
+    status,
+    detail,
+  };
+}
+
+function buildLocalPathPrecondition(localPathCheck) {
+  if (localPathCheck.status === 'ignored') {
+    return 'The planner verified the exact target as ignored. Recheck after repository drift before writing it.';
+  }
+  return `${localPathCheck.detail} Do not write it there; use an already-ignored or out-of-repository path, or deliberately add the narrow \`.harness/task-state/\` ignore rule before proceeding.`;
 }
 
 function buildPlannerCommand(repoPath, options = {}) {
