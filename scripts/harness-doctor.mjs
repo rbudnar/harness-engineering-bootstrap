@@ -47,7 +47,7 @@ const optionalMetadataFields = [
 const statusValues = new Set(['active', 'draft', 'deprecated', 'superseded']);
 const bodyMetadataFields = new Set([...requiredMetadataFields, ...optionalMetadataFields]);
 const decisionIdPattern = /(?:ADR-|D-?)\d+/.source;
-const decisionHeadingPattern = new RegExp('^ {0,3}#{1,6}[ \\t]+(' + decisionIdPattern + ')(?=[ \\t]*(?:[:–—-]|$))');
+const decisionHeadingPattern = new RegExp('^ {0,3}#{1,6}[ \\t]+((' + decisionIdPattern + ')(?=[ \\t]*(?:[:–—-]|$)).*)');
 const decisionFilenamePattern = new RegExp('^docs/adrs?/(?:[^/]+/)*(' + decisionIdPattern + ')(?:-[^/]+)?\\.[mM][dD]$');
 
 export function runDoctor(options = {}) {
@@ -300,15 +300,20 @@ function checkDecisionLog({ root, path, warnings }) {
   for (const { line, lineNumber, inContainer } of visibleMarkdownLines(text)) {
     if (inContainer) continue;
     const heading = line.replace(/[ \t]+#+[ \t]*$/, '');
-    const id = decisionHeadingPattern.exec(heading)?.[1];
-    if (id) declarations.push({ id, line: lineNumber });
+    const match = decisionHeadingPattern.exec(heading);
+    if (!match) continue;
+    const [, title, id] = match;
+    const slug = title.trimEnd().toLowerCase().replace(/[^\p{L}\p{M}\p{N}_ -]/gu, '').replaceAll(' ', '-');
+    declarations.push({ id, line: lineNumber, slug });
   }
 
-  // shortcut: a preamble fragment signals a route; revisit if supported layouts repeatedly warn.
+  // shortcut: plain heading slugs only; revisit if formatted or numbered anchors repeatedly warn.
   if (declarations.length >= 2 && !extractMarkdownLinks(text).some((link) => {
     if (link.isImage || link.line >= declarations[0].line) return false;
     const href = stripMarkdownLinkTitle(link.href).replace(/^<(.*)>$/, '$1');
-    return /#\S/.test(href) && (href.startsWith('#') || resolveInternalLinkTarget({ root, fromFile: path, href }) === path);
+    const hash = href.indexOf('#');
+    if (hash === -1 || !declarations.some(({ slug }) => slug === href.slice(hash + 1))) return false;
+    return hash === 0 || resolveInternalLinkTarget({ root, fromFile: path, href }) === path;
   })) {
     warnings.push({
       code: 'decision-log-index',

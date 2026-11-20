@@ -1217,7 +1217,7 @@ test('decision memory warns above 1,000 physical lines with CRLF and a terminal 
 
 test('decision memory recognizes visible same-file links before the records', (t) => {
   const root = makeRepo({
-    'docs/decisions.md': decisionLog('- [First][route]') + '\n[route]: ./decisions.md#first\n',
+    'docs/decisions.md': decisionLog('- [Second][route]') + '\n[route]: ./decisions.md#adr-0782--use-green-folders\n',
   });
   t.after(() => rmSync(root, { recursive: true, force: true }));
 
@@ -1225,11 +1225,12 @@ test('decision memory recognizes visible same-file links before the records', (t
 });
 
 for (const [description, index, afterRecords] of [
-  ['inside a fence', '~~~markdown\n- [First](#first)\n~~~', ''],
-  ['after the records', '', '\n- [First](#first)\n'],
-  ['in another file', '- [First](../README.md#first)', ''],
-  ['an image destination', '![Diagram](#decoration)', ''],
-  ['plain text', 'This is plain text ](#decoration).', ''],
+  ['inside a fence', '~~~markdown\n- [First](#d-781-use-blue-folders)\n~~~', ''],
+  ['after the records', '', '\n- [First](#d-781-use-blue-folders)\n'],
+  ['in another file', '- [First](../README.md#d-781-use-blue-folders)', ''],
+  ['an image destination', '![Diagram](#d-781-use-blue-folders)', ''],
+  ['plain text', 'This is plain text ](#d-781-use-blue-folders).', ''],
+  ['to an unrelated section', '- [Background](#background)\n\n## Background', ''],
 ]) {
   test('decision memory warns when its only index links are ' + description, (t) => {
     const root = makeRepo({
@@ -1248,7 +1249,7 @@ for (const [description, index, afterRecords] of [
 test('decision memory reports the later real heading and first declaration location', (t) => {
   const id = 'D-' + 781;
   const root = makeRepo({
-    'docs/decisions.md': decisionLog('- [First](#first)') + '\n## ' + id + '\n',
+    'docs/decisions.md': decisionLog('- [First](#d-781-use-blue-folders)') + '\n## ' + id + '\n',
   });
   t.after(() => rmSync(root, { recursive: true, force: true }));
 
