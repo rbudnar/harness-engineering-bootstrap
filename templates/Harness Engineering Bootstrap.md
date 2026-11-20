@@ -1414,6 +1414,7 @@ Add a warning-mode command such as `node scripts/harness-doctor.mjs` before addi
 - Missing lifecycle metadata only in directories the template treats as load-bearing, such as split ADRs and `docs/data-contracts/` or `docs/repo-contracts/`.
 - Stale `review_after` dates when metadata already exists.
 - Broken internal Markdown links and index routes.
+- The warning-mode doctor can flag oversized single-file decision logs, missing recognizable index links, and duplicate IDs in supported decision layouts.
 - Optional-module detail leaking into always-on instruction files.
 - Obvious duplicate guidance across always-on adapters.
 

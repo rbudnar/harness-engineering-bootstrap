@@ -46,6 +46,9 @@ const optionalMetadataFields = [
 
 const statusValues = new Set(['active', 'draft', 'deprecated', 'superseded']);
 const bodyMetadataFields = new Set([...requiredMetadataFields, ...optionalMetadataFields]);
+const decisionIdPattern = /(?:ADR-|D-?)\d+/.source;
+const decisionHeadingPattern = new RegExp('^ {0,3}#{1,6}[ \\t]+(' + decisionIdPattern + ')(?=[ \\t]*(?:[:–—-]|$))');
+const decisionFilenamePattern = new RegExp('^docs/adrs?/(?:[^/]+/)*(' + decisionIdPattern + ')(?:-[^/]+)?\\.[mM][dD]$');
 
 export function runDoctor(options = {}) {
   const root = resolve(options.repo ?? process.cwd());
@@ -60,6 +63,7 @@ export function runDoctor(options = {}) {
   const observations = [];
 
   checkRequiredRoutes({ root, files, warnings, observations });
+  checkDecisionMemory({ root, files, warnings });
   checkMarkdownLinks({ root, markdownFiles: linkFiles, targetSets, warnings });
   checkDurableMetadata({ root, markdownFiles, warnings, asOf });
   checkAlwaysOnLeakage({ root, files: alwaysOnFiles, warnings });
@@ -246,6 +250,74 @@ function checkRequiredRoutes({ root, files, warnings, observations }) {
       }
     }
   }
+}
+
+function checkDecisionMemory({ root, files, warnings }) {
+  const firstDeclarations = new Map();
+
+  for (const path of files) {
+    let declarations;
+    if (path === 'docs/decisions.md') {
+      declarations = checkDecisionLog({ root, path, warnings });
+    } else {
+      const id = decisionFilenamePattern.exec(path)?.[1];
+      if (!id) continue;
+      declarations = [{ id }];
+    }
+
+    for (const { id, line } of declarations) {
+      const location = line === undefined ? path : path + ':' + line;
+      const first = firstDeclarations.get(id);
+      if (first === undefined) {
+        firstDeclarations.set(id, location);
+      } else {
+        warnings.push({
+          code: 'duplicate-decision-id',
+          path,
+          ...(line === undefined ? {} : { line }),
+          message: 'Decision ID ' + id + ' is declared more than once. First declaration: ' + first + '.',
+          action: 'Use a unique ID for each decision and update its references.',
+        });
+      }
+    }
+  }
+}
+
+function checkDecisionLog({ root, path, warnings }) {
+  const text = readText(root, path).replace(/\r\n/g, '\n');
+  const lines = text.split('\n');
+  if (lines.at(-1) === '') lines.pop();
+  if (lines.length > 1_000) {
+    warnings.push({
+      code: 'decision-log-length',
+      path,
+      message: 'Decision log has ' + lines.length + ' lines, above the 1,000-line split threshold.',
+      action: 'Split decisions or document the temporary gap and keep the compact index.',
+    });
+  }
+
+  const declarations = [];
+  for (const { line, lineNumber, inContainer } of visibleMarkdownLines(text)) {
+    if (inContainer) continue;
+    const heading = line.replace(/[ \t]+#+[ \t]*$/, '');
+    const id = decisionHeadingPattern.exec(heading)?.[1];
+    if (id) declarations.push({ id, line: lineNumber });
+  }
+
+  // shortcut: a preamble fragment signals a route; revisit if supported layouts repeatedly warn.
+  if (declarations.length >= 2 && !extractMarkdownLinks(text).some((link) => {
+    if (link.isImage || link.line >= declarations[0].line) return false;
+    const href = stripMarkdownLinkTitle(link.href).replace(/^<(.*)>$/, '$1');
+    return /#\S/.test(href) && (href.startsWith('#') || resolveInternalLinkTarget({ root, fromFile: path, href }) === path);
+  })) {
+    warnings.push({
+      code: 'decision-log-index',
+      path,
+      message: 'No in-file decision route recognized before the decision records',
+      action: 'Add a compact index with links to decision records before the first record.',
+    });
+  }
+  return declarations;
 }
 
 function checkMarkdownLinks({ root, markdownFiles, targetSets, warnings }) {
@@ -515,6 +587,22 @@ function extractMarkdownLinks(text) {
   const links = [];
   const referenceDefinitions = new Map();
   const linkLines = [];
+  for (const { line, offset, lineNumber } of visibleMarkdownLines(text)) {
+    const linkLine = maskInlineCodeSpans(line);
+    const definition = parseReferenceDefinition(linkLine, offset, lineNumber);
+    if (definition) referenceDefinitions.set(normalizeReferenceLabel(definition.label), definition);
+    linkLines.push({ line: linkLine, offset, lineNumber, isReferenceDefinition: Boolean(definition) });
+  }
+
+  for (const item of linkLines) {
+    if (item.isReferenceDefinition) continue;
+    links.push(...extractInlineLinks(item.line, item.offset, item.lineNumber));
+    links.push(...extractReferenceUsageLinks(item.line, item.offset, item.lineNumber, referenceDefinitions));
+  }
+  return links;
+}
+
+function* visibleMarkdownLines(text) {
   const normalized = text.replace(/\r\n/g, '\n');
   const lines = normalized.split('\n');
   let activeFence = null;
@@ -524,40 +612,23 @@ function extractMarkdownLinks(text) {
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const line = lines[lineIndex];
+    const lineOffset = offset;
+    offset += line.length + 1;
     const uncommentedLine = activeFence ? line : maskHtmlComments(line, htmlCommentState);
-    const lineListContexts = updateListContexts(uncommentedLine, listContexts);
-    const fence = parseMarkdownFence(markdownContainerLine(uncommentedLine, lineListContexts));
+    listContexts = updateListContexts(uncommentedLine, listContexts);
+    const containerLine = markdownContainerLine(uncommentedLine, listContexts);
+    const fence = parseMarkdownFence(containerLine);
     if (activeFence) {
       if (closesMarkdownFence(fence, activeFence)) activeFence = null;
-      listContexts = lineListContexts;
-      offset += line.length + 1;
       continue;
     }
     if (fence) {
       activeFence = fence;
-      listContexts = lineListContexts;
-      offset += line.length + 1;
       continue;
     }
-    if (isIndentedCodeLine(uncommentedLine, { listContexts: lineListContexts })) {
-      listContexts = lineListContexts;
-      offset += line.length + 1;
-      continue;
-    }
-    listContexts = lineListContexts;
-    const linkLine = maskInlineCodeSpans(uncommentedLine);
-    const definition = parseReferenceDefinition(linkLine, offset, lineIndex + 1);
-    if (definition) referenceDefinitions.set(normalizeReferenceLabel(definition.label), definition);
-    linkLines.push({ line: linkLine, offset, lineNumber: lineIndex + 1, isReferenceDefinition: Boolean(definition) });
-    offset += line.length + 1;
+    if (isIndentedCodeLine(uncommentedLine, { listContexts })) continue;
+    yield { line: uncommentedLine, offset: lineOffset, lineNumber: lineIndex + 1, inContainer: containerLine !== uncommentedLine };
   }
-
-  for (const item of linkLines) {
-    if (item.isReferenceDefinition) continue;
-    links.push(...extractInlineLinks(item.line, item.offset, item.lineNumber));
-    links.push(...extractReferenceUsageLinks(item.line, item.offset, item.lineNumber, referenceDefinitions));
-  }
-  return links;
 }
 
 function maskInlineCodeSpans(line) {
@@ -622,11 +693,12 @@ function parseMarkdownFence(line) {
   return {
     marker: match[2][0],
     length: match[2].length,
+    canClose: !line.slice(match[0].length).trim(),
   };
 }
 
 function closesMarkdownFence(fence, activeFence) {
-  return Boolean(fence && fence.marker === activeFence.marker && fence.length >= activeFence.length);
+  return Boolean(fence?.canClose && fence.marker === activeFence.marker && fence.length >= activeFence.length);
 }
 
 function markdownContainerLine(line, listContexts = []) {
@@ -771,18 +843,24 @@ function normalizeReferenceLabel(label) {
 
 function extractInlineLinks(line, lineOffset, lineNumber) {
   const links = [];
-  let searchIndex = 0;
+  const openLabels = [];
 
-  while (searchIndex < line.length) {
-    const marker = line.indexOf('](', searchIndex);
-    if (marker < 0) break;
-    const parsed = parseInlineLinkDestination(line, marker + 2);
-    if (!parsed) {
-      searchIndex = marker + 2;
-      continue;
+  for (let index = 0; index < line.length; index += 1) {
+    if (line[index] === '\\') {
+      index += 1;
+    } else if (line.startsWith('![', index)) {
+      openLabels.push({ isImage: true });
+      index += 1;
+    } else if (line[index] === '[') {
+      openLabels.push({ isImage: false });
+    } else if (line[index] === ']') {
+      const label = openLabels.pop();
+      if (!label || line[index + 1] !== '(') continue;
+      const parsed = parseInlineLinkDestination(line, index + 2);
+      if (!parsed) continue;
+      links.push({ href: parsed.href.trim(), index: lineOffset + index + 2, line: lineNumber, isImage: label.isImage });
+      index = parsed.end;
     }
-    links.push({ href: parsed.href.trim(), index: lineOffset + marker + 2, line: lineNumber });
-    searchIndex = parsed.end + 1;
   }
 
   return links;

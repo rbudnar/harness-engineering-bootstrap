@@ -8,6 +8,7 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 
 - Made the durable-documentation boundary explicit so repository docs retain enduring authority instead of accumulating task history.
 - Gave stalled PR reviews an exit and routed PR evidence to existing checks, events, and independent reviewers.
+- The warning-mode doctor now flags single decision logs over 1,000 lines, missing recognizable preamble index links, and duplicate IDs in supported decision layouts. These findings preserve exit code zero.
 
 ### Template Changes
 
@@ -24,16 +25,19 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 ### Migration
 
 - Apply the review ceiling where loops recur. When adopting the PR evidence changes, update the local form and any preflight rules together, and preserve author attribution in historical metrics.
+- Update the vendored doctor if needed and sample the new warnings locally or in an advisory PR job for one audit cycle before enabling them in a scheduled report that escalates every warning. Revisit the index heuristic if legitimate layouts repeatedly warn.
 
 ### Validation
 
 - `node scripts/template-fitness.mjs`
 - Review a stalled-round transcript, the equal/different/unknown evidence cases, and source attribution for event, review, and author observations.
+- `node --test scripts/harness-doctor.test.mjs scripts/weekly-harness-report.test.mjs`
 
 ### Rollback
 
 - Revert the durable-documentation rule and its two anti-bloat anchors together.
 - Revert the local review rule if it obscures blockers. Revert the local PR form and dependent preflight changes together if the cutover breaks valid PRs.
+- Restore the previous doctor and decision-audit guidance to roll back these warnings.
 
 ## v0.2.0 - 2026-08-26
 

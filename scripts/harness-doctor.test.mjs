@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -9,6 +9,7 @@ import { renderTextReport, runDoctor } from './harness-doctor.mjs';
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const doctorScript = resolve(testDir, 'harness-doctor.mjs');
+const decisionFixtures = resolve(testDir, '../test/fixtures/harness-doctor/decision-memory');
 
 test('passes a routed contract with complete lifecycle metadata', () => {
   const root = makeRepo({
@@ -1198,6 +1199,121 @@ test('CLI json mode reports warnings but exits zero', () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('decision memory warns above 1,000 physical lines with CRLF and a terminal newline', (t) => {
+  const log = '# Decisions\r\n' + 'Notes\r\n'.repeat(999);
+  const root = makeRepo({ 'docs/decisions.md': log });
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  assert.deepEqual(readDoctorJson(root).warnings, []);
+
+  write('docs/decisions.md', log + 'One more note\r\n', root);
+  const { mode, warnings } = readDoctorJson(root);
+  assert.equal(mode, 'warning');
+  assert.deepEqual(warnings.map(({ code, path }) => ({ code, path })), [
+    { code: 'decision-log-length', path: 'docs/decisions.md' },
+  ]);
+});
+
+test('decision memory recognizes visible same-file links before the records', (t) => {
+  const root = makeRepo({
+    'docs/decisions.md': decisionLog('- [First][route]') + '\n[route]: ./decisions.md#first\n',
+  });
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  assert.deepEqual(readDoctorJson(root).warnings, []);
+});
+
+for (const [description, index, afterRecords] of [
+  ['inside a fence', '~~~markdown\n- [First](#first)\n~~~', ''],
+  ['after the records', '', '\n- [First](#first)\n'],
+  ['in another file', '- [First](../README.md#first)', ''],
+  ['an image destination', '![Diagram](#decoration)', ''],
+  ['plain text', 'This is plain text ](#decoration).', ''],
+]) {
+  test('decision memory warns when its only index links are ' + description, (t) => {
+    const root = makeRepo({
+      'README.md': '# Project\n',
+      'docs/decisions.md': decisionLog(index) + afterRecords,
+    });
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+
+    const { warnings } = readDoctorJson(root);
+    assert.deepEqual(warnings.map(({ code, path }) => ({ code, path })), [
+      { code: 'decision-log-index', path: 'docs/decisions.md' },
+    ]);
+  });
+}
+
+test('decision memory reports the later real heading and first declaration location', (t) => {
+  const id = 'D-' + 781;
+  const root = makeRepo({
+    'docs/decisions.md': decisionLog('- [First](#first)') + '\n## ' + id + '\n',
+  });
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  const { warnings } = readDoctorJson(root);
+  assert.deepEqual(warnings.map(({ code, path, line }) => ({ code, path, line })), [
+    { code: 'duplicate-decision-id', path: 'docs/decisions.md', line: 29 },
+  ]);
+  assert.ok(warnings[0].message.includes(id));
+  assert.ok(warnings[0].message.includes('docs/decisions.md:5'));
+});
+
+test('decision memory preserves the split index checks and accepts a redirect shim', (t) => {
+  const filename = 'D' + 782 + '-blue-folders.md';
+  const root = makeRepo({
+    'docs/decisions.md': '# Decisions\n\nSee the [decision index](adr/INDEX.md).\n',
+    'docs/adr/INDEX.md': '# Decisions\n\n- [Blue folders](' + filename + ')\n',
+    ['docs/adr/' + filename]: readFileSync(resolve(decisionFixtures, 'split-record.md'), 'utf8'),
+  });
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  assert.deepEqual(readDoctorJson(root).warnings, []);
+
+  write('docs/adr/INDEX.md', '# Decisions\n', root);
+  assert.deepEqual(readDoctorJson(root).warnings.map(({ code }) => code), ['unindexed-artifact']);
+
+  rmSync(resolve(root, 'docs/adr/INDEX.md'));
+  assert.deepEqual(readDoctorJson(root).warnings.map(({ code }) => code).sort(), ['broken-link', 'missing-adr-index']);
+});
+
+test('decision memory compares exact IDs across both split directories and the single log', (t) => {
+  const id = 'ADR-' + String(783).padStart(4, '0');
+  const first = id + '-blue-folders.md';
+  const later = id + '-green-folders.md';
+  const distinct = 'ADR-' + 783 + '-yellow-folders.md';
+  const record = readFileSync(resolve(decisionFixtures, 'split-record.md'), 'utf8');
+  const root = makeRepo({
+    ['docs/adr/' + first]: record,
+    'docs/adr/INDEX.md': '# Decisions\n\n- [Blue folders](' + first + ')\n',
+    ['docs/adrs/' + later]: record,
+    ['docs/adrs/' + distinct]: record,
+    'docs/adrs/INDEX.md': '# Decisions\n\n- [Green folders](' + later + ')\n- [Yellow folders](' + distinct + ')\n',
+    'docs/decisions.md': '# Decisions\n\n## ' + id + ' ###\n',
+  });
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  const { warnings } = readDoctorJson(root);
+  assert.deepEqual(warnings.map(({ code, path, line }) => ({ code, path, line })), [
+    { code: 'duplicate-decision-id', path: 'docs/adrs/' + later, line: undefined },
+    { code: 'duplicate-decision-id', path: 'docs/decisions.md', line: 3 },
+  ]);
+  assert.ok(warnings.every(({ message }) => message.includes('docs/adr/' + first)));
+});
+
+function decisionLog(index) {
+  return readFileSync(resolve(decisionFixtures, 'single-log.md'), 'utf8')
+    .replaceAll('{{index}}', index)
+    .replaceAll('{{short}}', 'D-' + 781)
+    .replaceAll('{{adr}}', 'ADR-' + String(782).padStart(4, '0'));
+}
+
+function readDoctorJson(root) {
+  return JSON.parse(execFileSync(process.execPath, [doctorScript, '--repo', root, '--date', '2026-06-10', '--json'], {
+    encoding: 'utf8',
+  }));
+}
 
 function makeRepo(files) {
   const root = mkdtempSync(resolve(tmpdir(), 'heb-doctor-'));
