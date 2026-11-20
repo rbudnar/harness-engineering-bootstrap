@@ -56,6 +56,28 @@ Prefer tightening, shortening, or removal when any benchmark row or repeated fam
 
 Negative results are useful. They should create smaller controls, retirement decisions, or rejected roadmap actions before they create new optional modules.
 
+## Review-Loop Convergence Feedback
+
+When an experiment evaluates PR implementation or review churn, publish the
+runner's review-loop summary at the end of each PR and inspect the per-head
+source ledger during the run. Do not wait for the weekly or 30-day report to
+react.
+
+Required immediate actions:
+
+- an open blocker or escaped relevant defect prevents a successful result;
+- a same-family recurrence after class-wide remediation stops narrow patches
+  and requires a design/mechanism checkpoint;
+- rising rework, scope, or prompt pressure requires a documented decision to
+  redesign, split, compact, or escalate without changing defect relevance;
+- an unchanged head with no new relevant yield stops additional reviewer
+  fan-out; and
+- missing model, token, or cost telemetry is recorded explicitly with the best
+  consistent proxy.
+
+Use weekly trends and 7/30-day escapes to calibrate advisory thresholds and
+detect delayed harm. They supplement rather than replace per-head feedback.
+
 ## Release Notes And Public Claims
 
 Release notes may say that HEB added benchmark mechanics, a pilot, or a governance rule when those artifacts are in the diff. They must not claim broad agent-performance improvement unless a larger benchmark with repeated public tasks supports it.

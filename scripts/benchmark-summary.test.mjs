@@ -63,6 +63,123 @@ test('renders the pilot summary table for PR bodies and reports', () => {
   assert.match(markdown, /\| `heb-planned-core` \| 2 \| 2\/2 \| 0\/2 \|/);
 });
 
+test('surfaces review-loop convergence metrics and correctness coverage', () => {
+  const rows = [
+    {
+      trial: 1,
+      variant: 'current-doctrine',
+      success: true,
+      first_pass_green: false,
+      route_hits: [],
+      stale_hits: [],
+      token_estimate: { total: 10 },
+      wall_time_seconds: 5,
+      review_loop: {
+        reviewed_heads: 5,
+        remediation_heads: 4,
+        same_family_recurrences: 3,
+        rework_lines: 210,
+        prompt_bytes: 70000,
+        escaped_relevant_defects: 0,
+        terminal_full_review: true,
+        triggered_actions: [],
+      },
+    },
+    {
+      trial: 1,
+      variant: 'revised-doctrine',
+      success: true,
+      first_pass_green: false,
+      route_hits: [],
+      stale_hits: [],
+      token_estimate: { total: 10 },
+      wall_time_seconds: 5,
+      review_loop: {
+        reviewed_heads: 3,
+        remediation_heads: 2,
+        same_family_recurrences: 1,
+        rework_lines: 40,
+        prompt_bytes: 42000,
+        escaped_relevant_defects: 0,
+        terminal_full_review: true,
+        triggered_actions: ['design-mechanism-checkpoint'],
+      },
+    },
+  ];
+
+  const summary = summarizeRows(rows);
+  const markdown = formatMarkdown(summary);
+
+  assert.deepEqual(summary.review_convergence['revised-doctrine'], {
+    rows: 1,
+    median_reviewed_heads: 3,
+    reviewed_heads_measured_rows: 1,
+    median_remediation_heads: 2,
+    remediation_heads_measured_rows: 1,
+    same_family_recurrences: 1,
+    same_family_recurrences_measured_rows: 1,
+    rework_lines: 40,
+    rework_lines_measured_rows: 1,
+    prompt_bytes: 42000,
+    prompt_bytes_measured_rows: 1,
+    escaped_relevant_defects: 0,
+    escaped_relevant_defects_measured_rows: 1,
+    terminal_full_review_rows: 1,
+    terminal_full_review_measured_rows: 1,
+    triggered_action_rows: 1,
+    triggered_actions_measured_rows: 1,
+  });
+  assert.match(markdown, /## Review-Loop Convergence/);
+  assert.match(
+    markdown,
+    /\| `revised-doctrine` \| 1 \| 3 \| 2 \| 1 \| 40 \| 42000 \| 0 \| 1\/1 \| 1\/1 \|/,
+  );
+});
+
+test('preserves unknown nullable review-loop totals and reports coverage', () => {
+  const summary = summarizeRows([
+    {
+      trial: 1,
+      variant: 'partial-telemetry',
+      review_loop: {
+        same_family_recurrences: 0,
+        rework_lines: 4,
+        prompt_bytes: 100,
+        escaped_relevant_defects: 0,
+        terminal_full_review: true,
+        triggered_actions: null,
+      },
+    },
+    {
+      trial: 2,
+      variant: 'partial-telemetry',
+      review_loop: {
+        same_family_recurrences: null,
+        rework_lines: null,
+        prompt_bytes: null,
+        escaped_relevant_defects: null,
+        terminal_full_review: null,
+        triggered_actions: [],
+      },
+    },
+  ]);
+
+  const data = summary.review_convergence['partial-telemetry'];
+  assert.equal(data.same_family_recurrences, null);
+  assert.equal(data.rework_lines, null);
+  assert.equal(data.prompt_bytes, null);
+  assert.equal(data.escaped_relevant_defects, null);
+  assert.equal(data.escaped_relevant_defects_measured_rows, 1);
+  assert.equal(data.reviewed_heads_measured_rows, 0);
+  assert.equal(data.remediation_heads_measured_rows, 0);
+  assert.equal(data.terminal_full_review_measured_rows, 1);
+  assert.equal(data.triggered_actions_measured_rows, 1);
+  assert.match(
+    formatMarkdown(summary),
+    /\| `partial-telemetry` \| 2 \| n\/a \(0\/2 measured\) \| n\/a \(0\/2 measured\) \| n\/a \(1\/2 measured\) \| n\/a \(1\/2 measured\) \| n\/a \(1\/2 measured\) \| n\/a \(1\/2 measured\) \| 1\/1 \(1\/2 measured\) \| 0\/1 \(1\/2 measured\) \|/,
+  );
+});
+
 test('surfaces model provenance warnings in summaries', () => {
   const summary = summarizeRows([
     {

@@ -104,7 +104,7 @@ To validate a proposal file from automation, run:
 node scripts/template-fitness.mjs --suggestion path/to/suggestion.md
 ```
 
-The gate checks always-on size, anti-bloat anchors, the tightened main-template growth budget, checklist size, triggered-module count, and suggestion admission fields. Benchmark-driven PRs use `docs/benchmark-governance.md`: name task family, separate evidence from inference and unsupported claims, report cost or wall-time tradeoffs, and prefer tightening, retiring, or validating existing guidance before expansion.
+The gate checks always-on size, anti-bloat anchors, the tightened main-template growth budget, checklist size, triggered-module count, and suggestion admission fields. Benchmark-driven PRs use `docs/benchmark-governance.md`: name task family, separate evidence from inference and unsupported claims, report cost or wall-time tradeoffs, and prefer tightening, retiring, or validating existing guidance before expansion. Review-loop experiments keep rapid per-head evidence outside the repo, publish `review_loop` totals at PR closeout, and never let efficiency metrics demote a defect.
 
 ## Bootstrap Planner Dogfood
 

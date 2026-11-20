@@ -77,6 +77,7 @@ export function summarizeRows(rows) {
     rows: rows.length,
     first_trial: summarizeFirstTrial(firstTrialRows),
     repeated_subset: summarizeRepeated(repeatedRows),
+    review_convergence: summarizeReviewConvergence(rows),
     model_provenance: summarizeModelProvenance(rows),
     warnings: summarizeWarnings(rows),
   };
@@ -112,6 +113,44 @@ function summarizeModelProvenance(rows) {
   }));
 }
 
+function summarizeReviewConvergence(rows) {
+  return summarizeByVariant(
+    rows.filter((row) => row.review_loop && typeof row.review_loop === 'object'),
+    (variantRows) => ({
+      rows: variantRows.length,
+      ...reviewMedian(variantRows, 'reviewed_heads', 'median_reviewed_heads'),
+      ...reviewMedian(
+        variantRows,
+        'remediation_heads',
+        'median_remediation_heads',
+      ),
+      ...completeReviewSum(variantRows, 'same_family_recurrences'),
+      ...completeReviewSum(variantRows, 'rework_lines'),
+      ...completeReviewSum(variantRows, 'prompt_bytes'),
+      ...completeReviewSum(variantRows, 'escaped_relevant_defects'),
+      terminal_full_review_rows: countWhere(
+        variantRows,
+        (row) => row.review_loop.terminal_full_review === true,
+      ),
+      terminal_full_review_measured_rows: countWhere(
+        variantRows,
+        (row) => typeof row.review_loop.terminal_full_review === 'boolean',
+      ),
+      triggered_action_rows: countWhere(
+        variantRows,
+        (row) => (
+          Array.isArray(row.review_loop.triggered_actions)
+          && nonEmptyStringArrayLength(row.review_loop.triggered_actions) > 0
+        ),
+      ),
+      triggered_actions_measured_rows: countWhere(
+        variantRows,
+        (row) => Array.isArray(row.review_loop.triggered_actions),
+      ),
+    }),
+  );
+}
+
 function summarizeWarnings(rows) {
   const counts = new Map();
   for (const row of rows) {
@@ -144,6 +183,28 @@ function countWhere(rows, predicate) {
 
 function sum(rows, project) {
   return rows.reduce((total, row) => total + project(row), 0);
+}
+
+function completeReviewSum(rows, field) {
+  const values = rows
+    .map((row) => numberOrNull(row.review_loop[field]))
+    .filter((value) => value !== null);
+  return {
+    [field]: values.length === rows.length
+      ? values.reduce((total, value) => total + value, 0)
+      : null,
+    [`${field}_measured_rows`]: values.length,
+  };
+}
+
+function reviewMedian(rows, field, outputField) {
+  const values = rows
+    .map((row) => numberOrNull(row.review_loop[field]))
+    .filter((value) => value !== null);
+  return {
+    [outputField]: median(values),
+    [`${field}_measured_rows`]: values.length,
+  };
 }
 
 function arrayLength(value) {
@@ -219,9 +280,44 @@ export function formatMarkdown(summary) {
     ...Object.entries(summary.repeated_subset).map(([variant, data]) => (
       `| \`${variant}\` | ${data.repeated_trials} | ${data.success}/${data.repeated_trials} | ${data.same_family_stale_recurrence}/${data.repeated_trials} |`
     )),
+    ...formatReviewConvergence(summary),
     ...formatModelProvenance(summary),
     ...formatWarnings(summary),
   ].join('\n');
+}
+
+function formatReviewConvergence(summary) {
+  const entries = Object.entries(summary.review_convergence);
+  if (!entries.length) return [];
+
+  return [
+    '',
+    '## Review-Loop Convergence',
+    '',
+    '| Variant | Rows | Median reviewed heads | Median remediation heads | Same-family recurrences | Rework lines | Prompt bytes | Escaped relevant defects | Terminal full review | Triggered action rows |',
+    '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
+    ...entries.map(([variant, data]) => (
+      `| \`${variant}\` | ${data.rows} | ${formatReviewMedian(data, 'median_reviewed_heads', 'reviewed_heads')} | ${formatReviewMedian(data, 'median_remediation_heads', 'remediation_heads')} | ${formatReviewTotal(data, 'same_family_recurrences')} | ${formatReviewTotal(data, 'rework_lines')} | ${formatReviewTotal(data, 'prompt_bytes')} | ${formatReviewTotal(data, 'escaped_relevant_defects')} | ${formatMeasuredCount(data.terminal_full_review_rows, data.terminal_full_review_measured_rows, data.rows)} | ${formatMeasuredCount(data.triggered_action_rows, data.triggered_actions_measured_rows, data.rows)} |`
+    )),
+  ];
+}
+
+function formatReviewMedian(data, valueField, sourceField) {
+  const value = formatNumber(data[valueField]);
+  const measuredRows = data[`${sourceField}_measured_rows`];
+  return measuredRows === data.rows ? value : `${value} (${measuredRows}/${data.rows} measured)`;
+}
+
+function formatReviewTotal(data, field) {
+  const value = data[field] === null ? 'n/a' : String(data[field]);
+  const measuredRows = data[`${field}_measured_rows`];
+  return measuredRows === data.rows ? value : `${value} (${measuredRows}/${data.rows} measured)`;
+}
+
+function formatMeasuredCount(count, measuredRows, totalRows) {
+  if (measuredRows === totalRows) return `${count}/${totalRows}`;
+  if (measuredRows === 0) return `n/a (0/${totalRows} measured)`;
+  return `${count}/${measuredRows} (${measuredRows}/${totalRows} measured)`;
 }
 
 function formatModelProvenance(summary) {

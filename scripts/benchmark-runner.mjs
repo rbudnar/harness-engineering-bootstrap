@@ -329,6 +329,7 @@ export function normalizeResultRow(rawResult, manifest, { artifactsDir = null } 
   const declaredModel = stringOrNull(rawResult.model);
   const observedModel = stringOrNull(rawResult.observed_model);
   const modelRoutingEvidence = nonEmptyStringArray(rawResult.model_routing_evidence, 'model_routing_evidence');
+  const reviewLoop = normalizeReviewLoop(rawResult.review_loop);
   if (runConfig === null) warnings.add('run_config unavailable');
   if (tokenEstimate === null) warnings.add('token_estimate unavailable');
   if (costEstimate === null) warnings.add('cost_estimate unavailable');
@@ -372,6 +373,7 @@ export function normalizeResultRow(rawResult, manifest, { artifactsDir = null } 
     wall_time_seconds: wallTimeSeconds,
     artifact_paths: artifactPaths,
     model_routing_evidence: modelRoutingEvidence,
+    review_loop: reviewLoop,
     notes: stringOrNull(rawResult.notes),
     warnings: [...warnings].sort(),
   };
@@ -458,6 +460,19 @@ export function validateResultRow(row, manifest, { artifactsDir = null } = {}) {
     normalizeCostEstimate(row.cost_estimate);
   } catch (error) {
     errors.push(error.message);
+  }
+  try {
+    normalizeReviewLoop(row.review_loop);
+  } catch (error) {
+    errors.push(error.message);
+  }
+  if (row.success === true && row.review_loop !== null && row.review_loop !== undefined) {
+    if (row.review_loop.escaped_relevant_defects !== 0) {
+      errors.push('successful review_loop rows must have zero escaped_relevant_defects.');
+    }
+    if (row.review_loop.terminal_full_review !== true) {
+      errors.push('successful review_loop rows require terminal_full_review.');
+    }
   }
   for (const field of ['route_hits', 'stale_hits', 'unnecessary_reads', 'docs_cited', 'files_read', 'files_modified']) {
     if (!Array.isArray(row[field]) || row[field].some((value) => typeof value !== 'string')) {
@@ -780,9 +795,51 @@ function normalizeCostEstimate(value) {
   };
 }
 
+function normalizeReviewLoop(value) {
+  if (value === undefined || value === null) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('review_loop must be an object or null.');
+  }
+  const integerFields = [
+    'reviewed_heads',
+    'review_attempts',
+    'remediation_heads',
+    'same_family_recurrences',
+    'gross_remediation_lines',
+    'rework_lines',
+    'initial_scope_lines',
+    'final_scope_lines',
+    'blocker_count',
+    'residual_count',
+    'noise_count',
+    'prompt_bytes',
+    'escaped_relevant_defects',
+  ];
+  const output = Object.fromEntries(
+    integerFields.map((field) => [
+      field,
+      nullableNonNegativeInteger(value[field], `review_loop.${field}`),
+    ]),
+  );
+  output.terminal_full_review = nullableBoolean(
+    value.terminal_full_review,
+    'review_loop.terminal_full_review',
+  );
+  output.triggered_actions = nullableNonEmptyStringArray(
+    value.triggered_actions,
+    'review_loop.triggered_actions',
+  );
+  return output;
+}
+
 function nullableNonNegativeNumber(value, field) {
   if (value === undefined || value === null) return null;
   return nonNegativeNumber(value, field);
+}
+
+function nullableNonEmptyStringArray(value, field) {
+  if (value === undefined || value === null) return null;
+  return nonEmptyStringArray(value, field);
 }
 
 function nonNegativeNumber(value, field) {
