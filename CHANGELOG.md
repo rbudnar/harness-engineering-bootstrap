@@ -7,10 +7,14 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 ### Summary
 
 - Made the durable-documentation boundary explicit so repository docs retain enduring authority instead of accumulating task history.
+- Gave stalled PR reviews an exit and routed PR evidence to existing checks, events, and independent reviewers.
 
 ### Template Changes
 
 - Routed rollout status, temporary inventories, implementation sequencing, and one-time checklists to issues, PRs, or ignored task state; checked-in execution plans remain a bounded exception with an explicit retirement rule.
+- Added a default ceiling of five distinct reviewed heads for stalled PRs, with owner escalation and the same-family recurrence stop.
+- Added a measurable applicability rule and short proof for conditional PR evidence about an unchanged surface.
+- Replaced author observation checkboxes in the recommended PR form with CI or PR events and attributed review markers. Kept legacy checkbox guidance for historical data.
 
 ### Planner And Metadata
 
@@ -19,13 +23,17 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 
 ### Migration
 
+- Apply the review ceiling where loops recur. When adopting the PR evidence changes, update the local form and any preflight rules together, and preserve author attribution in historical metrics.
+
 ### Validation
 
 - `node scripts/template-fitness.mjs`
+- Review a stalled-round transcript, the equal/different/unknown evidence cases, and source attribution for event, review, and author observations.
 
 ### Rollback
 
 - Revert the durable-documentation rule and its two anti-bloat anchors together.
+- Revert the local review rule if it obscures blockers. Revert the local PR form and dependent preflight changes together if the cutover breaks valid PRs.
 
 ## v0.2.0 - 2026-08-26
 
