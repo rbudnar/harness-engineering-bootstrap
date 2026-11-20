@@ -64,8 +64,8 @@ When automation opens a PR, it must:
 - Prefer the smallest route, wording, or validator change that satisfies the proposal. Do not install a new optional module by default.
 - Add a repo-local skill only after the skill-creation gate passes, and keep its `SKILL.md` frontmatter valid so `template-fitness` can check it mechanically.
 - Keep automation authority limited to branch, PR, issue, comment, and label operations unless a proposal documents deterministic pre-action authorization or explicit human confirmation for broader writes.
-- Run `node scripts/template-fitness.mjs` and the suggestion gate for every accepted proposal file.
-- Run the PR readiness checklist: `node scripts/template-fitness.mjs`, plain `codex review --base origin/main` when Codex CLI is available, GitHub `template-fitness` checks, replies/resolutions for review threads, and a concise PR summary comment.
+- Run the suggestion gate for every accepted proposal file and the PR readiness checklist: `node scripts/template-fitness.mjs`, plain `codex review --base origin/main` when Codex CLI is available, GitHub `template-fitness` checks, replies/resolutions for review threads, and a concise PR summary comment.
+- When review loops recur, apply the stop and escalation rule in the Harness Self-Correction example in [Phase 4](../templates/Harness%20Engineering%20Bootstrap.md#phase-4-agent-entry-points).
 - Notify with the PR URL, proposal paths, validation results, review status, and any rejected or skipped candidates.
 
 Use these headings when automation writes a suggestion file:

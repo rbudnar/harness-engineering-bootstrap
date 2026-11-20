@@ -21,7 +21,7 @@ Add deeper measurement only when there is local trigger evidence:
 - several validators, contracts, metrics, or routers that need prioritization
 - production or long-running agent runtime where safety or drift metrics are load-bearing
 
-Smaller-control check: if a single local validator summary or PR checkbox captures the signal, do not add scheduled reports, standing issues, or eval harnesses.
+Smaller-control check: use an existing local validator or CI summary, or an independent review marker, if it captures the signal. Reserve scheduled reports, standing issues, and eval harnesses for gaps those sources leave.
 
 Validation signal: the measurement output should make one next action clearer, reduce repeated rediscovery, or expose a recurring harness miss. If nobody uses the output over an audit window, retire or weaken it.
 
@@ -95,7 +95,7 @@ Avoid circular dependency: metrics may record whether a health report exists, bu
 
 ## Human Correction Markers
 
-Use lightweight markers in PR bodies, issue comments, inline review comments, or review submissions when scripts cannot infer human-observed friction:
+Use existing CI or PR events for observations they can establish. For other friction, capture lightweight markers from independent reviewers in existing review or issue threads. Authors may also add markers in PR bodies or comments. Attribute author reports separately and treat absence of a marker as unobserved.
 
 - `harness:miss-docs`
 - `harness:miss-adr`
@@ -118,7 +118,7 @@ Use lightweight markers in PR bodies, issue comments, inline review comments, or
 - `harness:semantic-scope`
 - `harness:scope-ratchet`
 
-If PR templates include a `No harness issue observed` option, metrics should validate that it is mutually exclusive with positive observations.
+Continue reading legacy positive observation boxes as author reports. In historical comparisons, preserve that source attribution and validate that the legacy `No harness issue observed` box is mutually exclusive with positive observations.
 
 ## Feedback Log
 

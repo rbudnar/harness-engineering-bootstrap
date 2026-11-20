@@ -953,6 +953,8 @@ If yes, update the smallest durable harness surface in the same PR: `docs/README
 
 If review finds two issues in the same defect family, stop point-fixing examples. Name the missing model or decision surface, update the fixture/regression matrix, and fix the class before continuing. Do not defer in-scope defects as follow-up work merely because review churn is high.
 
+When PR review repeatedly fails to converge, first check whether a smaller control already resolves it: limit review to blocking findings, or escalate the first unresolved disagreement to the human owner. Add a ceiling only if those do not. By default, count up to five distinct reviewed heads per PR, starting with the first reviewed head. After a class fix, continue only for a finding that demonstrates a violation of an accepted requirement, active decision, or applicable invariant, including required validation and preserved behavior. If the same defect family recurs after the class fix, stop patching and revisit the underlying decision or escalate to the owner. Refute findings verified wrong with evidence. At the ceiling, stop changing code. Post open blockers and their evidence in the review thread (or the issue or a direct handoff when no PR exists) and escalate to the human owner. If no blockers remain, conclude the review subject to required validation. Only a human may raise the total ceiling; the agent running the loop never raises its own. Continue the existing numbering if review resumes. Revisit the ceiling if material defects escape or escalation repeatedly interrupts resolvable reviews.
+
 Do not solve repeated mistakes only in provider memory, scratchpads, plans, or PR comments.
 
 ## Provider Memory
@@ -1458,27 +1460,6 @@ Recommended section:
 - [ ] Scope excludes pages/components/commands whose displayed behavior is not affected
 - [ ] Not applicable
 
-## Agent/Harness Observations
-
-- [ ] Agent needed repeated clarification (`harness:missing-guide` or `harness:context-rot`)
-- [ ] Agent could not find relevant context (`harness:missing-guide`)
-- [ ] Agent made an incorrect assumption (`harness:miss-docs`, `harness:miss-adr`, or contract marker)
-- [ ] Decision router / index failed to surface relevant context (`harness:miss-decision-route`)
-- [ ] New data contract needed (`harness:data-contract-needed`)
-- [ ] New repo contract needed (`harness:repo-contract-needed`)
-- [ ] Runtime/tool safety boundary needed (`harness:runtime-safety-needed`)
-- [ ] Agent repeated a known behavioral drift (`harness:behavior-drift`)
-- [ ] Source-heavy work lacked traceable evidence (`harness:evidence-gap`)
-- [ ] Existing context was stale (`harness:context-rot`)
-- [ ] Existing sensor was missing, ignored, or too noisy (`harness:missing-sensor` or `harness:review-noise`)
-- [ ] Bespoke scaffold looks obsolete or too costly (`harness:obsolete-scaffold`)
-- [ ] Harness edit prediction missed (`harness:prediction-miss`)
-- [ ] Provider memory conflicted with repo context (`harness:provider-memory-conflict`)
-- [ ] Handoff or issue claim was wrong or unverified (`harness:handoff-claim`)
-- [ ] Migration scope lacked a user-visible semantic payoff (`harness:semantic-scope`)
-- [ ] Repeated self-introduced fixes suggest wrong scope (`harness:scope-ratchet`)
-- [ ] No harness issue observed (mutually exclusive)
-
 ## If no harness update was made
 
 Explain why existing context remains accurate:
@@ -1488,9 +1469,13 @@ Change rule:
 
 If modifying schema usage, data semantics, cross-repo behavior, public/internal interfaces, non-obvious domain logic, user-visible controls, migration scope, or agent workflow assumptions, update the relevant harness file or explicitly state why no harness update is needed.
 
+When PR automation repeatedly asks for evidence about an unaffected surface, document the affected surface for each conditionally required section it enforces. Have the existing check evaluate applicability from the diff or authoritative proof. Allow a one-line evidence summary when all relevant predicates are false. If a predicate is unknown, run its normal evidence path.
+
+For example, compare the complete scoped generated outputs from base and head using the same inputs and toolchain. Require the output census if any output differs or the comparison cannot prove equality. A docs-only change with verified identical outputs can use `Affected surface unchanged. <comparison and result>.` Evidence for independently affected interfaces, docs, or gates still applies. Retire the short form if the section becomes manual or redundant.
+
 This rule is intentionally lightweight. The goal is to make drift visible, not create process overhead.
 
-Metrics should parse checked observation boxes directly when possible. If that is not implemented, include the matching lightweight marker in the PR body or a review comment. `No harness issue observed` is mutually exclusive with every positive observation.
+When existing automation can derive an observation from CI or PR events, use those events. During review, an independent reviewer may record an explicit marker for friction the events cannot establish. Authors may still flag their own observations; attribute those separately.
 
 ## Phase 8: Measurement Layer
 
@@ -1519,10 +1504,8 @@ The measurement layer has four possible parts:
    - Output: GitHub Actions job summary plus a JSON artifact. Optionally update one standing GitHub issue or append compact history to `docs/harness-metrics/history.jsonl`.
 
 4. **Task and PR event capture**
-   - Use PR template checkboxes and lightweight markers to capture human-observed friction that scripts cannot infer.
-   - The metrics script should parse checked observation boxes or count explicit markers from PR descriptions, review comments, issue comments, or the repo's chosen issue tracker.
-   - Validate or review that `None` / `No harness issue observed` options are mutually exclusive with positive observations.
-   - Humans should not need to remember a separate metrics process; the PR template and review markers are the capture surface.
+   - Derive observations from existing CI or PR events when available. Start with one signal, such as a completed failed attempt followed by a completed successful attempt for the same head and check. Revisit it after one audit window and drop it if unused.
+   - Use independent review markers for friction the events cannot establish. Attribute author reports separately and treat missing observations as unobserved.
 
 Default CI policy:
 
@@ -1729,11 +1712,11 @@ Do not treat baseline imperfections as automatic blockers. The goal is to make t
 - [ ] Add or update the canonical review harness; add `.github/copilot-instructions.md` as an adapter only when Copilot is used
 - [ ] Add or update PR template harness-impact questions
 - [ ] Add semantic-scope prompts for broad migrations or user-visible control changes
-- [ ] Add PR observation checkboxes and marker capture when GitHub PRs are used
+- [ ] Use existing CI or PR events for observations and independent review markers for friction the events cannot establish
 - [ ] Add a minimal deterministic local metrics script
 - [ ] Add GitHub/PR workflow metrics and scheduled trend reporting only when the repo has an active PR workflow or high agent iteration
 - [ ] Add an agent-readable health report only when validators/metrics need prioritization
-- [ ] Include marker counts from PR bodies, issue comments, inline review comments, and review submissions when a PR/issue workflow is available
+- [ ] Include marker counts from PR bodies, issue comments, inline review comments, and review submissions when a PR/issue workflow is available, with author and independent reviewer observations attributed separately
 - [ ] Include guide/sensor or control-coverage metrics when a control inventory exists
 - [ ] Include runtime-safety metrics when agent runtime safety docs or production agent tools exist
 - [ ] Include behavioral-drift metrics when behavioral anchors exist
