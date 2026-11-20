@@ -6,6 +6,20 @@ Released HEB sections use `## vX.Y.Z - YYYY-MM-DD`; see `docs/releases.md` for t
 
 ### Summary
 
+### Template Changes
+
+### Planner And Metadata
+
+### Migration
+
+### Validation
+
+### Rollback
+
+## v0.3.0 - 2026-11-20
+
+### Summary
+
 - Made the durable-documentation boundary explicit so repository docs retain enduring authority instead of accumulating task history.
 - Gave stalled PR reviews an exit and routed PR evidence to existing checks, events, and independent reviewers.
 - The warning-mode doctor now flags single decision logs over 1,000 lines, missing recognizable preamble index links, and duplicate IDs in supported decision layouts. These findings preserve exit code zero.
